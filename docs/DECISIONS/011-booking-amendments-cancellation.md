@@ -1,0 +1,11 @@
+# ADR 011 — Booking amendments and cancellation
+
+Accepted for mock development, 9 September 2026. Owner authorized the next reservation increment.
+
+- Changes use an expiring quote, explicit acceptance, optimistic booking version, idempotency, append-only BookingChange and a new PriceSnapshot for each confirmed amendment. Contact/pickup-only corrections retain the accepted price. Departure/party changes use current catalog and tenant policy.
+- Change quotes do not reserve seats. Acceptance rechecks capacity under ordered departure locks; failure preserves the old reservation. Accepted confirmed changes create a consumed replacement inventory allocation (a hold row), keeping the original hold and price snapshots as evidence.
+- Held reservations support contact/pickup corrections without extending expiry. Departure/party changes require confirmation first or cancellation and a new reservation. Expired or already-started bookings cannot be amended or cancelled through this pre-departure workflow.
+- Confirmed amendment balances are permitted only by explicit tenant `allowAmendmentBalance` configuration. Default false; synthetic demo fixtures opt in. If disabled, the new quote must satisfy its minimum-paid rule before acceptance. Confirmation is not boarding clearance.
+- Cancellation of a live held or future confirmed booking releases inventory atomically and creates an auditable cancellation. This explicitly adds held → cancelled to the first-slice FSM. Cancellation neither refunds money nor establishes a fee/refund entitlement. Recorded payments and historical price stay unchanged; finance-review evidence is attached when settled or pending payment records exist. Cancelled bookings reject collection and confirmation.
+- An amendment below the amount already collected exposes a credit requiring finance review, not an automatic refund. No live gateway, refund, customer message, cancellation fee or financial closure is implemented.
+- Staff with bookings.write may amend/cancel; API checks remain authoritative. Current rules are mock-only and actual tenant amendment/cancellation policies remain a launch prerequisite.

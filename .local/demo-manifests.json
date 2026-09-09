@@ -1,0 +1,54 @@
+[
+  {
+    "name": "Mock Harbor Tours",
+    "currency": "USD",
+    "manifest": {
+      "departure": {
+        "id": "4557715e-92c5-4d49-a740-f5e0d1d62aa6",
+        "starts_at": "2026-09-10T13:00:00.000Z",
+        "capacity": 18
+      },
+      "bookings": [
+        {
+          "booking_id": "dbc37eb8-42d8-49a4-8409-356355da991a",
+          "lead_name": "Mock Traveler",
+          "pickup": {
+            "kind": "selected",
+            "location": "Mock meeting point",
+            "instructions": "Arrive 15 minutes before departure"
+          },
+          "party": {
+            "adult": 2
+          },
+          "party_size": 2
+        }
+      ]
+    }
+  },
+  {
+    "name": "Mock River Excursions",
+    "currency": "XCD",
+    "manifest": {
+      "departure": {
+        "id": "08dbe68b-f3d7-4abd-b264-b67cde813d08",
+        "starts_at": "2026-09-10T13:00:00.000Z",
+        "capacity": 18
+      },
+      "bookings": [
+        {
+          "booking_id": "aacc5064-649c-4cff-8843-4c3b1cdf92ac",
+          "lead_name": "Mock Traveler",
+          "pickup": {
+            "kind": "selected",
+            "location": "Mock meeting point",
+            "instructions": "Arrive 15 minutes before departure"
+          },
+          "party": {
+            "adult": 2
+          },
+          "party_size": 2
+        }
+      ]
+    }
+  }
+]

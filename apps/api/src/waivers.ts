@@ -1,0 +1,14 @@
+import { Body, Controller, Get, Headers, Injectable, Param, Post } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
+import { z } from "zod";
+import { Actor, id } from "../../../packages/shared/src/contracts";
+import { Database, record } from "./database";
+import { Access, CurrentActor, keySchema, parse } from "./http";
+const template = z.object({ title:z.string().trim().min(1).max(160), body:z.string().trim().min(1).max(20000) }).strict();
+const signature = z.object({ templateId:id, signerName:z.string().trim().min(1).max(160), signerCapacity:z.enum(["self","guardian","staff_attestation"]) }).strict();
+@Injectable() export class WaiverService { constructor(private readonly db:Database) {}
+ templates(a:Actor) { return this.db.transaction(a, async tx => (await tx.query("SELECT id,version,title,body,active,created_at FROM waiver_templates WHERE tenant_id=$1 AND active ORDER BY version DESC",[a.tenantId])).rows); }
+ create(a:Actor,k:string,raw:unknown) { const v=parse(template,raw); return this.db.command(a,"waiver.template.create",k,v,async tx=>{ const {rows:[n]}=await tx.query("SELECT COALESCE(MAX(version),0)+1 AS version FROM waiver_templates WHERE tenant_id=$1",[a.tenantId]); const x={id:randomUUID(),version:n.version,...v,active:true}; await tx.query("INSERT INTO waiver_templates(tenant_id,id,version,title,body) VALUES($1,$2,$3,$4,$5)",[a.tenantId,x.id,x.version,x.title,x.body]); await record(tx,a,"waiver_template.created",x.id,null,x); return x; }); }
+ sign(a:Actor,b:string,k:string,raw:unknown) { const v=parse(signature,raw); return this.db.command(a,`waiver.signature:${b}`,k,v,async tx=>{ const {rows:[t]}=await tx.query("SELECT version FROM waiver_templates WHERE tenant_id=$1 AND id=$2 AND active",[a.tenantId,v.templateId]); if(!t) throw new Error("Active waiver template not found"); const x={id:randomUUID(),bookingId:b,templateId:v.templateId,templateVersion:t.version,signerName:v.signerName,signerCapacity:v.signerCapacity}; await tx.query("INSERT INTO waiver_signatures(tenant_id,id,booking_id,template_id,template_version,signer_name,signer_capacity,recorded_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",[a.tenantId,x.id,b,x.templateId,x.templateVersion,x.signerName,x.signerCapacity,a.actorId]); await record(tx,a,"waiver.signature_recorded",x.id,null,x); return x; }); }
+}
+@Controller("ops/v1") export class WaiverController { constructor(private readonly s:WaiverService) {} @Get("waiver-templates") @Access("manifest.read") list(@CurrentActor()a:Actor){return this.s.templates(a)} @Post("waiver-templates") @Access("operations.write") create(@CurrentActor()a:Actor,@Headers("idempotency-key")k:string,@Body()b:unknown){return this.s.create(a,parse(keySchema,k),b)} @Post("bookings/:id/waivers") @Access("operations.write") sign(@CurrentActor()a:Actor,@Param("id")b:string,@Headers("idempotency-key")k:string,@Body()v:unknown){return this.s.sign(a,parse(id,b),parse(keySchema,k),v)} }

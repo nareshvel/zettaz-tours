@@ -1,0 +1,24 @@
+{
+  "base": "http://127.0.0.1:3190",
+  "platformToken": "u5fQRBqeX9ixIxBwmkvylR0TJ5SEpFjLvdlwhsn4wj8",
+  "tenants": [
+    {
+      "tenantId": "d30150e8-f251-4dba-a9b1-d67c71f210b6",
+      "ownerId": "117e696f-e5d2-481d-b119-382d9003d7e0",
+      "isMock": true,
+      "name": "Mock Harbor Tours",
+      "token": "k5H_D78z8aKb84q52DWledsRq39jCtDEVF35IvzJotw",
+      "departureId": "4557715e-92c5-4d49-a740-f5e0d1d62aa6",
+      "bookingId": "dbc37eb8-42d8-49a4-8409-356355da991a"
+    },
+    {
+      "tenantId": "335ff21d-675e-46b8-a1f1-72115476e908",
+      "ownerId": "296967dd-2bf8-42df-85a6-494efaa88314",
+      "isMock": true,
+      "name": "Mock River Excursions",
+      "token": "6mCYb37x8ts8L5moPyxrBtWE76IAlw_M5Ph1aOyQS84",
+      "departureId": "08dbe68b-f3d7-4abd-b264-b67cde813d08",
+      "bookingId": "aacc5064-649c-4cff-8843-4c3b1cdf92ac"
+    }
+  ]
+}

@@ -1,6 +1,25 @@
 import { Pool } from "pg";
-import { randomBytes, randomUUID } from "node:crypto";
+import {
+  randomBytes,
+  randomUUID,
+  scrypt as scryptCallback,
+  timingSafeEqual,
+} from "node:crypto";
+import { promisify } from "node:util";
 import { digest } from "../src/database";
+const scrypt = promisify(scryptCallback);
+export async function hashPassword(password: string) {
+  const salt = randomBytes(16).toString("base64url");
+  const derived = (await scrypt(password, salt, 64)) as Buffer;
+  return `scrypt$${salt}$${derived.toString("base64url")}`;
+}
+export async function verifyPassword(password: string, stored: string) {
+  const [algorithm, salt, encoded] = stored.split("$");
+  if (algorithm !== "scrypt" || !salt || !encoded) return false;
+  const actual = (await scrypt(password, salt, 64)) as Buffer;
+  const expected = Buffer.from(encoded, "base64url");
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
+}
 
 // Privileged local bootstrap only; no HTTP token-issuance endpoint or shared demo secret.
 export async function issueSession(

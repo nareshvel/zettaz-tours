@@ -1,27 +1,14 @@
 import "server-only";
-import { readFile } from "node:fs/promises";
 import { cookies } from "next/headers";
 
-type DemoFile = {
-  base: string;
-  tenants: { tenantId: string; name: string; token: string }[];
-};
 export const sessionCookie = "zettaz_session";
-export async function demoAccess(): Promise<DemoFile> {
-  if (process.env.ZETTAZ_DEMO_WEB !== "1" || !process.env.DEMO_ACCESS_FILE)
-    throw new Error("Demo web access is not configured");
-  const data = JSON.parse(
-    await readFile(process.env.DEMO_ACCESS_FILE, "utf8"),
-  ) as DemoFile;
-  const url = new URL(data.base);
-  if (
-    url.protocol !== "http:" ||
-    url.hostname !== "127.0.0.1" ||
-    url.username ||
-    url.password
-  )
-    throw new Error("Only a loopback demo API is allowed");
-  return data;
+function apiBase() {
+  const value = process.env.API_BASE_URL;
+  if (!value) throw new Error("API_BASE_URL is not configured");
+  const url = new URL(value);
+  if (url.username || url.password)
+    throw new Error("API base must not contain credentials");
+  return url.toString().replace(/\/$/, "");
 }
 export function validOrigin(request: Request) {
   return (
@@ -34,21 +21,21 @@ export async function upstream(
   init: RequestInit = {},
   token?: string,
 ) {
-  const data = await demoAccess();
   const credential = token ?? (await cookies()).get(sessionCookie)?.value;
-  if (!credential)
+  const publicAuth = path === "/auth/v1/sign-in" || path === "/auth/v1/invitations/accept" || path.startsWith("/auth/v1/password-recovery/");
+  if (!credential && !publicAuth)
     return Response.json(
       { message: "Choose a demo tenant to continue." },
       { status: 401 },
     );
-  return fetch(data.base + path, {
+  return fetch(apiBase() + path, {
     ...init,
     redirect: "error",
     cache: "no-store",
     signal: AbortSignal.timeout(15000),
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${credential}`,
+      ...(credential ? { Authorization: `Bearer ${credential}` } : {}),
       ...init.headers,
     },
   });
@@ -57,7 +44,7 @@ export function unavailable() {
   return Response.json(
     {
       message:
-        "The local demo is unavailable. Start npm run demo:web and try again.",
+        "The workspace service is unavailable. Start npm run workspace:dev and try again.",
     },
     { status: 503, headers: { "Cache-Control": "no-store" } },
   );

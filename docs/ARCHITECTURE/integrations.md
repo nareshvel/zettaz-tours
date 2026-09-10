@@ -6,6 +6,8 @@ Index: [README.md](../README.md) · Scope: [launch-contract.md](../STRATEGY/laun
 
 ## Hub pattern
 
+Architecture decision: [ADR 015 — channel-neutral booking core](../DECISIONS/015-channel-neutral-booking-core.md).
+
 - Canonical internal schemas for Product, Availability, Booking, Cancellation, Customer Question, and Payment Ownership.
 - One adapter per external system. Raw payload retention with redaction and a retention policy.
 - Inbound webhook inbox: signature verification, deduplication, retry, quarantine.

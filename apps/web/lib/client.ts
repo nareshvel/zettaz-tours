@@ -34,6 +34,30 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     );
   return data;
 }
+export async function downloadApiFile(path: string, fallbackName: string) {
+  const res = await fetch("/api/gateway/" + path, {
+    cache: "no-store",
+    headers: tenantContext ? { "X-Tenant-Id": tenantContext } : {},
+  });
+  if (!res.ok) {
+    const contentType = res.headers.get("content-type") ?? "";
+    const detail = contentType.includes("json")
+      ? await res.json()
+      : await res.text();
+    throw new Error(errorText(detail));
+  }
+  const disposition = res.headers.get("content-disposition") ?? "";
+  const filename =
+    disposition.match(/filename="?([^";]+)"?/i)?.[1] ?? fallbackName;
+  const url = URL.createObjectURL(await res.blob());
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
 export function useResource<T>(path: string) {
   const [data, setData] = useState<T | null>(null),
     [error, setError] = useState(""),

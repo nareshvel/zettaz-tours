@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 336 96" fill="none" role="img" aria-labelledby="title">
+  <title id="title">Zettaz Tours and Charters</title>
+  <defs><linearGradient id="a" x1="13" y1="10" x2="84" y2="88" gradientUnits="userSpaceOnUse"><stop stop-color="#71E2C7"/><stop offset="1" stop-color="#168A88"/></linearGradient><linearGradient id="b" x1="37" y1="19" x2="58" y2="76" gradientUnits="userSpaceOnUse"><stop stop-color="#FFF"/><stop offset="1" stop-color="#E6FFFA"/></linearGradient></defs>
+  <path fill="#11343B" d="M48 4C23.7 4 4 23.7 4 48s19.7 44 44 44 44-19.7 44-44S72.3 4 48 4Z"/><path fill="url(#a)" d="M48 10c21 0 38 17 38 38S69 86 48 86 10 69 10 48 27 10 48 10Zm0 7C30.9 17 17 30.9 17 48s13.9 31 31 31 31-13.9 31-31-13.9-31-31-31Z"/><path fill="url(#b)" d="M29 27h38L47.5 48H67L29 70l19.5-21.5H29L48.5 27H29L48.5 27Z"/><circle cx="71" cy="26" r="4" fill="#F7C965"/>
+  <text x="108" y="57" fill="#FFF" font-family="Arial, Helvetica, sans-serif" font-size="43" font-weight="700" letter-spacing="-2">Zettaz</text><text x="111" y="77" fill="#9EC1C6" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" letter-spacing="2.4">TOURS &amp; CHARTERS</text>
+</svg>

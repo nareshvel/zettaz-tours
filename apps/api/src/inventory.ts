@@ -21,6 +21,11 @@ import { Database, record, Tx } from "./database";
 import { Access, CurrentActor, keySchema, parse } from "./http";
 import { tenant } from "./tenant";
 import { CatalogService } from "./catalog";
+import { z } from "zod";
+
+const overbookHoldSchema = holdSchema.extend({
+  reason: z.string().trim().min(8).max(500),
+}).strict();
 
 @Injectable()
 export class InventoryService {
@@ -43,8 +48,8 @@ export class InventoryService {
     const {
       rows: [r],
     } = await tx.query(
-      `SELECT d.capacity,d.committed,d.starts_at,d.operational_status,
-      GREATEST(0,d.capacity-d.committed-COALESCE((SELECT SUM(h.seats) FROM holds h WHERE h.tenant_id=d.tenant_id AND h.departure_id=d.id AND NOT h.consumed AND h.expires_at>clock_timestamp()),0))::int AS available
+      `SELECT d.capacity,d.committed,d.overbooked,d.starts_at,d.operational_status,
+      GREATEST(0,d.capacity-d.committed-d.overbooked-COALESCE((SELECT SUM(h.seats) FROM holds h WHERE h.tenant_id=d.tenant_id AND h.departure_id=d.id AND NOT h.consumed AND h.expires_at>clock_timestamp()),0))::int AS available
       FROM departures d WHERE d.tenant_id=$1 AND d.id=$2`,
       [actor.tenantId, departureId],
     );
@@ -189,6 +194,52 @@ export class InventoryService {
       };
     });
   }
+  createOverbook(actor: Actor, key: string, input: unknown) {
+    const data = parse(overbookHoldSchema, input);
+    return this.db.command(actor, "hold.overbook", key, data, async (tx) => {
+      const settings = await tenant(tx, actor);
+      const dep = await this.departure(tx, actor, data.departureId, true);
+      const { rows: [future] } = await tx.query(
+        "SELECT $1::timestamptz>clock_timestamp() AS future",
+        [dep.starts_at],
+      );
+      if (!future.future) throw new ConflictException("Departure has already started");
+      if (dep.operational_status !== "open")
+        throw new ConflictException("Departure is not available for sale");
+      const { quote, seats } = await this.price(tx, actor, data.departureId, data.party);
+      const free = await this.availability(tx, actor, data.departureId);
+      if (seats <= free.available)
+        throw new BadRequestException("Ordinary capacity is available; create a standard hold");
+      const holdId = randomUUID();
+      const { rows: [hold] } = await tx.query(
+        `INSERT INTO holds(tenant_id,id,departure_id,actor_id,party,seats,quote,expires_at,overbook_authorized_by,overbook_reason)
+         VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp()+$8*interval '1 second',$4,$9) RETURNING expires_at`,
+        [actor.tenantId, holdId, data.departureId, actor.actorId, data.party, seats, quote, settings.config.holdSeconds, data.reason],
+      );
+      await record(tx, actor, "inventory.overbook_authorized", holdId, null, {
+        departureId: data.departureId,
+        seats,
+        ordinaryAvailable: free.available,
+        projectedCommitted: dep.committed + seats,
+      }, data.reason);
+      await record(tx, actor, "booking.held", holdId, null, {
+        departureId: data.departureId,
+        party: data.party,
+        seats,
+        quote,
+        expiresAt: hold.expires_at,
+        overbookAuthorized: true,
+      }, data.reason);
+      return {
+        holdId,
+        departureId: data.departureId,
+        seats,
+        quote,
+        expiresAt: hold.expires_at.toISOString(),
+        overbookAuthorized: true,
+      };
+    });
+  }
   async consume(tx: Tx, actor: Actor, holdId: string) {
     const initial = await this.hold(tx, actor, holdId);
     const departure = await this.departure(
@@ -202,11 +253,16 @@ export class InventoryService {
     const hold = await this.hold(tx, actor, holdId);
     if (!hold.live || hold.consumed)
       throw new ConflictException("Hold expired or already consumed");
-    const { rowCount } = await tx.query(
-      `UPDATE departures SET committed=committed+$3 WHERE tenant_id=$1 AND id=$2
-      AND committed+$3<=capacity AND starts_at>clock_timestamp()`,
-      [actor.tenantId, hold.departure_id, hold.seats],
-    );
+    const authorized = Boolean(hold.overbook_authorized_by);
+    const { rowCount } = authorized
+      ? await tx.query(
+          "UPDATE departures SET overbooked=overbooked+$3 WHERE tenant_id=$1 AND id=$2 AND starts_at>clock_timestamp()",
+          [actor.tenantId, hold.departure_id, hold.seats],
+        )
+      : await tx.query(
+          "UPDATE departures SET committed=committed+$3 WHERE tenant_id=$1 AND id=$2 AND committed+$3<=capacity AND starts_at>clock_timestamp()",
+          [actor.tenantId, hold.departure_id, hold.seats],
+        );
     if (!rowCount) throw new ConflictException("Departure unavailable");
     await tx.query(
       "UPDATE holds SET consumed=true WHERE tenant_id=$1 AND id=$2",
@@ -226,7 +282,8 @@ export class InventoryService {
       "departure.capacity_changed",
       hold.departure_id,
       null,
-      { committedDelta: hold.seats },
+      authorized ? { overbookedDelta: hold.seats } : { committedDelta: hold.seats },
+      hold.overbook_reason ?? undefined,
     );
     return hold;
   }
@@ -252,5 +309,14 @@ export class InventoryController {
     @Body() body: unknown,
   ) {
     return this.service.create(a, parse(keySchema, key), body);
+  }
+  @Post("overbook-holds")
+  @Access("inventory.overbook")
+  overbook(
+    @CurrentActor() a: Actor,
+    @Headers("idempotency-key") key: string,
+    @Body() body: unknown,
+  ) {
+    return this.service.createOverbook(a, parse(keySchema, key), body);
   }
 }

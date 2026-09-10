@@ -1,8 +1,12 @@
-import { Controller, Get, Query } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Patch, Query } from "@nestjs/common";
 import { z } from "zod";
-import { Actor, id } from "../../../packages/shared/src/contracts";
-import { Database } from "./database";
-import { Access, CurrentActor, parse } from "./http";
+import {
+  Actor,
+  id,
+  userProfileSchema,
+} from "../../../packages/shared/src/contracts";
+import { Database, record } from "./database";
+import { Access, CurrentActor, keySchema, parse } from "./http";
 import { tenant } from "./tenant";
 
 const querySchema = z
@@ -24,12 +28,61 @@ export class WorkspaceController {
   @Get("session")
   @Access("catalog.read")
   session(@CurrentActor() actor: Actor) {
-    return this.db.transaction(actor, async (tx) => ({
-      actorId: actor.actorId,
-      role: actor.role,
-      permissions: actor.permissions,
-      tenant: await tenant(tx, actor),
-    }));
+    return this.db.transaction(actor, async (tx) => {
+      const { rows: [staff] } = actor.role === "support"
+        ? await tx.query("SELECT * FROM current_support_actor_profile($1)",[actor.actorId])
+        : await tx.query("SELECT name,email,phone_number FROM staff_users WHERE id=$1",[actor.actorId]);
+      const {rows:[supportAccess]}=actor.role==="support"?await tx.query(
+        `SELECT id,purpose,permissions,expires_at FROM support_access_grants
+         WHERE tenant_id=$1 AND platform_actor_id=$2 AND status='approved' AND expires_at>clock_timestamp()
+         ORDER BY expires_at LIMIT 1`,[actor.tenantId,actor.actorId]):{rows:[]};
+      return {
+        actorId: actor.actorId,
+        actorName: staff.name,
+        actorEmail: staff.email,
+        actorPhone: staff.phone_number,
+        role: actor.role,
+        permissions: actor.permissions,
+        supportAccess:supportAccess??null,
+        tenant: await tenant(tx, actor),
+      };
+    });
+  }
+  @Patch("profile")
+  @Access("catalog.read")
+  profile(
+    @CurrentActor() actor: Actor,
+    @Headers("idempotency-key") key: string,
+    @Body() body: unknown,
+  ) {
+    const input = parse(userProfileSchema, body);
+    return this.db.command(
+      actor,
+      "user.profile.update",
+      parse(keySchema, key),
+      input,
+      async (tx) => {
+        const {
+          rows: [before],
+        } = await tx.query(
+          "SELECT name,email,phone_number FROM staff_users WHERE id=$1 FOR UPDATE",
+          [actor.actorId],
+        );
+        await tx.query(
+          "UPDATE staff_users SET name=$2,email=$3,phone_number=$4 WHERE id=$1",
+          [actor.actorId, input.name, input.email, input.phoneNumber || null],
+        );
+        await record(
+          tx,
+          actor,
+          "user.profile_updated",
+          actor.actorId,
+          before,
+          input,
+        );
+        return input;
+      },
+    );
   }
   @Get("departures")
   @Access("catalog.read")
@@ -37,9 +90,9 @@ export class WorkspaceController {
     const q = parse(querySchema, raw);
     return this.db.transaction(actor, async (tx) => {
       const { rows } = await tx.query(
-        `SELECT d.id,d.product_id,d.starts_at,d.capacity,d.committed,p.name AS product_name,
+        `SELECT d.id,d.product_id,d.starts_at,d.capacity,(d.committed+d.overbooked)::int AS committed,d.overbooked,p.name AS product_name,
       p.definition->>'optionName' AS option_name,p.definition->'categories' AS categories,
-      CASE WHEN d.starts_at<=clock_timestamp() THEN 0 ELSE GREATEST(0,d.capacity-d.committed-COALESCE((SELECT SUM(h.seats) FROM holds h WHERE h.tenant_id=d.tenant_id AND h.departure_id=d.id AND NOT h.consumed AND h.expires_at>clock_timestamp()),0))::int END AS available
+      CASE WHEN d.starts_at<=clock_timestamp() THEN 0 ELSE GREATEST(0,d.capacity-d.committed-d.overbooked-COALESCE((SELECT SUM(h.seats) FROM holds h WHERE h.tenant_id=d.tenant_id AND h.departure_id=d.id AND NOT h.consumed AND h.expires_at>clock_timestamp()),0))::int END AS available
       FROM departures d JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id
       WHERE d.tenant_id=$1 AND ($2::uuid IS NULL OR d.id>$2) AND p.name ILIKE $3 ORDER BY d.id LIMIT $4`,
         [actor.tenantId, q.cursor ?? null, "%" + q.search + "%", q.limit + 1],
@@ -57,7 +110,8 @@ export class WorkspaceController {
       CASE WHEN b.state='held' AND h.expires_at<=clock_timestamp() THEN 'expired' ELSE b.state END AS state,
       d.starts_at,p.name AS product_name,h.party,h.quote->>'currency' AS currency,
       (h.quote->>'totalMinor')::float8 AS total_minor,
-      COALESCE((SELECT SUM(amount_minor) FROM payments x WHERE x.tenant_id=b.tenant_id AND x.booking_id=b.id AND x.status='settled'),0)::float8 AS paid_minor
+      COALESCE((SELECT SUM(x.amount_minor) FROM payments x WHERE x.tenant_id=b.tenant_id AND x.booking_id=b.id AND x.status='settled'
+        AND NOT EXISTS(SELECT 1 FROM payment_adjustments a WHERE a.tenant_id=x.tenant_id AND a.payment_id=x.id)),0)::float8 AS paid_minor
       FROM bookings b JOIN holds h ON h.tenant_id=b.tenant_id AND h.id=b.hold_id
       JOIN departures d ON d.tenant_id=b.tenant_id AND d.id=b.departure_id
       JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id
@@ -80,6 +134,22 @@ export class WorkspaceController {
       return page(rows, q.limit);
     });
   }
+  @Get("roles")
+  @Access("members.write")
+  roles(@CurrentActor() actor: Actor) {
+    return this.db.transaction(actor, async (tx) => {
+      const { rows } = await tx.query(
+        `SELECT r.id,r.code,r.name,r.is_system,COALESCE(array_agg(rp.permission_code ORDER BY rp.permission_code) FILTER (WHERE rp.permission_code IS NOT NULL),'{}') AS permissions
+         FROM tenant_roles r LEFT JOIN role_permissions rp ON rp.tenant_id=r.tenant_id AND rp.role_id=r.id
+         WHERE r.tenant_id=$1 GROUP BY r.id ORDER BY r.is_system DESC,r.name`,
+        [actor.tenantId],
+      );
+      const { rows: permissions } = await tx.query(
+        "SELECT p.code,p.name,p.description,p.module_code,m.name AS module_name FROM permissions p JOIN app_modules m ON m.code=p.module_code ORDER BY m.sort_order,p.code",
+      );
+      return { roles: rows, permissions };
+    });
+  }
   @Get("summary")
   @Access("bookings.read")
   summary(@CurrentActor() actor: Actor) {
@@ -95,6 +165,22 @@ export class WorkspaceController {
         [actor.tenantId],
       );
       return r;
+    });
+  }
+  @Get("subscription")
+  @Access("config.write")
+  subscription(@CurrentActor() actor: Actor) {
+    return this.db.transaction(actor, async (tx) => {
+      const { rows: plans } = await tx.query(
+        "SELECT id,name,description,monthly_minor,yearly_minor,currency,features,limits FROM subscription_plans WHERE active ORDER BY monthly_minor",
+      );
+      const {
+        rows: [current],
+      } = await tx.query(
+        "SELECT s.plan_id,s.status,s.billing_cycle,s.period_ends_at,s.trial_ends_at,s.cancel_at_period_end,p.name,p.description,p.monthly_minor,p.yearly_minor,p.currency,p.features,p.limits FROM tenant_subscriptions s JOIN subscription_plans p ON p.id=s.plan_id WHERE s.tenant_id=$1",
+        [actor.tenantId],
+      );
+      return { current: current ?? null, plans, billingReady: false };
     });
   }
 }

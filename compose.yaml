@@ -4,9 +4,9 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?Set a local migration owner}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a local database password}
-      POSTGRES_DB: zettaz_dev
+      POSTGRES_DB: zettaz_tours
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:

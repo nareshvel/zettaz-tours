@@ -7,3 +7,4 @@ Product direction and delivery. Do not put implementation specs here.
 | [product-vision.md](product-vision.md) | Thesis, roles, success metrics |
 | [launch-contract.md](launch-contract.md) | Track A vs B — wins on scope |
 | [delivery.md](delivery.md) | Epic order, first slice, agent prompt |
+| [implementation-backlog.md](implementation-backlog.md) | Current ordered execution plan and completion boundaries |

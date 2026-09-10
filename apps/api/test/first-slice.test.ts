@@ -1,6 +1,7 @@
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { Pool } from "pg";
 import request from "supertest";
 import { DateTime } from "luxon";
@@ -10,6 +11,7 @@ import { bootstrapPlatform, issueSession } from "../scripts/sessions";
 import { createApp } from "../src/app";
 import { Database, digest } from "../src/database";
 import { OutboxService } from "../src/operations";
+import { IntegrationService } from "../src/integrations";
 import { Actor, grants } from "../../../packages/shared/src/contracts";
 import { mockConfig, mockProduct } from "./fixtures";
 import { migrate } from "../scripts/migrate";
@@ -75,7 +77,7 @@ async function departure(
 async function heldBooking(
   dep: string,
   token = a.token,
-  party = { adult: 1 },
+  party: Record<string, number> = { adult: 1 },
   pickup: unknown = { kind: "none" },
 ) {
   const h = await post("/staff/v1/holds", token, { departureId: dep, party });
@@ -118,6 +120,147 @@ const actor = (): Actor => ({
   platform: false,
   permissions: [...grants.owner],
   role: "owner",
+});
+
+test("resources are tenant-scoped, expired compliance blocks assignment, and check-in gates boarding", async () => {
+  const t = await setupTenant(`resources-${randomUUID().slice(0, 8)}`);
+  const dep = await departure(t.token, 8);
+  const blockedResource = await post("/ops/v1/resources", t.token, {
+    code: `van-${randomUUID().slice(0, 8)}`,
+    name: "Mock compliance van",
+    type: "vehicle",
+    capacity: 8,
+    notes: "Synthetic test resource",
+  });
+  assert.equal(
+    blockedResource.status,
+    201,
+    JSON.stringify(blockedResource.body),
+  );
+  const expired = await post("/ops/v1/compliance-documents", t.token, {
+    resourceId: blockedResource.body.id,
+    documentType: "vehicle inspection",
+    expiresOn: "2000-01-01",
+    notes: "Expired synthetic evidence",
+  });
+  assert.equal(expired.status, 201, JSON.stringify(expired.body));
+  assert.equal(
+    (
+      await post("/ops/v1/assignments", t.token, {
+        departureId: dep.departureId,
+        resourceId: blockedResource.body.id,
+        assignmentRole: "vehicle",
+      })
+    ).status,
+    409,
+  );
+  const override = await post("/ops/v1/assignments", t.token, {
+    departureId: dep.departureId,
+    resourceId: blockedResource.body.id,
+    assignmentRole: "vehicle",
+    overrideReason: "Manager confirmed a temporary replacement inspection.",
+  });
+  assert.equal(override.status, 201, JSON.stringify(override.body));
+  const resource = await post("/ops/v1/resources", t.token, {
+    code: `boat-${randomUUID().slice(0, 8)}`,
+    name: "Mock ready boat",
+    type: "vessel",
+    capacity: 12,
+    notes: "Synthetic test resource",
+  });
+  assert.equal(resource.status, 201, JSON.stringify(resource.body));
+  const assignment = await post("/ops/v1/assignments", t.token, {
+    departureId: dep.departureId,
+    resourceId: resource.body.id,
+    assignmentRole: "vessel",
+  });
+  assert.equal(assignment.status, 201, JSON.stringify(assignment.body));
+  const assignments = await get(
+    `/ops/v1/departures/${dep.departureId}/assignments`,
+    t.token,
+  );
+  assert.equal(assignments.status, 200, JSON.stringify(assignments.body));
+  assert.equal(assignments.body.readiness, "ready");
+  assert.equal(assignments.body.items.length, 2);
+  assert.equal((await get("/ops/v1/resources", b.token)).body.length, 0);
+
+  const booking = await heldBooking(dep.departureId, t.token);
+  const confirmed = await post(
+    `/staff/v1/bookings/${booking.bookingId}/confirm`,
+    t.token,
+    {
+      version: 1,
+    },
+  );
+  assert.equal(confirmed.status, 409, "unpaid booking cannot be confirmed");
+  const { rows: quoteRows } = await admin.query(
+    "SELECT (quote->>'totalMinor')::int AS total_minor FROM holds WHERE tenant_id=$1 AND id=$2",
+    [t.tenantId, booking.holdId],
+  );
+  assert.equal(
+    (await pay(booking.bookingId, quoteRows[0].total_minor, t.token)).status,
+    201,
+  );
+  assert.equal(
+    (
+      await post(`/staff/v1/bookings/${booking.bookingId}/confirm`, t.token, {
+        version: 1,
+      })
+    ).status,
+    201,
+  );
+  const arrived = await post(
+    `/ops/v1/bookings/${booking.bookingId}/checkin`,
+    t.token,
+    {
+      state: "arrived",
+    },
+  );
+  assert.equal(arrived.status, 201, JSON.stringify(arrived.body));
+  assert.equal(arrived.body.state, "waiver_pending");
+  assert.equal(
+    (
+      await post(`/ops/v1/bookings/${booking.bookingId}/checkin`, t.token, {
+        state: "boarded",
+        version: arrived.body.version,
+      })
+    ).status,
+    400,
+  );
+  const waiver = await post("/ops/v1/waiver-templates", t.token, {
+    title: `Mock check-in waiver ${randomUUID()}`,
+    body: "Synthetic test waiver. Not legal text.",
+  });
+  assert.equal(waiver.status, 201, JSON.stringify(waiver.body));
+  assert.equal(
+    (
+      await post(`/ops/v1/bookings/${booking.bookingId}/waivers`, t.token, {
+        templateId: waiver.body.id,
+        signerName: "Mock Traveler",
+        signerCapacity: "self",
+      })
+    ).status,
+    201,
+  );
+  const boarded = await post(
+    `/ops/v1/bookings/${booking.bookingId}/checkin`,
+    t.token,
+    {
+      state: "boarded",
+      version: arrived.body.version,
+    },
+  );
+  assert.equal(boarded.status, 201, JSON.stringify(boarded.body));
+  assert.equal(boarded.body.state, "boarded");
+  assert.equal(
+    (
+      await post(`/ops/v1/bookings/${booking.bookingId}/checkin`, t.token, {
+        state: "no_show",
+        version: arrived.body.version,
+      })
+    ).status,
+    400,
+  );
 });
 
 test("operations board and pickup plans stay scoped, versioned and aligned with reservation changes", async () => {
@@ -187,6 +330,42 @@ test("operations board and pickup plans stay scoped, versioned and aligned with 
   assert.equal(printable.body.plan.version, 1);
   assert.equal(printable.body.stops[0].location_name, "Mock Hotel");
   assert.equal(printable.body.exceptions.length, 0);
+  const waiver = await post("/ops/v1/waiver-templates", a.token, {
+    title: "Mock waiver",
+    body: "Synthetic only; not legal text.",
+  });
+  assert.equal(waiver.status, 201, JSON.stringify(waiver.body));
+  const signed = await post(
+    `/ops/v1/bookings/${booking.bookingId}/waivers`,
+    a.token,
+    {
+      templateId: waiver.body.id,
+      signerName: "Mock Traveler",
+      signerCapacity: "self",
+    },
+  );
+  assert.equal(signed.status, 201, JSON.stringify(signed.body));
+  const replacement = await post("/ops/v1/waiver-templates", a.token, {
+    title: "Mock waiver revised",
+    body: "Synthetic only; revised and not legal text.",
+  });
+  assert.equal(replacement.status, 201, JSON.stringify(replacement.body));
+  assert.equal(replacement.body.version, 2);
+  const activeTemplates = await get("/ops/v1/waiver-templates", a.token);
+  assert.equal(activeTemplates.status, 200);
+  assert.equal(activeTemplates.body.length, 1);
+  assert.equal(activeTemplates.body[0].id, replacement.body.id);
+  assert.equal(
+    (
+      await post(`/ops/v1/bookings/${booking.bookingId}/waivers`, a.token, {
+        templateId: waiver.body.id,
+        signerName: "Mock Traveler",
+        signerCapacity: "self",
+      })
+    ).status,
+    400,
+  );
+  assert.equal((await get("/ops/v1/waiver-templates", b.token)).body.length, 0);
   const after = await get(`/ops/v1/board?date=${dayRow.day}`, a.token);
   assert.equal(after.body.items[0].pickup_planned, 1);
   const quote = await changeQuote(booking.bookingId, {
@@ -257,6 +436,8 @@ before(async () => {
   local = await localDatabase();
   admin = new Pool({ connectionString: local.adminUrl });
   process.env.APP_MODE = "test";
+  process.env.WEBHOOK_SECRET_ENCRYPTION_KEY =
+    "test-webhook-secret-encryption-key";
   process.env.DATABASE_URL = local.runtimeUrl;
   app = await createApp();
   // Keep one listener open across concurrent Supertest requests.
@@ -475,6 +656,99 @@ test("concurrent last-seat requests and concurrent confirms never overcommit", a
   );
 });
 
+test("authorized overbooking requires its permission and an audited reason", async () => {
+  const dep = await departure(a.token, 1);
+  const first = await heldBooking(dep.departureId);
+  await pay(first.bookingId, 10000);
+  assert.equal(
+    (
+      await post(`/staff/v1/bookings/${first.bookingId}/confirm`, a.token, {
+        version: 1,
+      })
+    ).status,
+    201,
+  );
+  assert.equal(
+    (
+      await post("/staff/v1/holds", a.token, {
+        departureId: dep.departureId,
+        party: { adult: 1 },
+      })
+    ).status,
+    409,
+  );
+  const adminMember = await post("/admin/v1/members", a.token, {
+    name: "Mock Admin Without Overbook",
+    email: `admin-no-overbook-${randomUUID()}@example.invalid`,
+    role: "admin",
+  });
+  const adminToken = await issueSession(
+    admin,
+    adminMember.body.actorId,
+    a.tenantId,
+  );
+  assert.equal(
+    (
+      await post("/staff/v1/overbook-holds", adminToken, {
+        departureId: dep.departureId,
+        party: { adult: 1 },
+        reason: "Mock group exception",
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await post("/staff/v1/overbook-holds", a.token, {
+        departureId: dep.departureId,
+        party: { adult: 1 },
+        reason: "short",
+      })
+    ).status,
+    400,
+  );
+  const overbook = await post("/staff/v1/overbook-holds", a.token, {
+    departureId: dep.departureId,
+    party: { adult: 1 },
+    reason: "Mock owner approved operational exception",
+  });
+  assert.equal(overbook.status, 201, JSON.stringify(overbook.body));
+  assert.equal(overbook.body.overbookAuthorized, true);
+  const second = await post("/staff/v1/bookings", a.token, {
+    holdId: overbook.body.holdId,
+    leadName: "Mock Overbook Guest",
+    leadEmail: "overbook@example.invalid",
+    source: "phone",
+    pickup: { kind: "none" },
+  });
+  assert.equal(second.status, 201, JSON.stringify(second.body));
+  await pay(second.body.bookingId, 10000);
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${second.body.bookingId}/confirm`,
+        a.token,
+        { version: 1 },
+      )
+    ).status,
+    201,
+  );
+  const {
+    rows: [row],
+  } = await admin.query(
+    "SELECT committed,overbooked,capacity FROM departures WHERE id=$1",
+    [dep.departureId],
+  );
+  assert.equal(row.capacity, 1);
+  assert.equal(row.committed, 1);
+  assert.equal(row.overbooked, 1);
+  const { rows: audit } = await admin.query(
+    "SELECT reason FROM audit_events WHERE tenant_id=$1 AND aggregate_id=$2 AND action='inventory.overbook_authorized'",
+    [a.tenantId, overbook.body.holdId],
+  );
+  assert.equal(audit[0].reason, "Mock owner approved operational exception");
+});
+
 test("duplicate concurrent hold key returns a single hold and changed payload conflicts", async () => {
   const dep = await departure(),
     k = key();
@@ -575,6 +849,83 @@ test("pending/manual payments, wrong currency and unconfigured methods do not fa
   assert.equal((await pay(booking.bookingId, 1)).status, 409);
 });
 
+test("manual payment corrections append one audited void or reversal and recalculate balances", async () => {
+  const dep = await departure();
+  const booking = await heldBooking(dep.departureId);
+  const pending = await pay(booking.bookingId, 2500, a.token, "pending");
+  assert.equal(pending.status, 201, JSON.stringify(pending.body));
+  const voided = await post(
+    `/staff/v1/bookings/${booking.bookingId}/payments/${pending.body.paymentId}/adjustments`,
+    a.token,
+    {
+      kind: "void",
+      reference: "VOID-TEST-1",
+      reason: "Pending entry was recorded against the wrong booking",
+      occurredAt: new Date().toISOString(),
+    },
+  );
+  assert.equal(voided.status, 201, JSON.stringify(voided.body));
+  const settled = await pay(booking.bookingId, 10000, a.token, "settled");
+  assert.equal(settled.status, 201, JSON.stringify(settled.body));
+  const reversalKey = key();
+  const reversalBody = {
+    kind: "reversal",
+    reference: "REV-TEST-1",
+    reason: "External bank reversal confirmed by finance",
+    occurredAt: new Date().toISOString(),
+  };
+  const reversed = await post(
+    `/staff/v1/bookings/${booking.bookingId}/payments/${settled.body.paymentId}/adjustments`,
+    a.token,
+    reversalBody,
+    reversalKey,
+  );
+  assert.equal(reversed.status, 201, JSON.stringify(reversed.body));
+  assert.deepEqual(
+    (
+      await post(
+        `/staff/v1/bookings/${booking.bookingId}/payments/${settled.body.paymentId}/adjustments`,
+        a.token,
+        reversalBody,
+        reversalKey,
+      )
+    ).body,
+    reversed.body,
+  );
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${booking.bookingId}/payments/${settled.body.paymentId}/adjustments`,
+        a.token,
+        { ...reversalBody, reference: "REV-TEST-2" },
+      )
+    ).status,
+    409,
+  );
+  const detail = await get(`/staff/v1/bookings/${booking.bookingId}`, a.token);
+  assert.equal(detail.status, 200, JSON.stringify(detail.body));
+  assert.equal(detail.body.paidMinor, 0);
+  assert.equal(detail.body.payments.length, 2);
+  assert.ok(
+    detail.body.payments.every((payment: any) => payment.adjustment_id),
+  );
+  const { rows: audit } = await admin.query(
+    "SELECT action FROM audit_events WHERE tenant_id=$1 AND aggregate_id=ANY($2::uuid[]) ORDER BY occurred_at",
+    [a.tenantId, [pending.body.paymentId, settled.body.paymentId]],
+  );
+  assert.deepEqual(
+    audit
+      .map((row) => row.action)
+      .filter((action) => action.startsWith("payment.")),
+    [
+      "payment.manual_recorded",
+      "payment.void",
+      "payment.manual_recorded",
+      "payment.reversal",
+    ],
+  );
+});
+
 test("permissions, revoked membership and expired session are enforced on every request", async () => {
   const member = await post("/admin/v1/members", a.token, {
     name: "Mock Reader",
@@ -617,6 +968,130 @@ test("permissions, revoked membership and expired session are enforced on every 
   );
 });
 
+test("tenant owners approve, observe and revoke time-limited read-only platform support access", async () => {
+  const requestId = randomUUID();
+  const requested = await post(
+    "/platform/v1/support-access/requests",
+    platform,
+    {
+      requestId,
+      tenantId: a.tenantId,
+      purpose: "Investigate a tenant-reported reservation display issue",
+      permissions: ["bookings.read", "manifest.read"],
+    },
+  );
+  assert.equal(requested.status, 201, JSON.stringify(requested.body));
+  assert.ok(requested.body.permissions.includes("catalog.read"));
+  const listed = await get("/admin/v1/support-access", a.token);
+  assert.equal(listed.status, 200, JSON.stringify(listed.body));
+  assert.equal(
+    listed.body.items.find((item: any) => item.id === requestId).status,
+    "pending",
+  );
+  const approved = await post(
+    `/admin/v1/support-access/${requestId}/decision`,
+    a.token,
+    {
+      decision: "approved",
+      expiresInHours: 1,
+      reason: "Approved to diagnose the reported display issue",
+    },
+  );
+  assert.equal(approved.status, 201, JSON.stringify(approved.body));
+  const used = await post(
+    `/platform/v1/support-access/${requestId}/use`,
+    platform,
+    {},
+  );
+  assert.equal(used.status, 201, JSON.stringify(used.body));
+  const supportToken = used.body.token;
+  const supportSession = await get("/staff/v1/workspace/session", supportToken);
+  assert.equal(supportSession.status, 200, JSON.stringify(supportSession.body));
+  assert.equal(supportSession.body.role, "support");
+  assert.equal(supportSession.body.tenant.id, a.tenantId);
+  assert.equal(supportSession.body.supportAccess.id, requestId);
+  assert.equal(
+    (await get("/staff/v1/workspace/reservations", supportToken)).status,
+    200,
+  );
+  assert.equal(
+    (await get("/admin/v1/support-access", supportToken)).status,
+    403,
+  );
+  const revoked = await post(
+    `/admin/v1/support-access/${requestId}/revoke`,
+    a.token,
+    { reason: "Support investigation has been completed" },
+  );
+  assert.equal(revoked.status, 201, JSON.stringify(revoked.body));
+  assert.equal(
+    (await get("/staff/v1/workspace/session", supportToken)).status,
+    401,
+  );
+  const { rows: audit } = await admin.query(
+    "SELECT action FROM audit_events WHERE tenant_id=$1 AND aggregate_id=$2 ORDER BY occurred_at",
+    [a.tenantId, requestId],
+  );
+  assert.deepEqual(
+    audit.map((row) => row.action),
+    [
+      "support_access.requested",
+      "support_access.approved",
+      "support_access.used",
+      "support_access.revoked",
+    ],
+  );
+});
+
+test("tenant invitations create access only after the recipient activates with a password", async () => {
+  const email = `invite-${randomUUID().slice(0, 8)}@example.invalid`;
+  const invitation = await post("/admin/v1/invitations", a.token, {
+    name: "Invited Dispatcher",
+    email,
+    role: "dispatcher",
+  });
+  assert.equal(invitation.status, 201, JSON.stringify(invitation.body));
+  assert.equal((await get("/admin/v1/invitations", a.token)).status, 200);
+  const rejected = await request(app.getHttpServer())
+    .post("/auth/v1/invitations/accept")
+    .send({ token: invitation.body.token, password: "short" });
+  assert.equal(rejected.status, 400);
+  const activated = await request(app.getHttpServer())
+    .post("/auth/v1/invitations/accept")
+    .send({ token: invitation.body.token, password: "InvitationPass123!" });
+  assert.equal(activated.status, 201, JSON.stringify(activated.body));
+  assert.equal(
+    (await get("/staff/v1/workspace/session", activated.body.token)).status,
+    200,
+  );
+  assert.equal(
+    (
+      await request(app.getHttpServer())
+        .post("/auth/v1/invitations/accept")
+        .send({ token: invitation.body.token, password: "InvitationPass123!" })
+    ).status,
+    401,
+  );
+});
+
+test("a staff user can revoke every active session across their tenant memberships", async () => {
+  const member = await post("/admin/v1/members", a.token, {
+    name: "Session Test User",
+    email: `sessions-${randomUUID()}@example.invalid`,
+    role: "auditor",
+  });
+  assert.equal(member.status, 201, JSON.stringify(member.body));
+  const first = await issueSession(admin, member.body.actorId, a.tenantId);
+  const second = await issueSession(admin, member.body.actorId, a.tenantId);
+  const revoked = await request(app.getHttpServer())
+    .post("/auth/v1/sign-out-all")
+    .auth(first, { type: "bearer" });
+  assert.equal(revoked.status, 201, JSON.stringify(revoked.body));
+  assert.ok(revoked.body.revoked >= 2);
+  assert.equal((await get("/staff/v1/workspace/session", first)).status, 401);
+  assert.equal((await get("/staff/v1/workspace/session", second)).status, 401);
+});
+
 test("tenant policies are configurable, versioned and snapshotted per hold", async () => {
   const demo = await setupTenant("mock-flexible", {
     ...mockConfig,
@@ -631,12 +1106,36 @@ test("tenant policies are configurable, versioned and snapshotted per hold", asy
       { adult: 1 },
       { kind: "unresolved", note: "Mock pickup pending" },
     );
+  const profile = await request(app.getHttpServer())
+    .patch("/admin/v1/tenant/profile")
+    .auth(demo.token, { type: "bearer" })
+    .set("Idempotency-Key", key())
+    .send({
+      businessProfile: {
+        displayName: "Mock Flexible Tours",
+        streetAddress: "1 Harbour Road",
+        suite: "Suite 2",
+        city: "St. John's",
+        stateParish: "Saint John",
+        postalCode: "00000",
+        country: "AG",
+        email: "contact@example.test",
+        phone: "+1 268 555 0100",
+      },
+      authorizedContact: {
+        name: "Mock Owner",
+        email: "owner@example.test",
+        phone: "+1 268 555 0101",
+      },
+    });
+  assert.equal(profile.status, 200, JSON.stringify(profile.body));
+  assert.equal(profile.body.businessProfile.country, "AG");
   assert.equal(booking.quote.totalMinor, 10750);
   const patch = await request(app.getHttpServer())
     .patch("/admin/v1/tenant/config")
     .auth(demo.token, { type: "bearer" })
     .set("Idempotency-Key", key())
-    .send({ version: 1, config: { ...mockConfig, minimumPaidPercent: 100 } });
+    .send({ version: 2, config: { ...mockConfig, minimumPaidPercent: 100 } });
   assert.equal(patch.status, 200);
   assert.equal((await pay(booking.bookingId, 2688, demo.token)).status, 201);
   assert.equal(
@@ -653,7 +1152,7 @@ test("tenant policies are configurable, versioned and snapshotted per hold", asy
     .patch("/admin/v1/tenant/config")
     .auth(demo.token, { type: "bearer" })
     .set("Idempotency-Key", key())
-    .send({ version: 1, config: mockConfig });
+    .send({ version: 2, config: mockConfig });
   assert.equal(stale.status, 409);
 });
 
@@ -1002,6 +1501,83 @@ test("workspace reads paginate, honor tenant scope and restrict staff directory"
   );
 });
 
+test("customer records deduplicate within a tenant and expose protected booking timelines", async () => {
+  const firstDeparture = await departure(a.token, 3);
+  const firstHold = await post("/staff/v1/holds", a.token, {
+    departureId: firstDeparture.departureId,
+    party: { adult: 1 },
+  });
+  const first = await post("/staff/v1/bookings", a.token, {
+    holdId: firstHold.body.holdId,
+    leadName: "Mock Repeat Guest",
+    leadEmail: "Repeat.Guest@example.invalid",
+    leadPhone: "+1 268 555 0100",
+    purchaser: {
+      name: "Mock Purchaser",
+      email: "buyer@example.invalid",
+      phone: "+1 268 555 0199",
+    },
+    emergencyContact: {
+      name: "Mock Emergency",
+      phone: "+1 268 555 0188",
+      relationship: "Sibling",
+    },
+    source: "phone",
+    pickup: { kind: "none" },
+  });
+  assert.equal(first.status, 201, JSON.stringify(first.body));
+  const secondDeparture = await departure(a.token, 3);
+  const secondHold = await post("/staff/v1/holds", a.token, {
+    departureId: secondDeparture.departureId,
+    party: { adult: 1 },
+  });
+  const second = await post("/staff/v1/bookings", a.token, {
+    holdId: secondHold.body.holdId,
+    leadName: "Mock Repeat Guest Updated",
+    leadEmail: "repeat.guest@example.invalid",
+    leadPhone: "+1 268 555 0101",
+    source: "phone",
+    pickup: { kind: "none" },
+  });
+  assert.equal(second.status, 201, JSON.stringify(second.body));
+  const customers = await get(
+    "/staff/v1/customers?search=repeat.guest%40example.invalid",
+    a.token,
+  );
+  assert.equal(customers.status, 200, JSON.stringify(customers.body));
+  assert.equal(customers.body.items.length, 1);
+  assert.equal(customers.body.items[0].booking_count, 2);
+  assert.equal(customers.body.items[0].phone, "+1 268 555 0101");
+  const detail = await get(
+    `/staff/v1/customers/${customers.body.items[0].id}`,
+    a.token,
+  );
+  assert.equal(detail.status, 200, JSON.stringify(detail.body));
+  assert.equal(detail.body.bookings.length, 2);
+  assert.equal(
+    detail.body.bookings.find(
+      (booking: any) => booking.id === first.body.bookingId,
+    ).purchaser.name,
+    "Mock Purchaser",
+  );
+  assert.equal(
+    detail.body.bookings.find(
+      (booking: any) => booking.id === first.body.bookingId,
+    ).emergency_contact.relationship,
+    "Sibling",
+  );
+  assert.equal(
+    detail.body.timeline.filter((event: any) => event.kind === "booking")
+      .length,
+    2,
+  );
+  assert.equal(
+    (await get(`/staff/v1/customers/${customers.body.items[0].id}`, b.token))
+      .status,
+    404,
+  );
+});
+
 async function confirmedForChange(capacity = 10) {
   const d = await departure(a.token, capacity);
   const booking = await heldBooking(d.departureId);
@@ -1218,6 +1794,105 @@ test("amendment acceptance races for last seat and stale or expired quotes prese
     404,
   );
 });
+test("closure recovery previews affected bookings and reports each capacity-safe rebooking result", async () => {
+  const source = await departure(a.token, 2);
+  const travelDate = DateTime.utc().plus({ days: 11 }).toISODate();
+  const targetSchedule = await post("/admin/v1/schedules", a.token, {
+    productId: source.productId,
+    startDate: travelDate,
+    endDate: travelDate,
+    weekdays: [1, 2, 3, 4, 5, 6, 7],
+    localTime: "09:00",
+    capacity: 1,
+    blackoutDates: [],
+  });
+  assert.equal(targetSchedule.status, 201, JSON.stringify(targetSchedule.body));
+  const targetId = targetSchedule.body.departures[0].departureId;
+  const bookings = [];
+  for (let i = 0; i < 2; i++) {
+    const booking = await heldBooking(source.departureId);
+    await pay(booking.bookingId, 10000);
+    const confirmed = await post(
+      `/staff/v1/bookings/${booking.bookingId}/confirm`,
+      a.token,
+      { version: 1 },
+    );
+    assert.equal(confirmed.status, 201, JSON.stringify(confirmed.body));
+    bookings.push(booking);
+  }
+  const previewPath = `/ops/v1/departures/${source.departureId}/rebooking-preview`;
+  assert.equal(
+    (
+      await post(previewPath, a.token, {
+        targetDepartureId: targetId,
+        reason: "Mock weather closure",
+      })
+    ).status,
+    409,
+  );
+  const closed = await post(
+    `/ops/v1/departures/${source.departureId}/operational-status`,
+    a.token,
+    {
+      version: 1,
+      status: "closed",
+      reason: "Mock unsafe sea conditions",
+    },
+  );
+  assert.equal(closed.status, 201, JSON.stringify(closed.body));
+  const options = await get(
+    `/ops/v1/departures/${source.departureId}/rebooking-options`,
+    a.token,
+  );
+  assert.equal(options.status, 200, JSON.stringify(options.body));
+  assert.ok(options.body.options.some((option: any) => option.id === targetId));
+  assert.equal(
+    (
+      await get(
+        `/ops/v1/departures/${source.departureId}/rebooking-options`,
+        b.token,
+      )
+    ).status,
+    404,
+  );
+  const preview = await post(previewPath, a.token, {
+    targetDepartureId: targetId,
+    reason: "Mock weather closure",
+  });
+  assert.equal(preview.status, 201, JSON.stringify(preview.body));
+  assert.equal(preview.body.affected, 2);
+  assert.equal(preview.body.eligible, 2);
+  assert.equal(preview.body.messagesQueued, 0);
+  const applied = await post(
+    `/ops/v1/departures/${source.departureId}/rebook`,
+    a.token,
+    {
+      targetDepartureId: targetId,
+      items: preview.body.items.map((item: any) => ({
+        bookingId: item.bookingId,
+        version: item.version,
+        quoteId: item.quoteId,
+      })),
+    },
+  );
+  assert.equal(applied.status, 201, JSON.stringify(applied.body));
+  assert.equal(applied.body.succeeded, 1);
+  assert.equal(applied.body.failed, 1);
+  assert.equal(
+    (await get(`/staff/v1/departures/${targetId}/availability`, a.token)).body
+      .available,
+    0,
+  );
+  const reads = await Promise.all(
+    bookings.map((booking) =>
+      get(`/staff/v1/bookings/${booking.bookingId}`, a.token),
+    ),
+  );
+  assert.deepEqual(
+    reads.map((response) => response.body.departure_id).sort(),
+    [source.departureId, targetId].sort(),
+  );
+});
 test("held pickup correction retains expiry and cancelled hold immediately returns availability", async () => {
   const d = await departure(a.token, 1),
     booking = await heldBooking(
@@ -1365,4 +2040,1168 @@ test("amendment policy, role denial and rollback on history failure protect comm
       "DROP TRIGGER fail_change_test ON booking_changes; DROP FUNCTION fail_change_test();",
     );
   }
+});
+
+test("published print templates and browser jobs are versioned, idempotent and tenant-scoped", async () => {
+  const t = await setupTenant(`print-${randomUUID().slice(0, 8)}`);
+  const first = await post("/ops/v1/print-templates", t.token, {
+    documentType: "manifest",
+    name: "Standard manifest",
+    outputProfile: { paper: "A4", orientation: "portrait" },
+    payload: { showPickup: true },
+    isDefault: true,
+  });
+  assert.equal(first.status, 201, JSON.stringify(first.body));
+  const second = await post("/ops/v1/print-templates", t.token, {
+    templateKey: first.body.templateKey,
+    documentType: "manifest",
+    name: "Standard manifest revised",
+    outputProfile: { paper: "A4", orientation: "landscape" },
+    payload: { showPickup: true, showCheckin: true },
+    isDefault: true,
+  });
+  assert.equal(second.status, 201, JSON.stringify(second.body));
+  assert.equal(second.body.version, 2);
+  const templates = await get("/ops/v1/print-templates", t.token);
+  assert.equal(templates.status, 200, JSON.stringify(templates.body));
+  assert.equal(templates.body.length, 2);
+  assert.equal((await get("/ops/v1/print-templates", b.token)).body.length, 0);
+  const dep = await departure(t.token);
+  const requestKey = randomUUID();
+  const jobInput = {
+    documentType: "manifest",
+    sourceType: "departure",
+    sourceId: dep.departureId,
+  };
+  const job = await post("/ops/v1/print-jobs", t.token, jobInput, requestKey);
+  assert.equal(job.status, 201, JSON.stringify(job.body));
+  assert.equal(job.body.destinationType, "browser");
+  assert.equal(job.body.downloadUrl, `/ops/v1/print-jobs/${job.body.id}/pdf`);
+  const repeated = await post(
+    "/ops/v1/print-jobs",
+    t.token,
+    jobInput,
+    requestKey,
+  );
+  assert.equal(repeated.status, 201, JSON.stringify(repeated.body));
+  assert.equal(repeated.body.id, job.body.id);
+  const jobs = await get("/ops/v1/print-jobs", t.token);
+  assert.equal(jobs.status, 200, JSON.stringify(jobs.body));
+  assert.equal(jobs.body.length, 1);
+  assert.equal((await get("/ops/v1/print-jobs", b.token)).body.length, 0);
+  const pdf = await get(`/ops/v1/print-jobs/${job.body.id}/pdf`, t.token)
+    .buffer(true)
+    .parse((response, callback) => {
+      const chunks: Buffer[] = [];
+      response.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      response.on("end", () => callback(null, Buffer.concat(chunks)));
+    });
+  assert.equal(pdf.status, 200);
+  assert.match(String(pdf.headers["content-type"]), /^application\/pdf/);
+  assert.equal((pdf.body as Buffer).subarray(0, 8).toString(), "%PDF-1.4");
+  assert.equal(
+    (await get(`/ops/v1/print-jobs/${job.body.id}/pdf`, b.token)).status,
+    404,
+  );
+});
+
+test("report totals use tenant-scoped published commercial and operational facts", async () => {
+  const t = await setupTenant(`report-${randomUUID().slice(0, 8)}`);
+  const dep = await departure(t.token, 6);
+  const booking = await heldBooking(dep.departureId, t.token);
+  const { rows: quoteRows } = await admin.query(
+    "SELECT (quote->>'totalMinor')::int AS total_minor FROM holds WHERE tenant_id=$1 AND id=$2",
+    [t.tenantId, booking.holdId],
+  );
+  await pay(booking.bookingId, quoteRows[0].total_minor, t.token);
+  assert.equal(
+    (
+      await post(`/staff/v1/bookings/${booking.bookingId}/confirm`, t.token, {
+        version: 1,
+      })
+    ).status,
+    201,
+  );
+  const { rows: dateRows } = await admin.query(
+    "SELECT local_date::text AS date FROM departures WHERE tenant_id=$1 AND id=$2",
+    [t.tenantId, dep.departureId],
+  );
+  const path = `/reports/v1/overview?from=${dateRows[0].date}&to=${dateRows[0].date}`;
+  const report = await get(path, t.token);
+  assert.equal(report.status, 200, JSON.stringify(report.body));
+  assert.equal(report.body.commercial.confirmed, 1);
+  assert.equal(report.body.commercial.bookedMinor, quoteRows[0].total_minor);
+  assert.equal(report.body.commercial.receivedMinor, quoteRows[0].total_minor);
+  assert.equal(report.body.commercial.guestBalanceMinor, 0);
+  assert.equal(report.body.operations.departures, 1);
+  assert.equal(report.body.operations.unassigned, 1);
+  assert.equal((await get(path, b.token)).body.commercial.confirmed, 0);
+});
+
+test("crew mobile façade exposes only assigned trips and restricts crew check-in to that assignment", async () => {
+  const t = await setupTenant(`crew-${randomUUID().slice(0, 8)}`);
+  const member = await post("/admin/v1/members", t.token, {
+    name: "Mock Guide",
+    email: `guide-${randomUUID()}@example.invalid`,
+    role: "guide",
+  });
+  assert.equal(member.status, 201, JSON.stringify(member.body));
+  const guide = await issueSession(admin, member.body.actorId, t.tenantId);
+  const dep = await departure(t.token);
+  assert.equal(
+    (
+      await post("/ops/v1/crew", t.token, {
+        actorId: member.body.actorId,
+        operationalName: "Mock Guide",
+        notes: "Synthetic test crew",
+      })
+    ).status,
+    201,
+  );
+  assert.equal(
+    (
+      await post("/ops/v1/assignments", t.token, {
+        departureId: dep.departureId,
+        crewActorId: member.body.actorId,
+        assignmentRole: "guide",
+      })
+    ).status,
+    201,
+  );
+  const booking = await heldBooking(dep.departureId, t.token);
+  const { rows: quoteRows } = await admin.query(
+    "SELECT (quote->>'totalMinor')::int AS total_minor FROM holds WHERE tenant_id=$1 AND id=$2",
+    [t.tenantId, booking.holdId],
+  );
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${booking.bookingId}/passengers`,
+        t.token,
+        {
+          passengers: [
+            {
+              name: "Crew manifest traveller",
+              category: "adult",
+              isMinor: false,
+            },
+          ],
+        },
+      )
+    ).status,
+    201,
+  );
+  await pay(booking.bookingId, quoteRows[0].total_minor, t.token);
+  await post(`/staff/v1/bookings/${booking.bookingId}/confirm`, t.token, {
+    version: 1,
+  });
+  const today = await get(
+    `/crew/v1/today?date=${DateTime.utc().plus({ days: 10 }).toISODate()}`,
+    guide,
+  );
+  assert.equal(today.status, 200, JSON.stringify(today.body));
+  assert.equal(today.body.trips.length, 1);
+  assert.equal(today.body.trips[0].guests.length, 1);
+  assert.equal(today.body.trips[0].guests[0].lead_email, undefined);
+  assert.equal(today.body.trips[0].guests[0].passengers.length, 1);
+  const crewPassenger = today.body.trips[0].guests[0].passengers[0];
+  const token = await post(
+    `/staff/v1/passengers/${crewPassenger.id}/checkin-token`,
+    t.token,
+    {},
+  );
+  assert.equal(token.status, 201, JSON.stringify(token.body));
+  const resolved = await post("/staff/v1/crew/checkin-token/resolve", guide, {
+    token: token.body.token,
+  });
+  assert.equal(resolved.status, 201, JSON.stringify(resolved.body));
+  assert.equal(resolved.body.passengerId, crewPassenger.id);
+  const replacementToken = await post(
+    `/staff/v1/passengers/${crewPassenger.id}/checkin-token`,
+    t.token,
+    {},
+  );
+  assert.equal(replacementToken.status, 201);
+  assert.equal(
+    (
+      await post("/staff/v1/crew/checkin-token/resolve", guide, {
+        token: token.body.token,
+      })
+    ).status,
+    404,
+  );
+  assert.equal(
+    (
+      await post("/staff/v1/crew/checkin-token/resolve", b.token, {
+        token: replacementToken.body.token,
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await post(`/staff/v1/passengers/${crewPassenger.id}/checkin`, guide, {
+        state: "arrived",
+      })
+    ).status,
+    201,
+  );
+  const run = await post(
+    `/crew/v1/departures/${dep.departureId}/events`,
+    guide,
+    { state: "boarding", reason: "Guests are arriving at the meeting point" },
+  );
+  assert.equal(run.status, 201, JSON.stringify(run.body));
+  assert.equal(run.body.state, "boarding");
+  assert.equal(
+    (
+      await post(`/crew/v1/departures/${dep.departureId}/events`, guide, {
+        state: "completed",
+        reason: "Synthetic trip completed",
+      })
+    ).status,
+    201,
+  );
+  assert.equal(
+    (
+      await post(`/crew/v1/departures/${dep.departureId}/events`, guide, {
+        state: "departed",
+        reason: "Must reject after completion",
+      })
+    ).status,
+    400,
+  );
+  const arrived = await post(
+    `/ops/v1/bookings/${booking.bookingId}/checkin`,
+    guide,
+    {
+      state: "arrived",
+    },
+  );
+  assert.equal(arrived.status, 201, JSON.stringify(arrived.body));
+  const other = await departure(t.token);
+  const otherBooking = await heldBooking(other.departureId, t.token);
+  const { rows: otherQuote } = await admin.query(
+    "SELECT (quote->>'totalMinor')::int AS total_minor FROM holds WHERE tenant_id=$1 AND id=$2",
+    [t.tenantId, otherBooking.holdId],
+  );
+  await pay(otherBooking.bookingId, otherQuote[0].total_minor, t.token);
+  await post(`/staff/v1/bookings/${otherBooking.bookingId}/confirm`, t.token, {
+    version: 1,
+  });
+  assert.equal(
+    (
+      await post(`/ops/v1/bookings/${otherBooking.bookingId}/checkin`, guide, {
+        state: "arrived",
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (await get(`/crew/v1/today?date=${today.body.date}`, b.token)).status,
+    403,
+  );
+});
+
+test("partner organizations are tenant-scoped and require partner management permission", async () => {
+  const t = await setupTenant(`partner-${randomUUID().slice(0, 8)}`);
+  const partner = await post("/finance/v1/partners", t.token, {
+    name: "Mock Hotel Partner",
+    email: "partner@example.invalid",
+    notes: "Synthetic partner",
+  });
+  assert.equal(partner.status, 201, JSON.stringify(partner.body));
+  const own = await get("/finance/v1/partners", t.token);
+  assert.equal(own.status, 200, JSON.stringify(own.body));
+  assert.equal(own.body.length, 1);
+  assert.equal((await get("/finance/v1/partners", b.token)).body.length, 0);
+  const dispatcherMember = await post("/admin/v1/members", t.token, {
+    name: "Mock Dispatcher",
+    email: `dispatcher-${randomUUID()}@example.invalid`,
+    role: "dispatcher",
+  });
+  const dispatcher = await issueSession(
+    admin,
+    dispatcherMember.body.actorId,
+    t.tenantId,
+  );
+  assert.equal((await get("/finance/v1/partners", dispatcher)).status, 403);
+});
+
+test("partner collection claims remain separate from guest payments until finance accepts them", async () => {
+  const t = await setupTenant(`partner-claims-${randomUUID().slice(0, 8)}`, {
+    ...mockConfig,
+    minimumPaidPercent: 0,
+  });
+  const partner = await post("/finance/v1/partners", t.token, {
+    name: "Mock Resort Collections",
+    email: `collections-${randomUUID()}@example.invalid`,
+    notes: "Synthetic finance evidence",
+  });
+  assert.equal(partner.status, 201, JSON.stringify(partner.body));
+  const dep = await departure(t.token);
+  const hold = await post("/staff/v1/holds", t.token, {
+    departureId: dep.departureId,
+    party: { adult: 1 },
+  });
+  assert.equal(hold.status, 201, JSON.stringify(hold.body));
+  const booking = await post("/staff/v1/bookings", t.token, {
+    holdId: hold.body.holdId,
+    leadName: "Mock Partner Guest",
+    leadEmail: "partner-guest@example.invalid",
+    source: "phone",
+    pickup: { kind: "none" },
+    partner: {
+      partnerId: partner.body.id,
+      externalReference: "RES-101",
+      collectionMode: "partner_collects_for_tenant",
+      invoiceRequired: false,
+    },
+  });
+  assert.equal(booking.status, 201, JSON.stringify(booking.body));
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${booking.body.bookingId}/confirm`,
+        t.token,
+        { version: 1 },
+      )
+    ).status,
+    201,
+  );
+  const claimInput = {
+    bookingId: booking.body.bookingId,
+    partnerId: partner.body.id,
+    amountMinor: 4000,
+    currency: "USD",
+    reference: "RES-101-paid",
+    notes: "Resort reported collection",
+  };
+  const claim = await post("/finance/v1/partner-claims", t.token, claimInput);
+  assert.equal(claim.status, 201, JSON.stringify(claim.body));
+  const pending = await get(
+    `/finance/v1/bookings/${booking.body.bookingId}/finance-summary`,
+    t.token,
+  );
+  assert.equal(pending.status, 200, JSON.stringify(pending.body));
+  assert.equal(pending.body.partnerCreditMinor, 0);
+  assert.equal(pending.body.guestBalanceMinor, 10000);
+
+  const reservationsMember = await post("/admin/v1/members", t.token, {
+    name: "Mock Reservations Claim Clerk",
+    email: `claim-clerk-${randomUUID()}@example.invalid`,
+    role: "reservations",
+  });
+  const reservations = await issueSession(
+    admin,
+    reservationsMember.body.actorId,
+    t.tenantId,
+  );
+  assert.equal(
+    (
+      await post(
+        `/finance/v1/partner-claims/${claim.body.id}/decision`,
+        reservations,
+        {
+          decision: "accepted",
+          reason: "Must be reviewed by finance",
+        },
+      )
+    ).status,
+    403,
+  );
+  const financeMember = await post("/admin/v1/members", t.token, {
+    name: "Mock Finance Reviewer",
+    email: `claim-finance-${randomUUID()}@example.invalid`,
+    role: "finance",
+  });
+  const finance = await issueSession(
+    admin,
+    financeMember.body.actorId,
+    t.tenantId,
+  );
+  const decisionKey = key();
+  const decision = await post(
+    `/finance/v1/partner-claims/${claim.body.id}/decision`,
+    finance,
+    {
+      decision: "accepted",
+      reason: "Banked partner collection verified",
+    },
+    decisionKey,
+  );
+  assert.equal(decision.status, 201, JSON.stringify(decision.body));
+  assert.ok(decision.body.obligationId);
+  assert.deepEqual(
+    (
+      await post(
+        `/finance/v1/partner-claims/${claim.body.id}/decision`,
+        finance,
+        {
+          decision: "accepted",
+          reason: "Banked partner collection verified",
+        },
+        decisionKey,
+      )
+    ).body,
+    decision.body,
+  );
+  assert.equal(
+    (
+      await post(
+        `/finance/v1/partner-claims/${claim.body.id}/decision`,
+        finance,
+        {
+          decision: "rejected",
+          reason: "Changed duplicate must fail",
+        },
+        decisionKey,
+      )
+    ).status,
+    409,
+  );
+  const accepted = await get(
+    `/finance/v1/bookings/${booking.body.bookingId}/finance-summary`,
+    t.token,
+  );
+  assert.equal(accepted.body.guestPaidMinor, 0);
+  assert.equal(accepted.body.partnerCreditMinor, 4000);
+  assert.equal(accepted.body.guestBalanceMinor, 6000);
+  assert.equal(accepted.body.partnerObligationMinor, 4000);
+  assert.equal(
+    (await pay(booking.body.bookingId, 6001, t.token)).status,
+    409,
+    "Guest payment cannot exceed the balance after an accepted partner credit",
+  );
+  const statements = await get(
+    `/finance/v1/partner-statements?partnerId=${partner.body.id}`,
+    finance,
+  );
+  assert.equal(statements.status, 200, JSON.stringify(statements.body));
+  assert.equal(statements.body.length, 1);
+  assert.equal(statements.body[0].kind, "partner_collection");
+  const facts = await admin.query(
+    "SELECT action FROM audit_events WHERE tenant_id=$1 AND aggregate_id=ANY($2::uuid[])",
+    [t.tenantId, [claim.body.id, decision.body.obligationId]],
+  );
+  assert.ok(facts.rows.some((row) => row.action === "partner.claim.recorded"));
+  assert.ok(
+    facts.rows.some((row) => row.action === "partner.obligation.created"),
+  );
+  const outbox = await admin.query(
+    "SELECT type FROM outbox_events WHERE tenant_id=$1 AND aggregate_id=ANY($2::uuid[])",
+    [t.tenantId, [claim.body.id, decision.body.obligationId]],
+  );
+  assert.ok(outbox.rows.some((row) => row.type === "partner.claim.recorded"));
+  assert.ok(
+    outbox.rows.some((row) => row.type === "partner.obligation.created"),
+  );
+  const payments = await admin.query(
+    "SELECT COUNT(*)::int AS count FROM payments WHERE tenant_id=$1 AND booking_id=$2",
+    [t.tenantId, booking.body.bookingId],
+  );
+  assert.equal(payments.rows[0].count, 0);
+
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${booking.body.bookingId}/cancel`,
+        t.token,
+        {
+          version: 2,
+          reason: "Synthetic partner finance review",
+        },
+      )
+    ).body.financeReviewRequired,
+    true,
+  );
+  assert.equal(
+    (await get(`/staff/v1/bookings/${booking.body.bookingId}`, t.token)).body
+      .financeReviewRequired,
+    true,
+  );
+
+  const rejectedHold = await post("/staff/v1/holds", t.token, {
+    departureId: dep.departureId,
+    party: { adult: 1 },
+  });
+  const rejectedBooking = await post("/staff/v1/bookings", t.token, {
+    holdId: rejectedHold.body.holdId,
+    leadName: "Mock Rejected Claim",
+    leadEmail: "reject@example.invalid",
+    source: "phone",
+    pickup: { kind: "none" },
+    partner: {
+      partnerId: partner.body.id,
+      externalReference: "RES-102",
+      collectionMode: "partner_collects_for_tenant",
+      invoiceRequired: false,
+    },
+  });
+  assert.equal(
+    rejectedBooking.status,
+    201,
+    JSON.stringify(rejectedBooking.body),
+  );
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${rejectedBooking.body.bookingId}/confirm`,
+        t.token,
+        { version: 1 },
+      )
+    ).status,
+    201,
+  );
+  const rejectedClaim = await post("/finance/v1/partner-claims", t.token, {
+    ...claimInput,
+    bookingId: rejectedBooking.body.bookingId,
+    reference: "RES-102-paid",
+  });
+  assert.equal(rejectedClaim.status, 201, JSON.stringify(rejectedClaim.body));
+  const rejected = await post(
+    `/finance/v1/partner-claims/${rejectedClaim.body.id}/decision`,
+    finance,
+    {
+      decision: "rejected",
+      reason: "Partner receipt did not match the booking",
+    },
+  );
+  assert.equal(rejected.status, 201, JSON.stringify(rejected.body));
+  assert.equal(
+    (
+      await get(
+        `/finance/v1/bookings/${rejectedBooking.body.bookingId}/finance-summary`,
+        t.token,
+      )
+    ).body.partnerCreditMinor,
+    0,
+  );
+
+  const referralHold = await post("/staff/v1/holds", t.token, {
+    departureId: dep.departureId,
+    party: { adult: 1 },
+  });
+  const referral = await post("/staff/v1/bookings", t.token, {
+    holdId: referralHold.body.holdId,
+    leadName: "Mock Referral",
+    leadEmail: "referral@example.invalid",
+    source: "phone",
+    pickup: { kind: "none" },
+  });
+  assert.equal(referral.status, 201, JSON.stringify(referral.body));
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${referral.body.bookingId}/confirm`,
+        t.token,
+        { version: 1 },
+      )
+    ).status,
+    201,
+  );
+  assert.equal(
+    (
+      await get(
+        `/finance/v1/bookings/${referral.body.bookingId}/finance-summary`,
+        t.token,
+      )
+    ).status,
+    404,
+  );
+  const crossTenantDeparture = await departure(b.token);
+  const crossTenantHold = await post("/staff/v1/holds", b.token, {
+    departureId: crossTenantDeparture.departureId,
+    party: { adult: 1 },
+  });
+  assert.equal(
+    (
+      await post("/staff/v1/bookings", b.token, {
+        holdId: crossTenantHold.body.holdId,
+        leadName: "Mock Foreign Partner",
+        leadEmail: "foreign@example.invalid",
+        source: "phone",
+        pickup: { kind: "none" },
+        partner: {
+          partnerId: partner.body.id,
+          externalReference: "FOREIGN",
+          collectionMode: "guest_pays_tenant",
+          invoiceRequired: false,
+        },
+      })
+    ).status,
+    404,
+  );
+});
+
+test("signed webhook inbox verifies, deduplicates and never bypasses booking workflows", async () => {
+  const connectorCatalog = await get("/integrations/v1/catalog", a.token);
+  assert.equal(
+    connectorCatalog.status,
+    200,
+    JSON.stringify(connectorCatalog.body),
+  );
+  assert.equal(
+    connectorCatalog.body.find(
+      (item: { code: string }) => item.code === "viator",
+    ).lifecycle_status,
+    "approval_required",
+  );
+  assert.equal(
+    (
+      await post("/integrations/v1/accounts", a.token, {
+        connectorCode: "viator",
+      })
+    ).status,
+    409,
+  );
+  const account = await post("/integrations/v1/accounts", a.token, {
+    connectorCode: "wp_travel_engine",
+  });
+  assert.equal(account.status, 201, JSON.stringify(account.body));
+  assert.equal(
+    (
+      await request(app.getHttpServer())
+        .patch(`/integrations/v1/accounts/${account.body.id}`)
+        .auth(a.token, { type: "bearer" })
+        .set("Idempotency-Key", key())
+        .send({ status: "enabled" })
+    ).status,
+    200,
+  );
+  const payload = JSON.stringify({
+    event_id: "wp-order-1001",
+    type: "booking.created",
+  });
+  const signature =
+    "sha256=" +
+    createHmac("sha256", account.body.secret).update(payload).digest("hex");
+  const path = `/integrations/v1/inbound/${account.body.publicInboundId}`;
+  const first = await request(app.getHttpServer())
+    .post(path)
+    .set("Content-Type", "application/json")
+    .set("x-zettaz-signature", signature)
+    .send(payload);
+  assert.equal(first.status, 201, JSON.stringify(first.body));
+  const duplicate = await request(app.getHttpServer())
+    .post(path)
+    .set("Content-Type", "application/json")
+    .set("x-zettaz-signature", signature)
+    .send(payload);
+  assert.equal(duplicate.status, 201, JSON.stringify(duplicate.body));
+  assert.equal(duplicate.body.duplicate, true);
+  assert.equal(
+    (
+      await request(app.getHttpServer())
+        .post(path)
+        .set("Content-Type", "application/json")
+        .set("x-zettaz-signature", "sha256=bad")
+        .send(payload)
+    ).status,
+    401,
+  );
+  const reviewed = await get("/integrations/v1/inbox", a.token);
+  assert.equal(reviewed.status, 200, JSON.stringify(reviewed.body));
+  assert.equal(reviewed.body[0].external_event_id, "wp-order-1001");
+  const malformed = JSON.stringify({ type: "booking.created" });
+  const malformedSignature =
+    "sha256=" +
+    createHmac("sha256", account.body.secret).update(malformed).digest("hex");
+  const quarantined = await request(app.getHttpServer())
+    .post(path)
+    .set("Content-Type", "application/json")
+    .set("x-zettaz-signature", malformedSignature)
+    .send(malformed);
+  assert.equal(quarantined.status, 201, JSON.stringify(quarantined.body));
+  assert.equal(quarantined.body.status, "quarantined");
+  const queued = await post(
+    `/integrations/v1/inbox/${quarantined.body.receiptId}/review`,
+    a.token,
+    {
+      action: "retry",
+      reason: "Product mapping was corrected by the tenant administrator",
+    },
+  );
+  assert.equal(queued.status, 201, JSON.stringify(queued.body));
+  assert.equal(queued.body.status, "retry_pending");
+  const retryResult = await app.get(IntegrationService).drainRetries({
+    actorId: a.ownerId,
+    tenantId: a.tenantId,
+    platform: false,
+    permissions: [...grants.owner],
+    role: "owner",
+  });
+  assert.deepEqual(retryResult, {
+    claimed: 1,
+    released: 0,
+    quarantined: 1,
+    deadLettered: 0,
+  });
+  assert.equal(
+    (await get("/integrations/v1/inbox", a.token)).body.find(
+      (item: { id: string }) => item.id === quarantined.body.receiptId,
+    ).status,
+    "quarantined",
+  );
+  assert.equal(
+    (
+      await post(
+        `/integrations/v1/inbox/${quarantined.body.receiptId}/review`,
+        b.token,
+        {
+          action: "dead_letter",
+          reason: "Cross tenant attempt must not find this event",
+        },
+      )
+    ).status,
+    409,
+  );
+  const retained = await post(
+    `/integrations/v1/inbox/${quarantined.body.receiptId}/review`,
+    a.token,
+    {
+      action: "dead_letter",
+      reason: "Source payload contract is unavailable for this event",
+    },
+  );
+  assert.equal(retained.status, 201, JSON.stringify(retained.body));
+  assert.equal(retained.body.status, "dead_letter");
+  const inbox = await admin.query(
+    "SELECT COUNT(*)::int AS count FROM webhook_inbox WHERE tenant_id=$1",
+    [a.tenantId],
+  );
+  assert.equal(inbox.rows[0].count, 2);
+});
+
+test("assisted import dry-run quarantines exceptions and produces tenant-scoped acceptance evidence", async () => {
+  const accounts = await get("/integrations/v1/accounts", a.token);
+  assert.equal(accounts.status, 200);
+  const product = await post("/admin/v1/products", a.token, {
+    ...mockProduct,
+    name: `Import tour ${randomUUID().slice(0, 8)}`,
+  });
+  assert.equal(product.status, 201, JSON.stringify(product.body));
+  const externalProductId = `legacy-${randomUUID()}`;
+  const mapping = await post("/integrations/v1/mappings", a.token, {
+    connectorAccountId: accounts.body[0].id,
+    entityType: "product",
+    externalId: externalProductId,
+    internalProductId: product.body.productId,
+  });
+  assert.equal(mapping.status, 201, JSON.stringify(mapping.body));
+  const base = {
+    externalReference: "LEGACY-100",
+    externalProductId,
+    departureAt: "2026-10-15T09:00:00-04:00",
+    partySize: 2,
+    leadName: "Import Guest",
+    leadEmail: "import@example.invalid",
+    source: "spreadsheet",
+    sourceStatus: "confirmed",
+    pickupDisposition: "resolved",
+    currency: "USD",
+    totalMinor: 15000,
+    paidMinor: 5000,
+    partnerReference: "",
+    invoiceOwner: "guest",
+  };
+  const imported = await post("/integrations/v1/assisted-imports", a.token, {
+    source: "tenant_cutover",
+    fileName: "future-bookings.csv",
+    connectorAccountId: accounts.body[0].id,
+    rows: [base, { ...base, paidMinor: 16000 }],
+  });
+  assert.equal(imported.status, 201, JSON.stringify(imported.body));
+  assert.equal(imported.body.dryRun, true);
+  assert.equal(imported.body.valid, 1);
+  assert.equal(imported.body.quarantined, 1);
+  assert.equal(imported.body.duplicates, 1);
+  const report = await get(
+    `/integrations/v1/assisted-imports/${imported.body.importId}/report`,
+    a.token,
+  );
+  assert.equal(report.status, 200, JSON.stringify(report.body));
+  assert.equal(report.body.summary.total_rows, 2);
+  assert.equal(report.body.rows[1].status, "quarantined");
+  assert.match(
+    report.body.rows[1].failure_reason,
+    /Duplicate external reference/,
+  );
+  assert.equal(
+    (
+      await get(
+        `/integrations/v1/assisted-imports/${imported.body.importId}/report`,
+        b.token,
+      )
+    ).status,
+    409,
+  );
+});
+
+test("passenger rosters match the held party, remain tenant-scoped and freeze at confirmation", async () => {
+  const dep = await departure(a.token, 8);
+  const booking = await heldBooking(dep.departureId, a.token, {
+    adult: 1,
+    child: 1,
+  });
+  const path = `/staff/v1/bookings/${booking.bookingId}/passengers`;
+  assert.equal(
+    (
+      await post(path, a.token, {
+        passengers: [{ name: "Only one traveller", category: "adult" }],
+      })
+    ).status,
+    409,
+  );
+  const roster = {
+    passengers: [
+      { name: "Mock Adult", category: "adult", isMinor: false },
+      { name: "Mock Child", category: "child", isMinor: true },
+    ],
+  };
+  const recorded = await post(path, a.token, roster);
+  assert.equal(recorded.status, 201, JSON.stringify(recorded.body));
+  assert.equal(recorded.body.length, 2);
+  const correction = await post(`${path}/corrections`, a.token, {
+    passengers: [
+      { name: "Mock Adult Corrected", category: "adult", isMinor: false },
+      { name: "Mock Child", category: "child", isMinor: true },
+    ],
+    reason: "Corrected the lead traveller spelling",
+  });
+  assert.equal(correction.status, 201, JSON.stringify(correction.body));
+  assert.equal(correction.body[0].rosterVersion, 2);
+  const listed = await get(path, a.token);
+  assert.equal(listed.status, 200);
+  assert.equal(listed.body.length, 2);
+  assert.equal(listed.body[0].roster_version, 2);
+  const bookingBeforeConfirmation = await get(
+    `/staff/v1/bookings/${booking.bookingId}`,
+    a.token,
+  );
+  assert.equal(bookingBeforeConfirmation.status, 200);
+  assert.equal(
+    (
+      await pay(
+        booking.bookingId,
+        bookingBeforeConfirmation.body.balanceMinor,
+        a.token,
+      )
+    ).status,
+    201,
+  );
+  assert.equal(
+    (
+      await post(`/staff/v1/bookings/${booking.bookingId}/confirm`, a.token, {
+        version: 1,
+      })
+    ).status,
+    201,
+  );
+  assert.equal((await post(path, a.token, roster)).status, 409);
+  const waiver = await post("/ops/v1/waiver-templates", a.token, {
+    title: "Passenger evidence waiver",
+    body: "Synthetic passenger waiver only.",
+  });
+  assert.equal(waiver.status, 201, JSON.stringify(waiver.body));
+  const adult = listed.body.find(
+    (passenger: { category: string }) => passenger.category === "adult",
+  );
+  const child = listed.body.find(
+    (passenger: { category: string }) => passenger.category === "child",
+  );
+  assert.equal(
+    (
+      await post(`/ops/v1/bookings/${booking.bookingId}/waivers`, a.token, {
+        templateId: waiver.body.id,
+        signerName: "Mock Adult Corrected",
+        signerCapacity: "self",
+        passengerId: adult.id,
+      })
+    ).status,
+    201,
+  );
+  assert.equal(
+    (
+      await post(`/ops/v1/bookings/${booking.bookingId}/waivers`, a.token, {
+        templateId: waiver.body.id,
+        signerName: "Mock Child",
+        signerCapacity: "self",
+        passengerId: child.id,
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await post(`/ops/v1/bookings/${booking.bookingId}/waivers`, a.token, {
+        templateId: waiver.body.id,
+        signerName: "Mock Adult Corrected",
+        signerCapacity: "guardian",
+        passengerId: child.id,
+        guardianPassengerId: adult.id,
+      })
+    ).status,
+    201,
+  );
+  const waivers = await get(
+    `/ops/v1/bookings/${booking.bookingId}/waivers`,
+    a.token,
+  );
+  assert.equal(waivers.status, 200);
+  assert.equal(waivers.body.length, 2);
+  assert.equal(waivers.body[0].passenger_id, child.id);
+  const adultArrival = await post(
+    `/staff/v1/passengers/${adult.id}/checkin`,
+    a.token,
+    { state: "arrived" },
+  );
+  assert.equal(adultArrival.status, 201, JSON.stringify(adultArrival.body));
+  assert.equal(adultArrival.body.state, "arrived");
+  assert.equal(
+    (
+      await post(`/staff/v1/passengers/${adult.id}/checkin`, a.token, {
+        state: "cleared_to_board",
+      })
+    ).status,
+    201,
+  );
+  assert.equal(
+    (
+      await post(`/staff/v1/passengers/${adult.id}/checkin`, a.token, {
+        state: "boarded",
+      })
+    ).status,
+    201,
+  );
+  assert.equal(
+    (
+      await post(`/staff/v1/passengers/${adult.id}/checkin`, a.token, {
+        state: "no_show",
+      })
+    ).status,
+    409,
+  );
+  const childArrival = await post(
+    `/staff/v1/passengers/${child.id}/checkin`,
+    a.token,
+    { state: "arrived" },
+  );
+  assert.equal(childArrival.status, 201, JSON.stringify(childArrival.body));
+  assert.equal(childArrival.body.state, "arrived");
+  assert.equal(
+    (
+      await post(`/staff/v1/passengers/${child.id}/checkin`, a.token, {
+        state: "cleared_to_board",
+      })
+    ).status,
+    201,
+  );
+  const manifest = await get(
+    `/ops/v1/departures/${dep.departureId}/manifest`,
+    a.token,
+  );
+  assert.equal(manifest.status, 200);
+  assert.equal(manifest.body.bookings[0].passengers.length, 2);
+  assert.equal(
+    manifest.body.bookings[0].passengers.find(
+      (passenger: { id: string }) => passenger.id === adult.id,
+    ).checkin_state,
+    "boarded",
+  );
+  assert.equal(
+    manifest.body.bookings[0].passengers.find(
+      (passenger: { id: string }) => passenger.id === child.id,
+    ).checkin_state,
+    "cleared_to_board",
+  );
+  assert.equal((await get(path, b.token)).status, 404);
+});
+
+test("customer communication requests are durable, auditable, held without a provider and tenant-scoped", async () => {
+  const dep = await departure(a.token, 6);
+  const booking = await heldBooking(dep.departureId, a.token);
+  const path = `/staff/v1/bookings/${booking.bookingId}/notifications`;
+  const prepared = await post(path, a.token, { kind: "payment_request" });
+  assert.equal(prepared.status, 201, JSON.stringify(prepared.body));
+  assert.equal(prepared.body.status, "held_provider");
+  assert.equal(prepared.body.recipient, "traveler@example.invalid");
+  const listed = await get(path, a.token);
+  assert.equal(listed.status, 200, JSON.stringify(listed.body));
+  assert.equal(listed.body.length, 1);
+  assert.equal(listed.body[0].kind, "payment_request");
+  assert.equal((await get(path, b.token)).status, 404);
+  const audit = await admin.query(
+    "SELECT action FROM audit_events WHERE tenant_id=$1 AND aggregate_id=$2",
+    [a.tenantId, prepared.body.id],
+  );
+  assert.equal(audit.rows[0].action, "notification.requested");
+});
+
+test("bookings link tenant-controlled cruise calls and accommodations without cross-tenant references", async () => {
+  const cruise = await post("/ops/v1/stays/cruise-calls", a.token, {
+    vesselName: "Mock Voyager",
+    callDate: DateTime.utc().plus({ days: 10 }).toISODate(),
+    portName: "Mock Port",
+    scheduledDeparture: DateTime.utc().plus({ days: 10, hours: 20 }).toISO(),
+    allAboardAt: DateTime.utc().plus({ days: 10, hours: 19 }).toISO(),
+    tenderRequired: false,
+  });
+  assert.equal(cruise.status, 201, JSON.stringify(cruise.body));
+  const hotel = await post("/ops/v1/stays/accommodations", a.token, {
+    name: "Mock Harbor Hotel",
+    address: "1 Mock Quay",
+  });
+  assert.equal(hotel.status, 201, JSON.stringify(hotel.body));
+  const options = await get("/ops/v1/stays/options", a.token);
+  assert.equal(options.status, 200);
+  assert.ok(
+    options.body.cruiseCalls.some(
+      (item: { id: string }) => item.id === cruise.body.id,
+    ),
+  );
+  assert.ok(
+    options.body.accommodations.some(
+      (item: { id: string }) => item.id === hotel.body.id,
+    ),
+  );
+  const dep = await departure(a.token, 5);
+  const hold = await post("/staff/v1/holds", a.token, {
+    departureId: dep.departureId,
+    party: { adult: 1 },
+  });
+  const booking = await post("/staff/v1/bookings", a.token, {
+    holdId: hold.body.holdId,
+    leadName: "Mock Cruise Guest",
+    leadEmail: "cruise@example.invalid",
+    source: "phone",
+    pickup: { kind: "none" },
+    stay: {
+      kind: "cruise",
+      cruiseCallId: cruise.body.id,
+      vesselName: "Untrusted vessel",
+      cabinNumber: "A12",
+    },
+  });
+  assert.equal(booking.status, 201, JSON.stringify(booking.body));
+  const detail = await get(
+    `/staff/v1/bookings/${booking.body.bookingId}`,
+    a.token,
+  );
+  assert.equal(detail.body.cruise_call_id, cruise.body.id);
+  assert.equal(detail.body.stay.vesselName, "Mock Voyager");
+  const foreignDeparture = await departure(b.token, 5);
+  const foreignHold = await post("/staff/v1/holds", b.token, {
+    departureId: foreignDeparture.departureId,
+    party: { adult: 1 },
+  });
+  assert.equal(
+    (
+      await post("/staff/v1/bookings", b.token, {
+        holdId: foreignHold.body.holdId,
+        leadName: "Foreign Guest",
+        leadEmail: "foreign-stay@example.invalid",
+        source: "phone",
+        pickup: { kind: "none" },
+        stay: {
+          kind: "hotel",
+          accommodationId: hotel.body.id,
+          hotelName: "Mock Harbor Hotel",
+          roomNumber: "2",
+        },
+      })
+    ).status,
+    404,
+  );
+});
+
+test("password recovery is non-enumerating, single-use, expiring and revokes prior sessions", async () => {
+  const email = `recovery-${randomUUID()}@example.invalid`,
+    oldPassword = "RecoveryOld!2026",
+    newPassword = "RecoveryNew!2026";
+  const invited = await post("/admin/v1/invitations", a.token, {
+    name: "Recovery User",
+    email,
+    role: "reservations",
+  });
+  assert.equal(invited.status, 201, JSON.stringify(invited.body));
+  const activated = await request(app.getHttpServer())
+    .post("/auth/v1/invitations/accept")
+    .send({ token: invited.body.token, password: oldPassword });
+  assert.equal(activated.status, 201, JSON.stringify(activated.body));
+  process.env.EXPOSE_RECOVERY_TOKEN = "1";
+  const unknown = await request(app.getHttpServer())
+    .post("/auth/v1/password-recovery/request")
+    .send({ email: `missing-${randomUUID()}@example.invalid` });
+  const requested = await request(app.getHttpServer())
+    .post("/auth/v1/password-recovery/request")
+    .send({ email });
+  delete process.env.EXPOSE_RECOVERY_TOKEN;
+  assert.equal(unknown.status, 201);
+  assert.equal(requested.status, 201);
+  assert.deepEqual(
+    { accepted: unknown.body.accepted, delivery: unknown.body.delivery },
+    { accepted: requested.body.accepted, delivery: requested.body.delivery },
+  );
+  assert.ok(requested.body.token);
+  const completed = await request(app.getHttpServer())
+    .post("/auth/v1/password-recovery/complete")
+    .send({ token: requested.body.token, password: newPassword });
+  assert.equal(completed.status, 201, JSON.stringify(completed.body));
+  assert.equal(
+    (await get("/staff/v1/workspace/session", activated.body.token)).status,
+    401,
+  );
+  assert.equal(
+    (
+      await request(app.getHttpServer())
+        .post("/auth/v1/sign-in")
+        .send({ email, password: oldPassword })
+    ).status,
+    401,
+  );
+  assert.equal(
+    (
+      await request(app.getHttpServer())
+        .post("/auth/v1/sign-in")
+        .send({ email, password: newPassword })
+    ).status,
+    201,
+  );
+  assert.equal(
+    (
+      await request(app.getHttpServer())
+        .post("/auth/v1/password-recovery/complete")
+        .send({ token: requested.body.token, password: "AnotherValid!2026" })
+    ).status,
+    401,
+  );
+});
+
+test("repeated failed sign-ins temporarily block the identity without revealing account existence", async () => {
+  const email = `limited-${randomUUID()}@example.invalid`;
+  const invited = await post("/admin/v1/invitations", a.token, {
+    name: "Rate Limited User",
+    email,
+    role: "reservations",
+  });
+  assert.equal(invited.status, 201, JSON.stringify(invited.body));
+  const activated = await request(app.getHttpServer())
+    .post("/auth/v1/invitations/accept")
+    .send({ token: invited.body.token, password: "ValidPassword!2026" });
+  assert.equal(activated.status, 201, JSON.stringify(activated.body));
+  for (let attempt = 0; attempt < 5; attempt++)
+    assert.equal(
+      (
+        await request(app.getHttpServer())
+          .post("/auth/v1/sign-in")
+          .send({ email, password: "WrongPassword!2026" })
+      ).status,
+      401,
+    );
+  const blocked = await request(app.getHttpServer())
+    .post("/auth/v1/sign-in")
+    .send({ email, password: "ValidPassword!2026" });
+  assert.equal(blocked.status, 401);
+  assert.equal(blocked.body.detail.message, "Email or password is incorrect.");
 });

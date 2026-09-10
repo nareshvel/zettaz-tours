@@ -25,7 +25,18 @@ export const pickupLocationSchema = z
     name: z.string().trim().min(1).max(120),
     kind: z.enum(["hotel", "port", "meeting_point", "other"]),
     notes: z.string().trim().max(500).default(""),
+    address: z.string().trim().max(300).default(""),
+    latitude: z.number().min(-90).max(90).optional(),
+    longitude: z.number().min(-180).max(180).optional(),
+    mapUrl: z.string().url().max(2048).or(z.literal("")).default(""),
+    visibility: z.enum(["internal", "guest"]).default("internal"),
   })
+  .refine(
+    (location) =>
+      (location.latitude === undefined && location.longitude === undefined) ||
+      (location.latitude !== undefined && location.longitude !== undefined),
+    "Latitude and longitude must be provided together",
+  )
   .strict();
 export const pickupPlanSchema = z
   .object({
@@ -63,7 +74,7 @@ export class DispatchService {
     const query = parse(boardQuery, raw);
     return this.db.transaction(actor, async (tx) => {
       const { rows } = await tx.query(
-        `SELECT d.id,d.starts_at,d.capacity,d.committed,d.operational_status,d.operational_reason,d.operational_version,p.name AS product_name,
+        `SELECT d.id,d.starts_at,d.capacity,(d.committed+d.overbooked)::int AS committed,d.overbooked,d.operational_status,d.operational_reason,d.operational_version,p.name AS product_name,
         COUNT(b.id) FILTER(WHERE b.state='confirmed')::int AS confirmed_bookings,
         COALESCE(SUM((SELECT SUM(value::int) FROM jsonb_each_text(h.party))) FILTER(WHERE b.state='confirmed'),0)::int AS confirmed_guests,
         COUNT(b.id) FILTER(WHERE b.state='confirmed' AND b.pickup->>'kind'='selected')::int AS pickup_required,
@@ -76,7 +87,7 @@ export class DispatchService {
         LEFT JOIN pickup_stops s ON s.tenant_id=b.tenant_id AND s.booking_id=b.id
         LEFT JOIN departure_pickup_plans plan ON plan.tenant_id=d.tenant_id AND plan.departure_id=d.id
         WHERE d.tenant_id=$1 AND d.local_date=$2
-        GROUP BY d.id,d.starts_at,d.capacity,d.committed,d.operational_status,d.operational_reason,d.operational_version,p.name,plan.version,plan.notes ORDER BY d.starts_at,d.id`,
+        GROUP BY d.id,d.starts_at,d.capacity,d.committed,d.overbooked,d.operational_status,d.operational_reason,d.operational_version,p.name,plan.version,plan.notes ORDER BY d.starts_at,d.id`,
         [actor.tenantId, query.date],
       );
       return { date: query.date, items: rows };
@@ -88,7 +99,7 @@ export class DispatchService {
       async (tx) =>
         (
           await tx.query(
-            "SELECT id,slug,name,kind,notes,active FROM pickup_locations WHERE tenant_id=$1 AND active ORDER BY name,id",
+            "SELECT id,slug,name,kind,notes,address,latitude,longitude,map_url,visibility,active FROM pickup_locations WHERE tenant_id=$1 AND active ORDER BY name,id",
             [actor.tenantId],
           )
         ).rows,
@@ -105,7 +116,7 @@ export class DispatchService {
         const idValue = randomUUID();
         try {
           await tx.query(
-            "INSERT INTO pickup_locations(tenant_id,id,slug,name,kind,notes) VALUES($1,$2,$3,$4,$5,$6)",
+            "INSERT INTO pickup_locations(tenant_id,id,slug,name,kind,notes,address,latitude,longitude,map_url,visibility) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
             [
               actor.tenantId,
               idValue,
@@ -113,6 +124,11 @@ export class DispatchService {
               input.name,
               input.kind,
               input.notes,
+              input.address,
+              input.latitude ?? null,
+              input.longitude ?? null,
+              input.mapUrl,
+              input.visibility,
             ],
           );
         } catch {

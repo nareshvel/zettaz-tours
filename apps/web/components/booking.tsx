@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowRight, Check, Clock, LockKeyhole } from "lucide-react";
-import type { Session, Departure, Quote, Booking, Pickup } from "@/lib/types";
+import type { Session, Departure, Quote, Booking, Pickup, Partner, BookingFinanceSummary, NotificationMessage } from "@/lib/types";
 import {
   dateTime,
   digits,
@@ -26,6 +26,14 @@ import {
 } from "./common";
 
 import { BookingHistory } from "./booking-changes";
+
+type Passenger = {
+  id: string;
+  name: string;
+  category: string;
+  is_minor: boolean;
+};
+type PassengerDraft = { name: string; category: string; isMinor: boolean };
 
 function useRemaining(expiry?: string) {
   const [now, setNow] = useState(Date.now());
@@ -62,8 +70,36 @@ function QuoteSummary({ quote }: { quote: Quote }) {
     </>
   );
 }
+
+function CustomerMessages({ bookingId, timezone, canRequest }: { bookingId: string; timezone: string; canRequest: boolean }) {
+  const messages = useResource<NotificationMessage[]>(`staff/v1/bookings/${bookingId}/notifications`);
+  const request = useMutation();
+  const [success, setSuccess] = useState("");
+  async function prepare(kind: NotificationMessage["kind"]) {
+    const result = await request.run<NotificationMessage>(`staff/v1/bookings/${bookingId}/notifications`, { kind });
+    if (result) {
+      setSuccess("Communication prepared and held. It will not send until a tenant email provider is configured.");
+      messages.reload();
+    }
+  }
+  return <section className="panel form-panel">
+    <h2>Customer communications</h2>
+    <p className="muted">Prepare an auditable email request. Delivery remains held until an approved email provider is configured.</p>
+    {canRequest && <div className="button-row">
+      <button className="button secondary" disabled={request.busy} onClick={() => void prepare("booking_confirmation")}>Prepare confirmation</button>
+      <button className="button secondary" disabled={request.busy} onClick={() => void prepare("payment_request")}>Prepare payment request</button>
+      <button className="button secondary" disabled={request.busy} onClick={() => void prepare("waiver_request")}>Prepare waiver request</button>
+      <button className="button secondary" disabled={request.busy} onClick={() => void prepare("cancellation")}>Prepare cancellation notice</button>
+    </div>}
+    {success && <Notice>{success}</Notice>}
+    {(request.error || messages.error) && <Notice error>{request.error || messages.error}</Notice>}
+    {messages.data?.length ? <div className="stack-list">{messages.data.map((message) => <div className="detail-row" key={message.id}><span><strong>{message.subject}</strong><small>{message.recipient} · {dateTime(message.requested_at, timezone)}</small></span><Status state={message.status} /></div>)}</div> : messages.data && <p className="muted">No communication requests have been prepared.</p>}
+  </section>;
+}
 export function NewReservation({ session }: { session: Session }) {
-  const departures = usePaged<Departure>("staff/v1/workspace/departures");
+  const departures = usePaged<Departure>("staff/v1/workspace/departures"),
+    partners = useResource<Partner[]>("finance/v1/partners/available"),
+    stays = useResource<{ cruiseCalls:{id:string;vessel_name:string;call_date:string;port_name:string;all_aboard_at:string|null}[]; accommodations:{id:string;name:string;address:string}[] }>("ops/v1/stays/options");
   const [departureId, setDepartureId] = useState(""),
     [party, setParty] = useState<Record<string, number>>({}),
     [hold, setHold] = useState<{
@@ -73,12 +109,29 @@ export function NewReservation({ session }: { session: Session }) {
     } | null>(null);
   const [name, setName] = useState(""),
     [email, setEmail] = useState(""),
+    [phone, setPhone] = useState(""),
+    [purchaserIsLead, setPurchaserIsLead] = useState(true),
+    [purchaserName, setPurchaserName] = useState(""),
+    [purchaserEmail, setPurchaserEmail] = useState(""),
+    [purchaserPhone, setPurchaserPhone] = useState(""),
+    [emergencyName, setEmergencyName] = useState(""),
+    [emergencyPhone, setEmergencyPhone] = useState(""),
+    [emergencyRelationship, setEmergencyRelationship] = useState(""),
     [source, setSource] = useState(
       session.tenant.config.bookingSources[0] ?? "",
     ),
     [pickupKind, setPickupKind] = useState("none"),
     [location, setLocation] = useState(""),
-    [instructions, setInstructions] = useState("");
+    [instructions, setInstructions] = useState(""),
+    [stayKind, setStayKind] = useState("none"),
+    [stayReferenceId, setStayReferenceId] = useState(""),
+    [unitNumber, setUnitNumber] = useState(""),
+    [partnerId, setPartnerId] = useState(""),
+    [partnerReference, setPartnerReference] = useState(""),
+    [collectionMode, setCollectionMode] = useState("guest_pays_tenant"),
+    [invoiceRequired, setInvoiceRequired] = useState(false);
+  const [authorizeOverbook, setAuthorizeOverbook] = useState(false),
+    [overbookReason, setOverbookReason] = useState("");
   const holdMutation = useMutation(),
     bookingMutation = useMutation(),
     router = useRouter();
@@ -95,7 +148,11 @@ export function NewReservation({ session }: { session: Session }) {
       holdId: string;
       quote: Quote;
       expiresAt: string;
-    }>("staff/v1/holds", { departureId, party });
+    }>(authorizeOverbook ? "staff/v1/overbook-holds" : "staff/v1/holds", {
+      departureId,
+      party,
+      ...(authorizeOverbook ? { reason: overbookReason } : {}),
+    });
     if (result) setHold(result);
   }
   async function create(e: React.FormEvent) {
@@ -109,7 +166,27 @@ export function NewReservation({ session }: { session: Session }) {
           : { kind: "unresolved", note: instructions };
     const result = await bookingMutation.run<{ bookingId: string }>(
       "staff/v1/bookings",
-      { holdId: hold.holdId, leadName: name, leadEmail: email, source, pickup },
+      {
+        holdId: hold.holdId,
+        leadName: name,
+        leadEmail: email,
+        leadPhone: phone,
+        ...(!purchaserIsLead ? { purchaser: { name: purchaserName, email: purchaserEmail, phone: purchaserPhone } } : {}),
+        ...(emergencyName || emergencyPhone || emergencyRelationship ? { emergencyContact: { name: emergencyName, phone: emergencyPhone, relationship: emergencyRelationship } } : {}),
+        source,
+        pickup,
+        stay: stayKind === "cruise" ? { kind:"cruise", cruiseCallId:stayReferenceId, vesselName:stays.data?.cruiseCalls.find(item=>item.id===stayReferenceId)?.vessel_name ?? "Cruise vessel", cabinNumber:unitNumber } : stayKind === "hotel" ? { kind:"hotel", accommodationId:stayReferenceId, hotelName:stays.data?.accommodations.find(item=>item.id===stayReferenceId)?.name ?? "Hotel", roomNumber:unitNumber } : { kind:"none" },
+        ...(partnerId
+          ? {
+              partner: {
+                partnerId,
+                externalReference: partnerReference,
+                collectionMode,
+                invoiceRequired,
+              },
+            }
+          : {}),
+      },
     );
     if (result) router.push("/reservations/" + result.bookingId);
   }
@@ -181,6 +258,19 @@ export function NewReservation({ session }: { session: Session }) {
                   </Field>
                 ))}
               </div>
+              {session.permissions.includes("inventory.overbook") && !hold && (
+                <div className="overbook-control">
+                  <label className="toggle-row">
+                    <input type="checkbox" checked={authorizeOverbook} onChange={(event) => setAuthorizeOverbook(event.target.checked)} />
+                    <span>Authorize capacity exception</span>
+                  </label>
+                  {authorizeOverbook && (
+                    <Field label="Overbooking reason" hint="Required, immutable and visible in the audit trail.">
+                      <textarea required minLength={8} maxLength={500} value={overbookReason} onChange={(event) => setOverbookReason(event.target.value)} />
+                    </Field>
+                  )}
+                </div>
+              )}
               {holdMutation.error && (
                 <Notice error>{holdMutation.error}</Notice>
               )}
@@ -228,6 +318,9 @@ export function NewReservation({ session }: { session: Session }) {
                       onChange={(e) => setEmail(e.target.value)}
                     />
                   </Field>
+                  <Field label="Phone number">
+                    <input type="tel" autoComplete="tel" maxLength={40} value={phone} onChange={(e) => setPhone(e.target.value)} />
+                  </Field>
                   <Field label="Booking source">
                     <select
                       value={source}
@@ -250,6 +343,20 @@ export function NewReservation({ session }: { session: Session }) {
                       <option value="unresolved">Pickup to arrange</option>
                     </select>
                   </Field>
+                </div>
+                <div className="form-divider" />
+                <div className="panel-heading plain"><div><h2>Purchaser & emergency contact</h2><p>Keep the person who paid separate from the lead traveler when needed.</p></div></div>
+                <label className="toggle-row"><input type="checkbox" checked={purchaserIsLead} onChange={(event)=>setPurchaserIsLead(event.target.checked)}/><span>Lead traveler is the purchaser</span></label>
+                {!purchaserIsLead&&<div className="form-grid">
+                  <Field label="Purchaser name"><input required maxLength={120} value={purchaserName} onChange={(event)=>setPurchaserName(event.target.value)}/></Field>
+                  <Field label="Purchaser email"><input required type="email" maxLength={254} value={purchaserEmail} onChange={(event)=>setPurchaserEmail(event.target.value)}/></Field>
+                  <Field label="Purchaser phone"><input type="tel" maxLength={40} value={purchaserPhone} onChange={(event)=>setPurchaserPhone(event.target.value)}/></Field>
+                </div>}
+                <p className="muted">Emergency contact is optional. If any field is entered, complete all three.</p>
+                <div className="form-grid">
+                  <Field label="Emergency contact name"><input required={Boolean(emergencyPhone||emergencyRelationship)} maxLength={120} value={emergencyName} onChange={(event)=>setEmergencyName(event.target.value)}/></Field>
+                  <Field label="Emergency phone"><input required={Boolean(emergencyName||emergencyRelationship)} type="tel" maxLength={40} value={emergencyPhone} onChange={(event)=>setEmergencyPhone(event.target.value)}/></Field>
+                  <Field label="Relationship"><input required={Boolean(emergencyName||emergencyPhone)} maxLength={80} value={emergencyRelationship} onChange={(event)=>setEmergencyRelationship(event.target.value)}/></Field>
                 </div>
                 {pickupKind === "selected" && (
                   <Field label="Pickup location">
@@ -285,6 +392,71 @@ export function NewReservation({ session }: { session: Session }) {
                       complete this booking now.
                     </Notice>
                   )}
+                <div className="form-divider" />
+                <div className="panel-heading plain"><div><h2>Guest stay</h2><p>Optional cruise-call or hotel details used for pickup and day-of operations.</p></div></div>
+                {stays.error ? <Notice error>{stays.error}</Notice> : <div className="form-grid">
+                  <Field label="Guest origin">
+                    <select value={stayKind} onChange={(e)=>{setStayKind(e.target.value);setStayReferenceId("");setUnitNumber("");}}>
+                      <option value="none">No stay details</option>
+                      <option value="cruise">Cruise ship</option>
+                      <option value="hotel">Hotel</option>
+                    </select>
+                  </Field>
+                  {stayKind === "cruise" && <Field label="Cruise call"><select required value={stayReferenceId} onChange={(e)=>setStayReferenceId(e.target.value)}><option value="">Choose vessel and call</option>{(stays.data?.cruiseCalls ?? []).map(item=><option key={item.id} value={item.id}>{item.vessel_name} · {item.call_date} · {item.port_name}</option>)}</select></Field>}
+                  {stayKind === "hotel" && <Field label="Hotel"><select required value={stayReferenceId} onChange={(e)=>setStayReferenceId(e.target.value)}><option value="">Choose hotel</option>{(stays.data?.accommodations ?? []).map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>}
+                  {stayKind !== "none" && <Field label={stayKind === "cruise" ? "Cabin number · optional" : "Room number · optional"}><input maxLength={40} value={unitNumber} onChange={(e)=>setUnitNumber(e.target.value)} /></Field>}
+                </div>}
+                <div className="form-divider" />
+                <div className="panel-heading plain">
+                  <div>
+                    <h2>Partner / reseller</h2>
+                    <p>Optional attribution for a hotel or reseller booking.</p>
+                  </div>
+                </div>
+                {partners.error ? (
+                  <Notice error>{partners.error}</Notice>
+                ) : (
+                  <div className="form-grid">
+                    <Field label="Partner organization">
+                      <select
+                        value={partnerId}
+                        onChange={(e) => setPartnerId(e.target.value)}
+                      >
+                        <option value="">No partner attribution</option>
+                        {(partners.data ?? []).map((partner) => (
+                          <option key={partner.id} value={partner.id}>
+                            {partner.name}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    {partnerId && (
+                      <Field label="Partner reference">
+                        <input
+                          maxLength={120}
+                          value={partnerReference}
+                          onChange={(e) => setPartnerReference(e.target.value)}
+                          placeholder="Voucher or reservation reference"
+                        />
+                      </Field>
+                    )}
+                    {partnerId && (
+                      <Field label="Collection arrangement">
+                        <select value={collectionMode} onChange={(e) => setCollectionMode(e.target.value)}>
+                          <option value="guest_pays_tenant">Guest pays tenant</option>
+                          <option value="partner_collects_for_tenant">Partner collects for tenant</option>
+                          <option value="partner_invoice">Partner invoice</option>
+                        </select>
+                      </Field>
+                    )}
+                    {partnerId && (
+                      <label className="toggle-row">
+                        <input type="checkbox" checked={invoiceRequired} onChange={(e) => setInvoiceRequired(e.target.checked)} />
+                        <span>Invoice required</span>
+                      </label>
+                    )}
+                  </div>
+                )}
                 <button
                   className="button"
                   disabled={!hold || remaining <= 0 || bookingMutation.busy}
@@ -318,6 +490,7 @@ export function NewReservation({ session }: { session: Session }) {
                   : "Hold expired"}
               </div>
               <QuoteSummary quote={hold.quote} />
+              {authorizeOverbook && <Notice>This hold is an authorized capacity exception. Confirmation may take the departure above its configured capacity.</Notice>}
               <p className="policy-copy">
                 {hold.quote.minimumPaidPercent}% payment required before
                 confirmation.
@@ -359,8 +532,12 @@ export function BookingDetail({
   bookingId: string;
 }) {
   const booking = useResource<Booking>("staff/v1/bookings/" + bookingId),
+    financeSummary = useResource<BookingFinanceSummary>(`finance/v1/bookings/${bookingId}/finance-summary`),
+    passengers = useResource<Passenger[]>(`staff/v1/bookings/${bookingId}/passengers`),
     pay = useMutation(),
-    confirm = useMutation();
+    adjustPayment = useMutation(),
+    confirm = useMutation(),
+    savePassengers = useMutation();
   const [amount, setAmount] = useState(""),
     [method, setMethod] = useState(
       session.tenant.config.manualPaymentMethods[0] ?? "",
@@ -369,6 +546,11 @@ export function BookingDetail({
     [note, setNote] = useState(""),
     [inputError, setInputError] = useState(""),
     [success, setSuccess] = useState("");
+  const [adjustingPaymentId,setAdjustingPaymentId]=useState("");
+  const [adjustmentReference,setAdjustmentReference]=useState("");
+  const [adjustmentReason,setAdjustmentReason]=useState("");
+  const [passengerDrafts, setPassengerDrafts] = useState<PassengerDraft[]>([]);
+  const [rosterBookingId, setRosterBookingId] = useState("");
   const [occurredAt] = useState(() => new Date().toISOString());
   const remaining = useRemaining(booking.data?.expiresAt);
   useEffect(() => {
@@ -380,6 +562,14 @@ export function BookingDetail({
         ).toFixed(digits(booking.data.quote.currency)),
       );
   }, [booking.data]);
+  useEffect(() => {
+    if (!booking.data || rosterBookingId === booking.data.id || passengers.data?.length) return;
+    const drafts = Object.entries(booking.data.party).flatMap(([category, quantity]) =>
+      Array.from({ length: quantity }, () => ({ name: "", category, isMinor: category.toLowerCase().includes("child") })),
+    );
+    setPassengerDrafts(drafts);
+    setRosterBookingId(booking.data.id);
+  }, [booking.data, passengers.data?.length, rosterBookingId]);
   if (booking.error)
     return (
       <Notice error>
@@ -426,6 +616,18 @@ export function BookingDetail({
       setInputError((e as Error).message);
     }
   }
+  async function correctPayment(payment:Booking["payments"][number]){
+    const result=await adjustPayment.run(`staff/v1/bookings/${bookingId}/payments/${payment.id}/adjustments`,{
+      kind:payment.status==="pending"?"void":"reversal",
+      reference:adjustmentReference,
+      reason:adjustmentReason,
+      occurredAt:new Date().toISOString(),
+    });
+    if(result){
+      setSuccess(payment.status==="pending"?"Pending payment voided.":"External payment reversal recorded.");
+      setAdjustingPaymentId("");setAdjustmentReference("");setAdjustmentReason("");booking.reload();
+    }
+  }
   async function confirmation() {
     const result = await confirm.run(`staff/v1/bookings/${bookingId}/confirm`, {
       version: b.version,
@@ -435,6 +637,14 @@ export function BookingDetail({
         "Reservation confirmed. This party is now on the departure manifest.",
       );
       booking.reload();
+    }
+  }
+  async function recordRoster(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const result = await savePassengers.run(`staff/v1/bookings/${bookingId}/passengers`, { passengers: passengerDrafts });
+    if (result) {
+      setSuccess("Passenger roster recorded. It is frozen when the reservation is confirmed.");
+      passengers.reload();
     }
   }
   return (
@@ -504,7 +714,16 @@ export function BookingDetail({
                 <dt>Reservation status</dt>
                 <dd>{expired ? "Expired" : label(b.state)}</dd>
               </div>
+              <div>
+                <dt>Purchaser</dt>
+                <dd>{b.purchaser.name} · {b.purchaser.email}{b.purchaser.phone ? ` · ${b.purchaser.phone}` : ""}</dd>
+              </div>
+              <div>
+                <dt>Emergency contact</dt>
+                <dd>{b.emergency_contact.name ? `${b.emergency_contact.name} · ${b.emergency_contact.relationship} · ${b.emergency_contact.phone}` : "Not provided"}</dd>
+              </div>
             </dl>
+            <Link className="text-link" href={`/customers/${b.customer_id}`}>Open customer history <ArrowRight size={16}/></Link>
             {session.permissions.includes("manifest.read") && (
               <Link
                 className="text-link"
@@ -514,6 +733,28 @@ export function BookingDetail({
               </Link>
             )}
           </section>
+          {passengers.data && passengers.data.length > 0 ? (
+            <section className="panel form-panel">
+              <h2>Passenger roster</h2>
+              <p className="muted">Recorded roster for this reservation.</p>
+              <div className="stack-list">
+                {passengers.data.map((passenger) => <div className="detail-row" key={passenger.id}><span><strong>{passenger.name}</strong><small>{label(passenger.category)}{passenger.is_minor ? " · minor" : ""}</small></span></div>)}
+              </div>
+            </section>
+          ) : b.state === "held" && session.permissions.includes("bookings.write") ? (
+            <section className="panel form-panel">
+              <h2>Passenger roster</h2>
+              <p className="muted">Record each traveller before confirming. A later amendment workflow will handle corrections.</p>
+              <form onSubmit={recordRoster}>
+                <div className="stack-list">
+                  {passengerDrafts.map((passenger, index) => <div className="form-grid" key={`${passenger.category}-${index}`}><Field label={`Passenger ${index + 1} name`}><input required maxLength={120} value={passenger.name} onChange={(event) => setPassengerDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} /></Field><Field label="Passenger category"><input required maxLength={80} value={passenger.category} onChange={(event) => setPassengerDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, category: event.target.value } : item))} /></Field></div>)}
+                </div>
+                {savePassengers.error && <Notice error>{savePassengers.error}</Notice>}
+                <button className="button secondary" disabled={savePassengers.busy || passengerDrafts.length === 0}>{savePassengers.busy ? "Recording…" : "Record passenger roster"}</button>
+              </form>
+            </section>
+          ) : null}
+          {session.permissions.includes("notifications.read") && <CustomerMessages bookingId={bookingId} timezone={session.tenant.timezone} canRequest={session.permissions.includes("notifications.request")} />}
           {expired ? (
             <Notice error>
               This hold expired and cannot be confirmed.{" "}
@@ -591,6 +832,24 @@ export function BookingDetail({
               </div>
             </div>
           ) : null}
+          {b.payments.length>0&&(
+            <section className="panel form-panel">
+              <h2>Payment history</h2>
+              <p className="muted">Original entries remain immutable. Corrections are appended with their own reference and reason.</p>
+              <div className="stack-list">
+                {b.payments.map(payment=><div className="detail-row" key={payment.id}>
+                  <span><strong>{money(payment.amount_minor,payment.currency)} · {label(payment.method)}</strong><small>{dateTime(payment.occurred_at,session.tenant.timezone)} · {payment.reference}</small>{payment.adjustment_id&&<small>{label(payment.adjustment_kind!)} · {payment.adjustment_reference} · {payment.adjustment_reason}</small>}</span>
+                  {!payment.adjustment_id&&session.permissions.includes("payment.correct")&&<button className="button secondary" type="button" onClick={()=>setAdjustingPaymentId(payment.id)}>{payment.status==="pending"?"Void entry":"Record reversal"}</button>}
+                </div>)}
+              </div>
+              {adjustingPaymentId&&<div className="form-grid">
+                <Field label="Adjustment reference"><input required maxLength={120} value={adjustmentReference} onChange={event=>setAdjustmentReference(event.target.value)}/></Field>
+                <Field label="Reason"><input required minLength={8} maxLength={500} value={adjustmentReason} onChange={event=>setAdjustmentReason(event.target.value)}/></Field>
+                <div className="button-row"><button className="button secondary" type="button" disabled={adjustPayment.busy||!adjustmentReference.trim()||adjustmentReason.trim().length<8} onClick={()=>void correctPayment(b.payments.find(payment=>payment.id===adjustingPaymentId)!)}>{adjustPayment.busy?"Recording…":"Confirm correction"}</button><button className="text-button" type="button" onClick={()=>setAdjustingPaymentId("")}>Cancel</button></div>
+              </div>}
+              {adjustPayment.error&&<Notice error>{adjustPayment.error}</Notice>}
+            </section>
+          )}
         </div>
         <aside className="panel summary-panel">
           <p className="eyebrow">PAYMENT & CONFIRMATION</p>
@@ -618,6 +877,22 @@ export function BookingDetail({
                 )}
               </strong>
             </div>
+            {financeSummary.data && (
+              <>
+                <div>
+                  <span>Accepted partner credit</span>
+                  <strong>{money(financeSummary.data.partnerCreditMinor, b.quote.currency)}</strong>
+                </div>
+                <div>
+                  <span>Guest balance after credit</span>
+                  <strong>{money(financeSummary.data.guestBalanceMinor, b.quote.currency)}</strong>
+                </div>
+                <div>
+                  <span>Partner obligation</span>
+                  <strong>{money(financeSummary.data.partnerObligationMinor, b.quote.currency)}</strong>
+                </div>
+              </>
+            )}
           </div>
           {b.state === "held" && !expired && (
             <div className="hold-timer">

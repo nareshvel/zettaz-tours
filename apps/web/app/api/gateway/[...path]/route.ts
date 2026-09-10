@@ -1,16 +1,28 @@
 import { unavailable, upstream, validOrigin } from "@/lib/server";
 export const dynamic = "force-dynamic";
 const paths: Record<string, RegExp> = {
-  GET: /^(staff\/v1\/workspace\/(session|departures|reservations|members|summary)|admin\/v1\/(tenant|products)|staff\/v1\/bookings\/[a-f0-9-]{36}(\/changes)?|ops\/v1\/(audit|board|pickup-locations|departures\/[a-f0-9-]{36}\/(manifest|pickups|pickup-list)))$/,
-  POST: /^(admin\/v1\/(products|schedules|members)|staff\/v1\/(holds|bookings|bookings\/[a-f0-9-]{36}\/(payments|confirm|change-quotes|changes|cancel))|ops\/v1\/(pickup-locations|departures\/[a-f0-9-]{36}\/(pickups|operational-status)))$/,
-  PATCH: /^admin\/v1\/(tenant\/config|members\/[a-f0-9-]{36})$/,
+  GET: /^(staff\/v1\/(workspace\/(session|departures|reservations|members|roles|summary|subscription)|customers(?:\/[a-f0-9-]{36})?|departures\/[a-f0-9-]{36}\/availability|bookings\/[a-f0-9-]{36}(\/(changes|passengers|notifications))?)|admin\/v1\/(tenant|products|invitations|support-access)|integrations\/v1\/(accounts|mappings|inbox|assisted-imports)|finance\/v1\/(partners(?:\/available)?|partner-claims|partner-statements|bookings\/[a-f0-9-]{36}\/finance-summary)|ops\/v1\/(audit|board|resources|crew|compliance-documents|print-templates|print-jobs(?:\/[a-f0-9-]{36}\/pdf)?|pickup-locations|waiver-templates|stays\/options|bookings\/[a-f0-9-]{36}\/waivers|departures\/[a-f0-9-]{36}\/(manifest|pickups|pickup-list|assignments|rebooking-options)))$/,
+  POST: /^(auth\/v1\/change-password|admin\/v1\/(tenant\/logo|products|schedules|members|roles|invitations|support-access\/[a-f0-9-]{36}\/(decision|revoke))|integrations\/v1\/(accounts|mappings|assisted-imports|inbox\/[a-f0-9-]{36}\/review)|staff\/v1\/(holds|overbook-holds|bookings|bookings\/[a-f0-9-]{36}\/(payments(?:\/[a-f0-9-]{36}\/adjustments)?|confirm|change-quotes|changes|cancel|passengers(?:\/corrections)?|notifications)|passengers\/[a-f0-9-]{36}\/(checkin|checkin-token)|crew\/checkin-token\/resolve)|crew\/v1\/departures\/[a-f0-9-]{36}\/events|finance\/v1\/(partners|partner-claims(?:\/[a-f0-9-]{36}\/decision)?)|ops\/v1\/(resources|crew|compliance-documents|assignments|print-templates|print-jobs|pickup-locations|waiver-templates|stays\/(cruise-calls|accommodations)|bookings\/[a-f0-9-]{36}\/(waivers|checkin)|departures\/[a-f0-9-]{36}\/(pickups|operational-status|itinerary|rebooking-preview|rebook)))$/,
+  PATCH:
+    /^(admin\/v1\/(tenant\/(config|profile)|members\/[a-f0-9-]{36})|integrations\/v1\/accounts\/[a-f0-9-]{36}|staff\/v1\/workspace\/profile)$/,
 };
 async function handle(
   request: Request,
   context: { params: Promise<{ path: string[] }> },
 ) {
   const path = (await context.params).path.join("/");
-  if (!paths[request.method]?.test(path))
+  const reportRead = request.method === "GET" && path === "reports/v1/overview";
+  const connectorCatalogRead =
+    request.method === "GET" && path === "integrations/v1/catalog";
+  const importReportRead =
+    request.method === "GET" &&
+    /^integrations\/v1\/assisted-imports\/[a-f0-9-]{36}\/report$/.test(path);
+  if (
+    !reportRead &&
+    !connectorCatalogRead &&
+    !importReportRead &&
+    !paths[request.method]?.test(path)
+  )
     return Response.json({ message: "Route unavailable." }, { status: 404 });
   if (request.method !== "GET" && !validOrigin(request))
     return Response.json(
@@ -36,8 +48,19 @@ async function handle(
         },
         { status: 409, headers: { "Cache-Control": "no-store" } },
       );
-    const body = request.method === "GET" ? undefined : await request.text();
-    if (body && Buffer.byteLength(body) > 65536)
+    const multipart = request.headers
+      .get("content-type")
+      ?.startsWith("multipart/form-data");
+    const body =
+      request.method === "GET"
+        ? undefined
+        : multipart
+          ? await request.arrayBuffer()
+          : await request.text();
+    const tooLarge = multipart
+      ? body instanceof ArrayBuffer && body.byteLength > 2 * 1024 * 1024
+      : typeof body === "string" && Buffer.byteLength(body) > 65536;
+    if (body && tooLarge)
       return Response.json(
         { message: "Request is too large." },
         { status: 413 },
@@ -48,12 +71,20 @@ async function handle(
       headers:
         request.method === "GET"
           ? {}
-          : { "Idempotency-Key": request.headers.get("idempotency-key") ?? "" },
+          : {
+              "Idempotency-Key": request.headers.get("idempotency-key") ?? "",
+              ...(multipart
+                ? { "Content-Type": request.headers.get("content-type") ?? "" }
+                : {}),
+            },
     });
-    return new Response(await res.text(), {
+    return new Response(await res.arrayBuffer(), {
       status: res.status,
       headers: {
         "Content-Type": res.headers.get("content-type") ?? "application/json",
+        ...(res.headers.get("content-disposition")
+          ? { "Content-Disposition": res.headers.get("content-disposition")! }
+          : {}),
         "Cache-Control": "no-store",
       },
     });

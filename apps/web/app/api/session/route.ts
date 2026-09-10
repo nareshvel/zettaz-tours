@@ -1,6 +1,5 @@
 import { cookies } from "next/headers";
 import {
-  demoAccess,
   sessionCookie,
   unavailable,
   upstream,
@@ -9,19 +8,23 @@ import {
 export const dynamic = "force-dynamic";
 export async function GET() {
   try {
-    const data = await demoAccess();
     const cookie = (await cookies()).get(sessionCookie);
     let session = null;
+    let tenants: unknown[] = [];
     if (cookie) {
       const res = await upstream("/staff/v1/workspace/session");
-      if (res.ok) session = await res.json();
-      else if (res.status !== 401) throw new Error("Session check failed");
+      if (res.ok) {
+        session = await res.json();
+        const memberships = await upstream("/auth/v1/tenants");
+        if (memberships.ok) tenants = (await memberships.json()).tenants;
+      } else if (res.status !== 401) throw new Error("Session check failed");
     }
     return Response.json(
       {
-        tenants: data.tenants.map((t) => ({
-          tenantId: t.tenantId,
-          name: t.name,
+        tenants: tenants.map((tenant: any) => ({
+          tenantId: tenant.tenant_id,
+          name: tenant.name,
+          email: tenant.email,
         })),
         session,
       },
@@ -39,24 +42,49 @@ export async function POST(request: Request) {
     );
   try {
     const input = await request.json();
-    const data = await demoAccess();
-    const selected = data.tenants.find((t) => t.tenantId === input.tenantId);
-    if (!selected)
+    const existing = (await cookies()).get(sessionCookie)?.value;
+    const auth =
+      input.activationToken
+        ? await upstream("/auth/v1/invitations/accept", {
+            method: "POST",
+            body: JSON.stringify({ token: input.activationToken, password: input.password }),
+          })
+      : existing && !input.password
+        ? await upstream(
+            "/auth/v1/switch-tenant",
+            {
+              method: "POST",
+              body: JSON.stringify({ tenantId: input.tenantId }),
+            },
+            existing,
+          )
+        : await upstream("/auth/v1/sign-in", {
+            method: "POST",
+            body: JSON.stringify({
+              email: input.email,
+              password: input.password,
+              tenantId: input.tenantId || undefined,
+            }),
+          });
+    if (!auth.ok) {
+      const body = await auth.json();
       return Response.json(
-        { message: "Unknown demo tenant." },
-        { status: 400 },
+        { message: body.detail?.detail ?? "Email or password is incorrect." },
+        { status: auth.status === 401 ? 401 : 400 },
       );
+    }
+    const signedIn = await auth.json();
     const res = await upstream(
       "/staff/v1/workspace/session",
       {},
-      selected.token,
+      signedIn.token,
     );
     if (!res.ok)
       return Response.json(
-        { message: "Demo session expired. Restart the demo." },
+        { message: "Sign-in session could not be established." },
         { status: 401 },
       );
-    (await cookies()).set(sessionCookie, selected.token, {
+    (await cookies()).set(sessionCookie, signedIn.token, {
       httpOnly: true,
       sameSite: "strict",
       secure: false,
@@ -64,7 +92,14 @@ export async function POST(request: Request) {
       maxAge: 8 * 60 * 60,
     });
     return Response.json(
-      { session: await res.json() },
+      {
+        session: await res.json(),
+        tenants: (signedIn.tenants ?? []).map((tenant: any) => ({
+          tenantId: tenant.tenant_id,
+          name: tenant.name,
+          email: tenant.email,
+        })),
+      },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch {
@@ -77,6 +112,18 @@ export async function DELETE(request: Request) {
       { message: "Request origin rejected." },
       { status: 403 },
     );
-  (await cookies()).delete(sessionCookie);
+  try {
+    const current = (await cookies()).get(sessionCookie)?.value;
+    if (current)
+      await upstream(
+        new URL(request.url).searchParams.get("all") === "true"
+          ? "/auth/v1/sign-out-all"
+          : "/auth/v1/sign-out",
+        { method: "POST" },
+        current,
+      );
+  } finally {
+    (await cookies()).delete(sessionCookie);
+  }
   return Response.json({ ok: true });
 }

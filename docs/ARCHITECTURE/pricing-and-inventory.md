@@ -10,6 +10,8 @@ Availability is the minimum of sellable passenger capacity and all required reso
 
 Temporary reservation holds expire automatically. Confirmation is idempotent. Capacity changes emit outbox events and recalculate affected departures. Manual overbooking requires permission, reason, and an audit event.
 
+Authorized exception seats are stored separately from ordinary `committed` capacity. The database continues to enforce `committed <= capacity`; `overbooked` records the explicit exception total. A privileged user creates an overbook hold only after ordinary availability is exhausted, supplies a reason of at least eight characters, and is recorded as the authorizer. Confirmation, cancellation and same-departure amendments increment or release the matching pool so the exception cannot be hidden inside normal capacity.
+
 ## Inventory strategies by product type
 
 Do not implement one unified inventory engine that pretends shared tours, private charters, and transfers are the same primitive.

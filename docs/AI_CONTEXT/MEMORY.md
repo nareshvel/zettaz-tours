@@ -2,7 +2,7 @@
 
 Keep under 200 lines. Update after sessions that change standing decisions.
 
-**Last updated:** 2026-09-09
+**Last updated:** 2026-09-10
 
 ## Standing decisions
 
@@ -37,7 +37,8 @@ See [../STRATEGY/delivery.md](../STRATEGY/delivery.md).
 ## Implementation started — 9 September 2026
 
 - First-slice NestJS/PostgreSQL API exists under apps/api, with shared validated contracts under packages/shared. See ADR 009 and HANDOFF/local-development.md.
-- npm run demo provisions two isolated mock tenants; npm test runs real PostgreSQL/RLS/concurrency tests. Production startup is blocked pending identity/MFA and launch hardening. Next.js tenant operations UI now exists under apps/web (ADR 010); Expo and live payment integration remain unimplemented.
+- `npm run db:seed` maintains two isolated local demo tenants; `sample-river-excursions` is displayed as Rock Adventures Demo with workbook-informed catalog and operational reference data, while all guest and financial records remain synthetic. See [../CLIENTS/rock-adventures/demo-data.md](../CLIENTS/rock-adventures/demo-data.md).
+- npm test runs real PostgreSQL/RLS/concurrency tests. Production startup is blocked pending identity/MFA and launch hardening. Next.js tenant operations UI and the connected Expo crew client exist; encrypted offline mobile sync and live payment integration remain policy-dependent.
 - Terminology is Partners/Resellers for external hotel/reseller organizations.
 
 ## Tenant workspace — 9 September 2026

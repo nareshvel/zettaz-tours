@@ -2,7 +2,7 @@
 
 Multi-tenant tour operations platform. The first backend slice and tenant operations workspace are implemented with NestJS, PostgreSQL and Next.js. Expo crew workflows follow the delivery plan.
 
-Start the isolated mock demo with `npm ci` then `npm run demo:web`. Run database-backed checks with `npm test`. Requires Node 22.14+ and PostgreSQL binaries on PATH, or a disposable test database for tests.
+For persistent local development, run `npm ci`, `npm run db:migrate`, `npm run db:seed`, then `npm run workspace:dev`. Run database-backed checks with `npm test`. The isolated `npm run demo:web` path remains available for demo and test-style checks. Requires Node 22.14+ and PostgreSQL binaries on PATH, or a disposable test database for tests.
 
 - [Local development and limitations](docs/HANDOFF/local-development.md)
 - [Product documentation](docs/README.md)

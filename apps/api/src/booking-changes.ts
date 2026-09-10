@@ -4,12 +4,14 @@ import {
   Controller,
   Get,
   Headers,
+  HttpException,
   Injectable,
   NotFoundException,
   Param,
   Post,
 } from "@nestjs/common";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { z } from "zod";
 import {
   Actor,
   amendmentSchema,
@@ -24,6 +26,42 @@ import { ReservationService } from "./reservations";
 import { InventoryService } from "./inventory";
 import { FinanceService } from "./finance";
 import { tenant } from "./tenant";
+
+const rebookingPreviewSchema = z.object({
+  targetDepartureId: id,
+  reason: z.string().trim().min(1).max(500),
+}).strict();
+const rebookingApplySchema = z.object({
+  targetDepartureId: id,
+  items: z.array(z.object({
+    bookingId: id,
+    version: z.number().int().positive(),
+    quoteId: id,
+  }).strict()).min(1).max(200),
+}).strict().refine(
+  (value) => new Set(value.items.map((item) => item.bookingId)).size === value.items.length,
+  "A booking can appear only once",
+);
+
+function childKey(key: string, bookingId: string, action: string) {
+  const hex = createHash("sha256").update(`${key}:${bookingId}:${action}`).digest("hex").slice(0, 32).split("");
+  hex[12] = "4";
+  hex[16] = ((parseInt(hex[16]!, 16) & 3) | 8).toString(16);
+  const value = hex.join("");
+  return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
+}
+
+function failureMessage(error: unknown) {
+  if (error instanceof HttpException) {
+    const response = error.getResponse();
+    if (typeof response === "string") return response;
+    if (response && typeof response === "object" && "message" in response) {
+      const message = (response as { message: unknown }).message;
+      return Array.isArray(message) ? message.join("; ") : String(message);
+    }
+  }
+  return error instanceof Error ? error.message : "Rebooking failed";
+}
 
 @Injectable()
 export class BookingChangeService {
@@ -217,17 +255,21 @@ export class BookingChangeService {
             throw new ConflictException(
               "Insufficient seats; original booking is unchanged",
             );
+          const sourcePool = old.overbook_authorized_by ? "overbooked" : "committed";
+          const retainOverbook = booking.departure_id === q.input.departureId && Boolean(old.overbook_authorized_by);
+          const targetPool = retainOverbook ? "overbooked" : "committed";
           await tx.query(
-            "UPDATE departures SET committed=committed-$3 WHERE tenant_id=$1 AND id=$2",
+            `UPDATE departures SET ${sourcePool}=${sourcePool}-$3 WHERE tenant_id=$1 AND id=$2`,
             [actor.tenantId, booking.departure_id, old.seats],
           );
           await tx.query(
-            "UPDATE departures SET committed=committed+$3 WHERE tenant_id=$1 AND id=$2",
+            `UPDATE departures SET ${targetPool}=${targetPool}+$3 WHERE tenant_id=$1 AND id=$2`,
             [actor.tenantId, q.input.departureId, q.seats],
           );
           holdId = randomUUID();
           await tx.query(
-            `INSERT INTO holds(tenant_id,id,departure_id,actor_id,party,seats,quote,expires_at,consumed) VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp(),true)`,
+            `INSERT INTO holds(tenant_id,id,departure_id,actor_id,party,seats,quote,expires_at,consumed,overbook_authorized_by,overbook_reason)
+             VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp(),true,$8,$9)`,
             [
               actor.tenantId,
               holdId,
@@ -236,6 +278,8 @@ export class BookingChangeService {
               q.input.party,
               q.seats,
               q.quote,
+              retainOverbook ? old.overbook_authorized_by : null,
+              retainOverbook ? old.overbook_reason : null,
             ],
           );
           await tx.query("INSERT INTO price_snapshots VALUES($1,$2,$3,$4)", [
@@ -259,7 +303,7 @@ export class BookingChangeService {
             "departure.capacity_changed",
             booking.departure_id,
             null,
-            { committedDelta: -old.seats },
+            old.overbook_authorized_by ? { overbookedDelta: -old.seats } : { committedDelta: -old.seats },
             q.input.reason,
           );
           await record(
@@ -268,7 +312,7 @@ export class BookingChangeService {
             "departure.capacity_changed",
             q.input.departureId,
             null,
-            { committedDelta: q.seats },
+            retainOverbook ? { overbookedDelta: q.seats } : { committedDelta: q.seats },
             q.input.reason,
           );
         }
@@ -280,8 +324,19 @@ export class BookingChangeService {
             "DELETE FROM pickup_stops WHERE tenant_id=$1 AND booking_id=$2",
             [actor.tenantId, bookingId],
           );
+        let customerId = booking.customer_id;
+        if (booking.lead_email.toLowerCase().trim() !== q.input.leadEmail.toLowerCase().trim()) {
+          const { rows: [customer] } = await tx.query(
+            `INSERT INTO customers(tenant_id,id,name,email,normalized_email,phone)
+             VALUES($1,$2,$3,$4,lower(trim($4)),'')
+             ON CONFLICT(tenant_id,normalized_email) DO UPDATE SET name=EXCLUDED.name,email=EXCLUDED.email,updated_at=clock_timestamp()
+             RETURNING id`,
+            [actor.tenantId, randomUUID(), q.input.leadName, q.input.leadEmail],
+          );
+          customerId = customer.id;
+        }
         await tx.query(
-          `UPDATE bookings SET hold_id=$3,departure_id=$4,lead_name=$5,lead_email=$6,pickup=$7,version=version+1 WHERE tenant_id=$1 AND id=$2`,
+          `UPDATE bookings SET hold_id=$3,departure_id=$4,lead_name=$5,lead_email=$6,pickup=$7,customer_id=$8,version=version+1 WHERE tenant_id=$1 AND id=$2`,
           [
             actor.tenantId,
             bookingId,
@@ -290,6 +345,7 @@ export class BookingChangeService {
             q.input.leadName,
             q.input.leadEmail,
             q.input.pickup,
+            customerId,
           ],
         );
         const after = {
@@ -299,6 +355,7 @@ export class BookingChangeService {
           lead_name: q.input.leadName,
           lead_email: q.input.leadEmail,
           pickup: q.input.pickup,
+          customer_id: customerId,
           party: q.input.party,
           quote: q.quote,
           version: booking.version + 1,
@@ -341,8 +398,9 @@ export class BookingChangeService {
           throw new ConflictException("Stale booking version");
         const hold = await this.editable(tx, actor, booking);
         if (booking.state === "confirmed") {
+          const pool = hold.overbook_authorized_by ? "overbooked" : "committed";
           await tx.query(
-            "UPDATE departures SET committed=committed-$3 WHERE tenant_id=$1 AND id=$2",
+            `UPDATE departures SET ${pool}=${pool}-$3 WHERE tenant_id=$1 AND id=$2`,
             [actor.tenantId, booking.departure_id, hold.seats],
           );
           await record(
@@ -351,7 +409,7 @@ export class BookingChangeService {
             "departure.capacity_changed",
             booking.departure_id,
             null,
-            { committedDelta: -hold.seats },
+            hold.overbook_authorized_by ? { overbookedDelta: -hold.seats } : { committedDelta: -hold.seats },
             data.reason,
           );
         } else {
@@ -380,6 +438,14 @@ export class BookingChangeService {
           "SELECT COUNT(*)::int AS count FROM payments WHERE tenant_id=$1 AND booking_id=$2",
           [actor.tenantId, bookingId],
         );
+        const {
+          rows: [partnerFacts],
+        } = await tx.query(
+          `SELECT EXISTS(SELECT 1 FROM booking_partner_snapshots WHERE tenant_id=$1 AND booking_id=$2)
+            OR EXISTS(SELECT 1 FROM partner_collection_claims WHERE tenant_id=$1 AND booking_id=$2)
+            OR EXISTS(SELECT 1 FROM partner_obligations WHERE tenant_id=$1 AND booking_id=$2) AS present`,
+          [actor.tenantId, bookingId],
+        );
         await tx.query(
           "UPDATE bookings SET state='cancelled',version=version+1 WHERE tenant_id=$1 AND id=$2",
           [actor.tenantId, bookingId],
@@ -388,7 +454,7 @@ export class BookingChangeService {
           ...booking,
           state: "cancelled",
           version: booking.version + 1,
-          financeReviewRequired: payments.count > 0,
+          financeReviewRequired: payments.count > 0 || partnerFacts.present,
           paidMinor,
           currency: hold.quote.currency,
         };
@@ -456,6 +522,102 @@ export class BookingChangeService {
       ).rows;
     });
   }
+
+  rebookingOptions(actor: Actor, sourceDepartureId: string) {
+    return this.db.transaction(actor, async (tx) => {
+      const source = await this.inventory.departure(tx, actor, sourceDepartureId);
+      const { rows } = await tx.query(
+        `SELECT d.id,d.starts_at,d.capacity,(d.committed+d.overbooked)::int AS committed,d.overbooked,GREATEST(0,d.capacity-d.committed-d.overbooked)::int AS available,p.name AS product_name
+         FROM departures d JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id
+         WHERE d.tenant_id=$1 AND d.product_id=$2 AND d.id<>$3
+           AND d.starts_at>clock_timestamp() AND d.operational_status='open'
+         ORDER BY d.starts_at,d.id LIMIT 100`,
+        [actor.tenantId, source.product_id, sourceDepartureId],
+      );
+      return { source: { id: source.id, startsAt: source.starts_at, status: source.operational_status }, options: rows };
+    });
+  }
+
+  async previewRebooking(actor: Actor, sourceDepartureId: string, key: string, raw: unknown) {
+    const input = parse(rebookingPreviewSchema, raw);
+    const candidates = await this.db.transaction(actor, async (tx) => {
+      const source = await this.inventory.departure(tx, actor, sourceDepartureId);
+      if (source.operational_status === "open")
+        throw new ConflictException("Put the source departure on weather hold or close it before preparing recovery");
+      const target = await this.inventory.departure(tx, actor, input.targetDepartureId);
+      if (target.operational_status !== "open")
+        throw new ConflictException("Target departure is not open");
+      if (target.product_id !== source.product_id)
+        throw new ConflictException("Target departure must use the same tour product");
+      const { rows } = await tx.query(
+        `SELECT b.id,b.version,b.lead_name,b.lead_email,b.pickup,h.party
+         FROM bookings b JOIN holds h ON h.tenant_id=b.tenant_id AND h.id=b.hold_id
+         WHERE b.tenant_id=$1 AND b.departure_id=$2 AND b.state='confirmed'
+         ORDER BY b.id LIMIT 200`,
+        [actor.tenantId, sourceDepartureId],
+      );
+      return rows;
+    });
+    const items: any[] = [];
+    for (const booking of candidates) {
+      try {
+        const quote = await this.quote(actor, booking.id, childKey(key, booking.id, "preview"), {
+          version: booking.version,
+          departureId: input.targetDepartureId,
+          party: booking.party,
+          leadName: booking.lead_name,
+          leadEmail: booking.lead_email,
+          pickup: booking.pickup,
+          reason: input.reason,
+        });
+        items.push({ bookingId: booking.id, leadName: booking.lead_name, eligible: true, ...quote });
+      } catch (error) {
+        items.push({ bookingId: booking.id, leadName: booking.lead_name, eligible: false, reason: failureMessage(error) });
+      }
+    }
+    return {
+      sourceDepartureId,
+      targetDepartureId: input.targetDepartureId,
+      affected: candidates.length,
+      eligible: items.filter((item) => item.eligible).length,
+      excluded: items.filter((item) => !item.eligible).length,
+      messagesQueued: 0,
+      items,
+    };
+  }
+
+  async applyRebooking(actor: Actor, sourceDepartureId: string, key: string, raw: unknown) {
+    const input = parse(rebookingApplySchema, raw);
+    const results: any[] = [];
+    for (const item of input.items) {
+      try {
+        await this.db.transaction(actor, async (tx) => {
+          const { rows: [valid] } = await tx.query(
+            `SELECT 1 FROM booking_change_quotes q JOIN bookings b ON b.tenant_id=q.tenant_id AND b.id=q.booking_id
+             WHERE q.tenant_id=$1 AND q.id=$2 AND q.booking_id=$3
+               AND b.departure_id=$4 AND q.input->>'departureId'=$5`,
+            [actor.tenantId, item.quoteId, item.bookingId, sourceDepartureId, input.targetDepartureId],
+          );
+          if (!valid) throw new ConflictException("Quote does not belong to this recovery plan");
+        });
+        const result = await this.accept(actor, item.bookingId, childKey(key, item.bookingId, "apply"), {
+          version: item.version,
+          quoteId: item.quoteId,
+        });
+        results.push({ bookingId: item.bookingId, success: true, version: result.version });
+      } catch (error) {
+        results.push({ bookingId: item.bookingId, success: false, reason: failureMessage(error) });
+      }
+    }
+    return {
+      sourceDepartureId,
+      targetDepartureId: input.targetDepartureId,
+      succeeded: results.filter((item) => item.success).length,
+      failed: results.filter((item) => !item.success).length,
+      messagesQueued: 0,
+      results,
+    };
+  }
 }
 @Controller("staff/v1/bookings")
 export class BookingChangeController {
@@ -489,5 +651,32 @@ export class BookingChangeController {
     @Param("id") b: string,
   ) {
     return this.service.historyRead(a, parse(id, b));
+  }
+}
+
+@Controller("ops/v1/departures")
+export class RebookingController {
+  constructor(private readonly service: BookingChangeService) {}
+  @Get(":id/rebooking-options") @Access("operations.write") options(
+    @CurrentActor() actor: Actor,
+    @Param("id") departureId: string,
+  ) {
+    return this.service.rebookingOptions(actor, parse(id, departureId));
+  }
+  @Post(":id/rebooking-preview") @Access("operations.write") preview(
+    @CurrentActor() actor: Actor,
+    @Param("id") departureId: string,
+    @Headers("idempotency-key") key: string,
+    @Body() input: unknown,
+  ) {
+    return this.service.previewRebooking(actor, parse(id, departureId), parse(keySchema, key), input);
+  }
+  @Post(":id/rebook") @Access("operations.write") apply(
+    @CurrentActor() actor: Actor,
+    @Param("id") departureId: string,
+    @Headers("idempotency-key") key: string,
+    @Body() input: unknown,
+  ) {
+    return this.service.applyRebooking(actor, parse(id, departureId), parse(keySchema, key), input);
   }
 }

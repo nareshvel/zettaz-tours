@@ -4,13 +4,13 @@
     "currency": "USD",
     "manifest": {
       "departure": {
-        "id": "4557715e-92c5-4d49-a740-f5e0d1d62aa6",
+        "id": "77871107-d1f8-4be3-b310-60570a2421dd",
         "starts_at": "2026-09-10T13:00:00.000Z",
         "capacity": 18
       },
       "bookings": [
         {
-          "booking_id": "dbc37eb8-42d8-49a4-8409-356355da991a",
+          "booking_id": "573ecfe5-7f0d-4a22-9a8b-9fb7d4e1b3ab",
           "lead_name": "Mock Traveler",
           "pickup": {
             "kind": "selected",
@@ -30,13 +30,13 @@
     "currency": "XCD",
     "manifest": {
       "departure": {
-        "id": "08dbe68b-f3d7-4abd-b264-b67cde813d08",
+        "id": "8258e610-a7bc-49ee-aff2-21e282e7e463",
         "starts_at": "2026-09-10T13:00:00.000Z",
         "capacity": 18
       },
       "bookings": [
         {
-          "booking_id": "aacc5064-649c-4cff-8843-4c3b1cdf92ac",
+          "booking_id": "aa570486-9318-4df5-9b09-abe1e597a3be",
           "lead_name": "Mock Traveler",
           "pickup": {
             "kind": "selected",

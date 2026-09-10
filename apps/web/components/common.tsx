@@ -86,6 +86,37 @@ export function Field({
     </label>
   );
 }
+export function Toggle({
+  label: caption,
+  description,
+  checked,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  description?: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="toggle">
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span className="toggle-track" aria-hidden="true">
+        <i />
+      </span>
+      <span>
+        <strong>{caption}</strong>
+        {description && <small>{description}</small>}
+      </span>
+    </label>
+  );
+}
 export function Back({
   href,
   children,

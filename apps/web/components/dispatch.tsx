@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   CalendarDays,
+  Download,
   MapPin,
   Plus,
   Printer,
@@ -14,9 +15,18 @@ import type {
   PickupLocation,
   PickupPlan,
   PrintablePickupList,
+  RebookingOption,
+  RebookingPreview,
   Session,
 } from "@/lib/types";
-import { dateTime, label, useMutation, useResource } from "@/lib/client";
+import {
+  dateTime,
+  downloadApiFile,
+  label,
+  money,
+  useMutation,
+  useResource,
+} from "@/lib/client";
 import { Back, Empty, Field, Heading, Loading, Notice, Status } from "./common";
 
 const localDay = (zone: string) =>
@@ -102,9 +112,20 @@ export function OperationsBoard({ session }: { session: Session }) {
                   </span>
                   <div className="dispatch-actions">
                     {d.operational_status !== "open" && (
-                      <span className="status held">
-                        {label(d.operational_status)}
-                      </span>
+                      <>
+                        <span className="status held">
+                          {label(d.operational_status)}
+                        </span>
+                        {session.permissions.includes("operations.write") &&
+                          d.confirmed_bookings > 0 && (
+                            <Link
+                              className="text-link"
+                              href={`/operations/${d.id}/rebook`}
+                            >
+                              Recovery
+                            </Link>
+                          )}
+                      </>
                     )}
                     {session.permissions.includes("operations.write") && (
                       <OperationalStatusControl
@@ -138,6 +159,203 @@ export function OperationsBoard({ session }: { session: Session }) {
               </article>
             );
           })}
+        </div>
+      )}
+    </>
+  );
+}
+
+export function RebookingPage({
+  session,
+  departureId,
+}: {
+  session: Session;
+  departureId: string;
+}) {
+  const options = useResource<{
+    source: { id: string; startsAt: string; status: string };
+    options: RebookingOption[];
+  }>(`ops/v1/departures/${departureId}/rebooking-options`);
+  const previewMutation = useMutation();
+  const applyMutation = useMutation();
+  const [targetDepartureId, setTargetDepartureId] = useState("");
+  const [reason, setReason] = useState("");
+  const [preview, setPreview] = useState<RebookingPreview | null>(null);
+  const [result, setResult] = useState<{
+    succeeded: number;
+    failed: number;
+    results: Array<{ bookingId: string; success: boolean; reason?: string }>;
+  } | null>(null);
+
+  async function prepare(event: React.FormEvent) {
+    event.preventDefault();
+    setResult(null);
+    const data = await previewMutation.run<RebookingPreview>(
+      `ops/v1/departures/${departureId}/rebooking-preview`,
+      { targetDepartureId, reason },
+    );
+    if (data) setPreview(data);
+  }
+  async function apply() {
+    if (!preview) return;
+    const eligible = preview.items.filter(
+      (item): item is typeof item & { quoteId: string; version: number } =>
+        item.eligible && Boolean(item.quoteId) && Boolean(item.version),
+    );
+    if (!eligible.length) return;
+    if (
+      !window.confirm(
+        `Move ${eligible.length} eligible booking${eligible.length === 1 ? "" : "s"} to the selected departure? Each booking will retain its payment history and receive a new price snapshot.`,
+      )
+    )
+      return;
+    const data = await applyMutation.run<{
+      succeeded: number;
+      failed: number;
+      results: Array<{ bookingId: string; success: boolean; reason?: string }>;
+    }>(`ops/v1/departures/${departureId}/rebook`, {
+      targetDepartureId: preview.targetDepartureId,
+      items: eligible.map((item) => ({
+        bookingId: item.bookingId,
+        version: item.version,
+        quoteId: item.quoteId,
+      })),
+    });
+    if (data) setResult(data);
+  }
+
+  return (
+    <>
+      <Back href="/operations">Operations</Back>
+      <Heading
+        eyebrow="OPERATIONS"
+        title="Departure recovery"
+        description="Preview every affected booking before moving eligible guests to an open departure."
+      />
+      {options.error && <Notice error>{options.error}</Notice>}
+      {!options.data ? (
+        !options.error && <Loading />
+      ) : (
+        <div className="rebooking-layout">
+          <form className="panel form-card" onSubmit={prepare}>
+            <h2>Prepare rebooking</h2>
+            <p className="subtitle">
+              Source status: {label(options.data.source.status)}. Customer
+              messages remain unsent for review.
+            </p>
+            <Field label="Replacement departure">
+              <select
+                required
+                value={targetDepartureId}
+                onChange={(event) => {
+                  setTargetDepartureId(event.target.value);
+                  setPreview(null);
+                }}
+              >
+                <option value="">Select an open departure</option>
+                {options.data.options.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {dateTime(option.starts_at, session.tenant.timezone)} ·{" "}
+                    {option.available} seats available
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field
+              label="Recovery reason"
+              hint="This reason is written to each booking's immutable change history."
+            >
+              <textarea
+                required
+                maxLength={500}
+                value={reason}
+                onChange={(event) => {
+                  setReason(event.target.value);
+                  setPreview(null);
+                }}
+              />
+            </Field>
+            {previewMutation.error && (
+              <Notice error>{previewMutation.error}</Notice>
+            )}
+            <button
+              className="button"
+              disabled={previewMutation.busy || !options.data.options.length}
+            >
+              {previewMutation.busy
+                ? "Preparing…"
+                : "Preview affected bookings"}
+            </button>
+          </form>
+          {preview && (
+            <section className="panel form-card">
+              <div className="dispatch-card-top">
+                <div>
+                  <p className="eyebrow">RECOVERY PREVIEW</p>
+                  <h2>
+                    {preview.eligible} eligible · {preview.excluded} excluded
+                  </h2>
+                </div>
+                <Status state={preview.excluded ? "held" : "confirmed"} />
+              </div>
+              <Notice>
+                No messages are queued or sent by this action. Price differences
+                and balances remain visible for finance review.
+              </Notice>
+              <div className="rebooking-items">
+                {preview.items.map((item) => (
+                  <div key={item.bookingId}>
+                    <div>
+                      <strong>{item.leadName}</strong>
+                      <small>{item.bookingId}</small>
+                    </div>
+                    {item.eligible && item.quote ? (
+                      <div className="rebooking-amount">
+                        <strong>
+                          {money(item.quote.totalMinor, item.quote.currency)}
+                        </strong>
+                        <small>
+                          {item.differenceMinor === 0
+                            ? "No price change"
+                            : `${item.differenceMinor! > 0 ? "+" : ""}${money(item.differenceMinor!, item.quote.currency)} difference`}
+                        </small>
+                      </div>
+                    ) : (
+                      <span className="status cancelled">Excluded</span>
+                    )}
+                    {!item.eligible && (
+                      <small className="rebooking-reason">{item.reason}</small>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {applyMutation.error && (
+                <Notice error>{applyMutation.error}</Notice>
+              )}
+              {result && (
+                <Notice>
+                  {result.succeeded} moved successfully; {result.failed} require
+                  review.
+                </Notice>
+              )}
+              <div className="form-actions">
+                <button
+                  type="button"
+                  className="button"
+                  disabled={
+                    applyMutation.busy ||
+                    preview.eligible === 0 ||
+                    Boolean(result)
+                  }
+                  onClick={apply}
+                >
+                  {applyMutation.busy
+                    ? "Applying…"
+                    : `Move ${preview.eligible} eligible booking${preview.eligible === 1 ? "" : "s"}`}
+                </button>
+              </div>
+            </section>
+          )}
         </div>
       )}
     </>
@@ -234,6 +452,31 @@ export function PrintablePickupListPage({
   const list = useResource<PrintablePickupList>(
     `ops/v1/departures/${departureId}/pickup-list`,
   );
+  const printJob = useMutation();
+  async function printPickupList() {
+    if (!session.permissions.includes("print.jobs.create")) {
+      window.print();
+      return;
+    }
+    const result = await printJob.run("ops/v1/print-jobs", {
+      documentType: "pickup_list",
+      sourceType: "departure",
+      sourceId: departureId,
+    });
+    if (result) window.print();
+  }
+  async function downloadPickupList() {
+    const result = await printJob.run<{ id: string }>("ops/v1/print-jobs", {
+      documentType: "pickup_list",
+      sourceType: "departure",
+      sourceId: departureId,
+    });
+    if (result)
+      await downloadApiFile(
+        `ops/v1/print-jobs/${result.id}/pdf`,
+        `pickup-list-${departureId.slice(0, 8)}.pdf`,
+      );
+  }
   if (list.error)
     return (
       <>
@@ -257,11 +500,26 @@ export function PrintablePickupListPage({
         title="Pickup list"
         description={`${departure.product_name} · ${dateTime(departure.starts_at, session.tenant.timezone)}`}
         action={
-          <button className="button no-print" onClick={() => window.print()}>
-            <Printer size={16} /> Print or save PDF
-          </button>
+          <div className="button-row no-print">
+            <button
+              className="button secondary"
+              disabled={printJob.busy}
+              onClick={() => void printPickupList()}
+            >
+              <Printer size={16} /> Print
+            </button>
+            <button
+              className="button"
+              disabled={printJob.busy}
+              onClick={() => void downloadPickupList()}
+            >
+              <Download size={16} />{" "}
+              {printJob.busy ? "Preparing…" : "Download PDF"}
+            </button>
+          </div>
         }
       />
+      {printJob.error && <Notice error>{printJob.error}</Notice>}
       <section className="panel pickup-print-summary">
         <div>
           <p className="eyebrow">SAVED PLAN</p>
@@ -382,6 +640,11 @@ function PickupEditor({
     slug: "",
     kind: "hotel",
     notes: "",
+    address: "",
+    latitude: "",
+    longitude: "",
+    mapUrl: "",
+    visibility: "internal",
   });
   const selected = useMemo(
     () => new Set(stops.map((s) => s.bookingId)),
@@ -403,9 +666,25 @@ function PickupEditor({
   }
   async function createLocation(e: React.FormEvent) {
     e.preventDefault();
-    const result = await add.run("ops/v1/pickup-locations", newLocation);
+    const result = await add.run("ops/v1/pickup-locations", {
+      ...newLocation,
+      latitude: newLocation.latitude ? Number(newLocation.latitude) : undefined,
+      longitude: newLocation.longitude
+        ? Number(newLocation.longitude)
+        : undefined,
+    });
     if (result) {
-      setNewLocation({ name: "", slug: "", kind: "hotel", notes: "" });
+      setNewLocation({
+        name: "",
+        slug: "",
+        kind: "hotel",
+        notes: "",
+        address: "",
+        latitude: "",
+        longitude: "",
+        mapUrl: "",
+        visibility: "internal",
+      });
       reload();
     }
   }
@@ -615,6 +894,58 @@ function PickupEditor({
                 }
               />
             </Field>
+            <Field label="Address or directions">
+              <input
+                maxLength={300}
+                value={newLocation.address}
+                onChange={(e) =>
+                  setNewLocation((v) => ({ ...v, address: e.target.value }))
+                }
+              />
+            </Field>
+            <div className="form-grid">
+              <Field label="Latitude">
+                <input
+                  inputMode="decimal"
+                  value={newLocation.latitude}
+                  onChange={(e) =>
+                    setNewLocation((v) => ({ ...v, latitude: e.target.value }))
+                  }
+                />
+              </Field>
+              <Field label="Longitude">
+                <input
+                  inputMode="decimal"
+                  value={newLocation.longitude}
+                  onChange={(e) =>
+                    setNewLocation((v) => ({ ...v, longitude: e.target.value }))
+                  }
+                />
+              </Field>
+            </div>
+            <Field
+              label="Map link"
+              hint="Optional tenant-controlled reference."
+            >
+              <input
+                type="url"
+                value={newLocation.mapUrl}
+                onChange={(e) =>
+                  setNewLocation((v) => ({ ...v, mapUrl: e.target.value }))
+                }
+              />
+            </Field>
+            <Field label="Visibility">
+              <select
+                value={newLocation.visibility}
+                onChange={(e) =>
+                  setNewLocation((v) => ({ ...v, visibility: e.target.value }))
+                }
+              >
+                <option value="internal">Internal operations only</option>
+                <option value="guest">May be shown to guests</option>
+              </select>
+            </Field>
             {add.error && <Notice error>{add.error}</Notice>}
             <button className="button secondary" disabled={add.busy}>
               {add.busy ? "Adding…" : "Add location"}
@@ -627,6 +958,9 @@ function PickupEditor({
                 <strong>{l.name}</strong>
                 <small>
                   {label(l.kind)} · {l.slug}
+                  {l.latitude !== null && l.longitude !== null
+                    ? " · mapped"
+                    : ""}
                 </small>
               </div>
             ))}

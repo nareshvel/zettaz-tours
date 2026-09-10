@@ -5,6 +5,7 @@ import {
   Plus,
   ArrowUpRight,
   ChevronRight,
+  Download,
   Printer,
   CalendarDays,
 } from "lucide-react";
@@ -16,7 +17,15 @@ import type {
   Audit,
   Page,
 } from "@/lib/types";
-import { dateTime, label, money, usePaged, useResource } from "@/lib/client";
+import {
+  dateTime,
+  downloadApiFile,
+  label,
+  money,
+  useMutation,
+  usePaged,
+  useResource,
+} from "@/lib/client";
 import {
   Back,
   Empty,
@@ -412,9 +421,110 @@ export function ManifestView({
   session: Session;
   departureId: string;
 }) {
-  const { data, error } = useResource<Manifest>(
+  const { data, error, reload } = useResource<Manifest>(
     `ops/v1/departures/${departureId}/manifest`,
   );
+  const assignments = useResource<{
+    readiness: "unassigned" | "ready" | "blocked";
+    items: {
+      id: string;
+      assignment_role: string;
+      resource_name: string | null;
+      crew_name: string | null;
+    }[];
+    expiredDocuments: {
+      id: string;
+      document_type: string;
+      expires_on: string;
+    }[];
+  }>(`ops/v1/departures/${departureId}/assignments`);
+  const checkin = useMutation();
+  const printJob = useMutation();
+  const itineraryMutation = useMutation();
+  const [checkinMessage, setCheckinMessage] = useState("");
+  const [scanToken, setScanToken] = useState("");
+  const [scanResult, setScanResult] = useState<{
+    passengerId: string;
+    name: string;
+    category: string;
+  } | null>(null);
+  const [addingItinerary, setAddingItinerary] = useState(false);
+  const [itineraryPoint, setItineraryPoint] = useState({
+    name: "",
+    address: "",
+    directions: "",
+    latitude: "",
+    longitude: "",
+    mapUrl: "",
+    visibility: "internal" as "internal" | "guest",
+  });
+  async function recordCheckin(
+    booking: Manifest["bookings"][number],
+    state: "arrived" | "cleared_to_board" | "boarded" | "no_show",
+  ) {
+    const result = await checkin.run<{
+      state: string;
+      version: number;
+    }>(`ops/v1/bookings/${booking.booking_id}/checkin`, {
+      state,
+      ...(booking.checkin_version ? { version: booking.checkin_version } : {}),
+    });
+    if (result) {
+      setCheckinMessage(
+        `${booking.lead_name}: ${label(result.state)} recorded.`,
+      );
+      reload();
+    }
+  }
+  async function recordPassengerCheckin(
+    booking: Manifest["bookings"][number],
+    passenger: Manifest["bookings"][number]["passengers"][number],
+    state: "arrived" | "cleared_to_board" | "boarded" | "no_show",
+  ) {
+    const result = await checkin.run<{ state: string }>(
+      `staff/v1/passengers/${passenger.id}/checkin`,
+      { state },
+    );
+    if (result) {
+      setCheckinMessage(`${passenger.name}: ${label(result.state)} recorded.`);
+      reload();
+    }
+  }
+  async function printManifest() {
+    if (!data) return;
+    if (!session.permissions.includes("print.jobs.create")) {
+      window.print();
+      return;
+    }
+    const result = await printJob.run("ops/v1/print-jobs", {
+      documentType: "manifest",
+      sourceType: "departure",
+      sourceId: data.departure.id,
+    });
+    if (result) window.print();
+  }
+  async function downloadManifest() {
+    if (!data) return;
+    const result = await printJob.run<{ id: string }>("ops/v1/print-jobs", {
+      documentType: "manifest",
+      sourceType: "departure",
+      sourceId: data.departure.id,
+    });
+    if (result)
+      await downloadApiFile(
+        `ops/v1/print-jobs/${result.id}/pdf`,
+        `manifest-${data.departure.id.slice(0, 8)}.pdf`,
+      );
+  }
+  async function resolveScan(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const result = await checkin.run<{
+      passengerId: string;
+      name: string;
+      category: string;
+    }>("staff/v1/crew/checkin-token/resolve", { token: scanToken });
+    if (result) setScanResult(result);
+  }
   return (
     <>
       <Back href="/departures">Departures</Back>
@@ -427,25 +537,322 @@ export function ManifestView({
             : undefined
         }
         action={
-          <button
-            className="button secondary no-print"
-            onClick={() => window.print()}
-            disabled={!data}
-          >
-            <Printer size={17} />
-            Print manifest
-          </button>
+          <div className="button-row no-print">
+            <button
+              className="button secondary"
+              onClick={() => void printManifest()}
+              disabled={!data || printJob.busy}
+            >
+              <Printer size={17} /> Print
+            </button>
+            <button
+              className="button"
+              onClick={() => void downloadManifest()}
+              disabled={!data || printJob.busy}
+            >
+              <Download size={17} />{" "}
+              {printJob.busy ? "Preparing…" : "Download PDF"}
+            </button>
+          </div>
         }
       />
       <div className="print-only">
         {session.tenant.name} · Mock data · {session.tenant.timezone}
       </div>
+      {assignments.data && (
+        <section className="panel no-print">
+          <div className="panel-heading">
+            <h2>Operational readiness</h2>
+            <span className={`status ${assignments.data.readiness}`}>
+              {assignments.data.readiness}
+            </span>
+          </div>
+          {assignments.data.expiredDocuments.length ? (
+            <Notice error>
+              Blocked by expired documents:{" "}
+              {assignments.data.expiredDocuments
+                .map((item) => item.document_type)
+                .join(", ")}
+              .
+            </Notice>
+          ) : assignments.data.items.length ? (
+            <p className="muted">
+              {assignments.data.items
+                .map(
+                  (item) =>
+                    `${item.assignment_role}: ${item.resource_name ?? item.crew_name}`,
+                )
+                .join(" · ")}
+            </p>
+          ) : (
+            <p className="muted">No crew or resources assigned yet.</p>
+          )}
+        </section>
+      )}
+      {data?.itinerary.length ? (
+        <section className="panel no-print">
+          <div className="panel-heading">
+            <div>
+              <h2>Itinerary & locations</h2>
+              <span className="muted">Tenant-controlled route points</span>
+            </div>
+            {session.permissions.includes("operations.write") && (
+              <button
+                className="button secondary"
+                onClick={() => setAddingItinerary((v) => !v)}
+              >
+                <Plus size={16} /> Add point
+              </button>
+            )}
+          </div>
+          <div className="stack-list">
+            {data.itinerary.map((point) => (
+              <div className="detail-row" key={point.id}>
+                <span>
+                  <strong>
+                    {point.sequence}. {point.name}
+                  </strong>
+                  <small>
+                    {[point.address, point.directions]
+                      .filter(Boolean)
+                      .join(" · ") || "Directions not recorded"}
+                  </small>
+                </span>
+                {point.map_url && (
+                  <a
+                    className="text-link"
+                    target="_blank"
+                    rel="noreferrer"
+                    href={point.map_url}
+                  >
+                    Open map <ArrowUpRight size={15} />
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : session.permissions.includes("operations.write") ? (
+        <section className="panel no-print">
+          <div className="panel-heading">
+            <div>
+              <h2>Itinerary & locations</h2>
+              <p className="muted">
+                Add the first controlled route point for this departure.
+              </p>
+            </div>
+            <button
+              className="button secondary"
+              onClick={() => setAddingItinerary(true)}
+            >
+              <Plus size={16} /> Add point
+            </button>
+          </div>
+        </section>
+      ) : null}
+      {addingItinerary && (
+        <section className="panel form-panel no-print">
+          <h2>Add itinerary point</h2>
+          <form
+            onSubmit={async (event) => {
+              event.preventDefault();
+              const result = await itineraryMutation.run(
+                `ops/v1/departures/${departureId}/itinerary`,
+                {
+                  ...itineraryPoint,
+                  sequence: (data?.itinerary.length ?? 0) + 1,
+                  latitude: itineraryPoint.latitude
+                    ? Number(itineraryPoint.latitude)
+                    : null,
+                  longitude: itineraryPoint.longitude
+                    ? Number(itineraryPoint.longitude)
+                    : null,
+                },
+              );
+              if (result) {
+                setAddingItinerary(false);
+                setItineraryPoint({
+                  name: "",
+                  address: "",
+                  directions: "",
+                  latitude: "",
+                  longitude: "",
+                  mapUrl: "",
+                  visibility: "internal",
+                });
+                reload();
+              }
+            }}
+          >
+            <div className="form-grid three">
+              <label className="field">
+                <span>Name</span>
+                <input
+                  required
+                  value={itineraryPoint.name}
+                  onChange={(e) =>
+                    setItineraryPoint({
+                      ...itineraryPoint,
+                      name: e.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>Address</span>
+                <input
+                  value={itineraryPoint.address}
+                  onChange={(e) =>
+                    setItineraryPoint({
+                      ...itineraryPoint,
+                      address: e.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>Map link</span>
+                <input
+                  type="url"
+                  value={itineraryPoint.mapUrl}
+                  onChange={(e) =>
+                    setItineraryPoint({
+                      ...itineraryPoint,
+                      mapUrl: e.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>Latitude</span>
+                <input
+                  type="number"
+                  step="any"
+                  value={itineraryPoint.latitude}
+                  onChange={(e) =>
+                    setItineraryPoint({
+                      ...itineraryPoint,
+                      latitude: e.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>Longitude</span>
+                <input
+                  type="number"
+                  step="any"
+                  value={itineraryPoint.longitude}
+                  onChange={(e) =>
+                    setItineraryPoint({
+                      ...itineraryPoint,
+                      longitude: e.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>Visibility</span>
+                <select
+                  value={itineraryPoint.visibility}
+                  onChange={(e) =>
+                    setItineraryPoint({
+                      ...itineraryPoint,
+                      visibility: e.target.value as "internal" | "guest",
+                    })
+                  }
+                >
+                  <option value="internal">Internal</option>
+                  <option value="guest">Guest</option>
+                </select>
+              </label>
+            </div>
+            <label className="field">
+              <span>Directions</span>
+              <textarea
+                value={itineraryPoint.directions}
+                onChange={(e) =>
+                  setItineraryPoint({
+                    ...itineraryPoint,
+                    directions: e.target.value,
+                  })
+                }
+              />
+            </label>
+            {itineraryMutation.error && (
+              <Notice error>{itineraryMutation.error}</Notice>
+            )}
+            <div className="button-row">
+              <button className="button" disabled={itineraryMutation.busy}>
+                Save point
+              </button>
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() => setAddingItinerary(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </section>
+      )}
+      {session.permissions.includes("checkin.write") && (
+        <section className="panel form-panel no-print">
+          <h2>Scan or enter check-in code</h2>
+          <form onSubmit={resolveScan} className="row-actions">
+            <input
+              aria-label="Check-in token"
+              required
+              value={scanToken}
+              onChange={(event) => setScanToken(event.target.value)}
+              placeholder="Scan QR code or paste token"
+            />
+            <button className="button secondary" disabled={checkin.busy}>
+              Find passenger
+            </button>
+          </form>
+          {scanResult && (
+            <p className="decision-note">
+              <strong>{scanResult.name}</strong> · {label(scanResult.category)}{" "}
+              <button
+                className="text-button"
+                onClick={() =>
+                  void recordPassengerCheckin(
+                    {
+                      booking_id: "",
+                      lead_name: "",
+                      pickup: { kind: "none" },
+                      party: {},
+                      party_size: 0,
+                      checkin_state: null,
+                      checkin_version: null,
+                      passengers: [],
+                    },
+                    {
+                      id: scanResult.passengerId,
+                      name: scanResult.name,
+                      category: scanResult.category,
+                      is_minor: false,
+                      checkin_state: null,
+                    },
+                    "arrived",
+                  )
+                }
+              >
+                Record arrived
+              </button>
+            </p>
+          )}
+        </section>
+      )}
       {error ? (
         <Notice error>{error}</Notice>
       ) : !data ? (
         <Loading />
       ) : (
         <section className="panel">
+          {printJob.error && <Notice error>{printJob.error}</Notice>}
           <div className="panel-heading">
             <h2>Confirmed passengers</h2>
             <span className="status confirmed">
@@ -457,42 +864,173 @@ export function ManifestView({
               <p>Held reservations appear here only after confirmation.</p>
             </Empty>
           ) : (
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Lead traveler</th>
-                    <th>Party</th>
-                    <th>Pickup disposition</th>
-                    <th>Reference</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.bookings.map((b) => (
-                    <tr key={b.booking_id}>
-                      <td>
-                        <strong>{b.lead_name}</strong>
-                      </td>
-                      <td>
-                        {Object.entries(b.party)
-                          .filter(([, v]) => v > 0)
-                          .map(([k, v]) => `${v} ${label(k)}`)
-                          .join(", ")}
-                      </td>
-                      <td>
-                        {readablePickup(b.pickup)}
-                        {b.pickup.kind === "selected" && (
-                          <small>{b.pickup.instructions}</small>
-                        )}
-                      </td>
-                      <td className="mono">
-                        {b.booking_id.slice(0, 8).toUpperCase()}
-                      </td>
+            <>
+              {(checkin.error || checkinMessage) && (
+                <Notice error={Boolean(checkin.error)}>
+                  {checkin.error || checkinMessage}
+                </Notice>
+              )}
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Lead traveler</th>
+                      <th>Passengers</th>
+                      <th>Pickup disposition</th>
+                      <th>Reference</th>
+                      {session.permissions.includes("checkin.write") && (
+                        <th className="no-print">Check-in</th>
+                      )}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {data.bookings.map((b) => (
+                      <tr key={b.booking_id}>
+                        <td>
+                          <strong>{b.lead_name}</strong>
+                        </td>
+                        <td>
+                          {b.passengers.length ? (
+                            <div className="manifest-passengers">
+                              {b.passengers.map((passenger) => (
+                                <div key={passenger.id}>
+                                  <span>
+                                    <strong>{passenger.name}</strong>
+                                    <small>
+                                      {label(passenger.category)}
+                                      {passenger.is_minor ? " · minor" : ""}
+                                    </small>
+                                  </span>
+                                  {session.permissions.includes(
+                                    "checkin.write",
+                                  ) && (
+                                    <div className="row-actions no-print">
+                                      <Status
+                                        state={
+                                          passenger.checkin_state ??
+                                          "not_arrived"
+                                        }
+                                      />
+                                      {passenger.checkin_state ===
+                                      "cleared_to_board" ? (
+                                        <button
+                                          className="text-button"
+                                          disabled={checkin.busy}
+                                          onClick={() =>
+                                            void recordPassengerCheckin(
+                                              b,
+                                              passenger,
+                                              "boarded",
+                                            )
+                                          }
+                                        >
+                                          Board
+                                        </button>
+                                      ) : ["boarded", "no_show"].includes(
+                                          passenger.checkin_state ?? "",
+                                        ) ? null : passenger.checkin_state ===
+                                        "arrived" ? (
+                                        <button
+                                          className="text-button"
+                                          disabled={checkin.busy}
+                                          onClick={() =>
+                                            void recordPassengerCheckin(
+                                              b,
+                                              passenger,
+                                              "cleared_to_board",
+                                            )
+                                          }
+                                        >
+                                          Clear
+                                        </button>
+                                      ) : (
+                                        <button
+                                          className="text-button"
+                                          disabled={checkin.busy}
+                                          onClick={() =>
+                                            void recordPassengerCheckin(
+                                              b,
+                                              passenger,
+                                              "arrived",
+                                            )
+                                          }
+                                        >
+                                          Arrived
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="muted">
+                              Roster not recorded ·{" "}
+                              {Object.entries(b.party)
+                                .filter(([, v]) => v > 0)
+                                .map(([k, v]) => `${v} ${label(k)}`)
+                                .join(", ")}
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          {readablePickup(b.pickup)}
+                          {b.pickup.kind === "selected" && (
+                            <small>{b.pickup.instructions}</small>
+                          )}
+                        </td>
+                        <td className="mono">
+                          {b.booking_id.slice(0, 8).toUpperCase()}
+                        </td>
+                        {session.permissions.includes("checkin.write") && (
+                          <td className="no-print">
+                            <div className="row-actions">
+                              <Status
+                                state={b.checkin_state ?? "not_arrived"}
+                              />
+                              {b.checkin_state === "cleared_to_board" ? (
+                                <button
+                                  className="button secondary"
+                                  disabled={checkin.busy}
+                                  onClick={() =>
+                                    void recordCheckin(b, "boarded")
+                                  }
+                                >
+                                  Board
+                                </button>
+                              ) : b.checkin_state === "boarded" ||
+                                b.checkin_state ===
+                                  "no_show" ? null : b.checkin_state ===
+                                "arrived" ? (
+                                <button
+                                  className="button secondary"
+                                  disabled={checkin.busy}
+                                  onClick={() =>
+                                    void recordCheckin(b, "cleared_to_board")
+                                  }
+                                >
+                                  Clear
+                                </button>
+                              ) : (
+                                <button
+                                  className="button secondary"
+                                  disabled={checkin.busy}
+                                  onClick={() =>
+                                    void recordCheckin(b, "arrived")
+                                  }
+                                >
+                                  Arrived
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </section>
       )}

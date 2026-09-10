@@ -14,7 +14,7 @@ Date: 9 September 2026. Mock development increment under ADR 012, not Track A la
 
 ## Validation
 
-- **20 PostgreSQL/API tests passed.** The new test covers board counts, plan version conflict, printable-list content, role denial, cross-tenant denial and stop cleanup after a pickup amendment.
+- **21 PostgreSQL/API tests passed.** Coverage includes board counts, plan version conflict, printable-list content, role denial, cross-tenant denial, stop cleanup after a pickup amendment, resource assignment isolation, expired-compliance blocking, and payment/waiver check-in gates.
 - The complete Next.js optimized build and frontend typecheck passed.
 - The web smoke test now exercises booking confirmation, controlled location creation, pickup-plan save, printable-list gateway access, board count, amendment/cancellation cleanup and tenant isolation through the same-origin session gateway.
 

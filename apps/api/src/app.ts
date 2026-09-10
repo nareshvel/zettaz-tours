@@ -1,7 +1,8 @@
 import "reflect-metadata";
 import { Controller, Get, Global, Module } from "@nestjs/common";
 import { APP_GUARD, NestFactory } from "@nestjs/core";
-import { json } from "express";
+import { json, raw, static as serveStatic } from "express";
+import path from "node:path";
 import helmet from "helmet";
 import { randomUUID } from "node:crypto";
 import { Database } from "./database";
@@ -16,10 +17,27 @@ import { openapi } from "./openapi";
 import {
   BookingChangeService,
   BookingChangeController,
+  RebookingController,
 } from "./booking-changes";
 import { WorkspaceController } from "./workspace";
 import { DispatchController, DispatchService } from "./dispatch";
 import { WaiverController, WaiverService } from "./waivers";
+import { AuthController } from "./auth";
+import { ResourceController, ResourceService } from "./resources";
+import { PrintController, PrintService } from "./printing";
+import { CrewController, CrewService } from "./crew";
+import { PartnerController, PartnerService } from "./partners";
+import { IntegrationController, IntegrationService } from "./integrations";
+import { PassengerController, PassengerService } from "./passengers";
+import { NotificationController, NotificationService } from "./notifications";
+import { StayController, StayService } from "./stays";
+import { CustomerController, CustomerService } from "./customers";
+import { ReportController, ReportService } from "./reports";
+import {
+  PlatformSupportController,
+  SupportService,
+  TenantSupportController,
+} from "./support";
 
 @Global()
 @Module({ providers: [Database], exports: [Database] })
@@ -47,7 +65,11 @@ class FinanceModule {}
 @Module({
   imports: [InventoryModule, FinanceModule],
   providers: [ReservationService, BookingChangeService],
-  controllers: [ReservationController, BookingChangeController],
+  controllers: [
+    ReservationController,
+    BookingChangeController,
+    RebookingController,
+  ],
 })
 class ReservationModule {}
 @Module({ providers: [OutboxService], controllers: [OperationsController] })
@@ -71,8 +93,41 @@ class SystemController {
     ReservationModule,
     OperationsModule,
   ],
-  controllers: [SystemController, WorkspaceController, DispatchController, WaiverController],
-  providers: [DispatchService, WaiverService, { provide: APP_GUARD, useClass: AuthGuard }],
+  controllers: [
+    SystemController,
+    AuthController,
+    ResourceController,
+    WorkspaceController,
+    DispatchController,
+    WaiverController,
+    PrintController,
+    CrewController,
+    PartnerController,
+    IntegrationController,
+    PassengerController,
+    NotificationController,
+    StayController,
+    CustomerController,
+    PlatformSupportController,
+    TenantSupportController,
+    ReportController,
+  ],
+  providers: [
+    DispatchService,
+    WaiverService,
+    ResourceService,
+    PrintService,
+    CrewService,
+    PartnerService,
+    IntegrationService,
+    PassengerService,
+    NotificationService,
+    StayService,
+    CustomerService,
+    SupportService,
+    ReportService,
+    { provide: APP_GUARD, useClass: AuthGuard },
+  ],
 })
 export class AppModule {}
 
@@ -90,7 +145,15 @@ export async function createApp() {
     bodyParser: false,
   });
   app.use(helmet());
+  app.use(
+    "/integrations/v1/inbound",
+    raw({ type: "application/json", limit: "64kb" }),
+  );
   app.use(json({ limit: "64kb" }));
+  app.use(
+    "/uploads",
+    serveStatic(path.resolve("uploads"), { fallthrough: false }),
+  );
   app.use(
     (
       _req: unknown,

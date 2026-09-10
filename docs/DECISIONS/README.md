@@ -22,3 +22,5 @@ Next ADR is `010-<slug>.md`. Status line: Proposed or Accepted, plus date.
 - [011 — Booking amendments and cancellation](011-booking-amendments-cancellation.md) — quoted changes, capacity-safe acceptance and cancellation without automatic refunds.
 - [012 — Operations board and pickup planning](012-operations-pickup-planning.md) — tenant-controlled pickup stops and manual day planning.
 - [013 — Weather and closure controls](013-weather-closure-controls.md) — non-sellable operational status before commercial policy actions.
+- [014 — Tenant branding and localization](014-tenant-branding-localization.md) — local logo files, presentation preferences and versioned waiver content.
+- [015 — Channel-neutral booking core](015-channel-neutral-booking-core.md) — canonical booking ownership with source-specific adapters and reconciliation.

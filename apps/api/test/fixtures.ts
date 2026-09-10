@@ -2,6 +2,13 @@ import { TenantConfig } from "../../../packages/shared/src/contracts";
 
 // Synthetic inputs only: not catalog defaults and not approved tenant-one finance policy.
 export const mockConfig: TenantConfig = {
+  supportedLocales: ["en"],
+  locale: "en",
+  dateFormat: "DD/MM/YYYY",
+  timeFormat: "12h",
+  weekStartsOn: 0,
+  numberFormat: "comma_decimal",
+  measurementSystem: "metric",
   bookingCurrency: "USD",
   collectionCurrency: "USD",
   reportingCurrency: "USD",

@@ -15,15 +15,20 @@
     "test": "npm run build && node --test --test-concurrency=1 dist/apps/api/test/*.test.js",
     "dev": "npm run build && node --env-file=.env dist/apps/api/src/main.js",
     "db:migrate": "npm run build && node --env-file=.env dist/apps/api/scripts/migrate.js",
+    "db:seed": "npm run build && node --env-file=.env dist/apps/api/scripts/seed.js",
+    "workspace:dev": "npm run build && node --env-file=.env dist/apps/api/scripts/workspace.js",
     "demo": "npm run build && node --env-file-if-exists=.env dist/apps/api/scripts/demo.js",
     "outbox:drain": "node --env-file=.env dist/apps/api/scripts/drain.js",
+    "integrations:drain": "npm run build && node --env-file=.env dist/apps/api/scripts/drain-integrations.js",
     "format": "prettier --write \"apps/**/*.{ts,tsx,css}\" \"packages/**/*.ts\" \"*.json\"",
     "format:check": "prettier --check \"apps/**/*.{ts,tsx,css}\" \"packages/**/*.ts\" \"*.json\"",
     "web:dev": "npm run dev --workspace @zettaz/web",
     "web:build": "npm run build --workspace @zettaz/web",
     "web:typecheck": "npm run typecheck --workspace @zettaz/web",
     "demo:web": "npm run build && START_WEB=1 node --env-file-if-exists=.env dist/apps/api/scripts/demo.js",
-    "web:smoke": "node apps/web/scripts/smoke.mjs"
+    "web:smoke": "node apps/web/scripts/smoke.mjs",
+    "mobile:start": "npm run start --workspace @zettaz/mobile",
+    "mobile:typecheck": "npm run typecheck --workspace @zettaz/mobile"
   },
   "dependencies": {
     "@nestjs/common": "11.2.3",

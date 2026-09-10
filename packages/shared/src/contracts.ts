@@ -13,9 +13,28 @@ const currency = z
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const configSchema = z
   .object({
+    supportedLocales: z
+      .array(z.string().regex(/^[a-z]{2}(-[A-Z]{2})?$/))
+      .min(1)
+      .max(20)
+      .default(["en"]),
+    locale: z
+      .string()
+      .regex(/^[a-z]{2}(-[A-Z]{2})?$/)
+      .default("en"),
+    dateFormat: z
+      .enum(["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD"])
+      .default("DD/MM/YYYY"),
+    timeFormat: z.enum(["12h", "24h"]).default("12h"),
+    weekStartsOn: z.number().int().min(0).max(6).default(0),
+    numberFormat: z
+      .enum(["comma_decimal", "decimal_comma"])
+      .default("comma_decimal"),
+    measurementSystem: z.enum(["metric", "imperial"]).default("metric"),
     bookingCurrency: currency,
     collectionCurrency: currency,
     reportingCurrency: currency,
+    settlementCurrency: currency.optional(),
     holdSeconds: z.number().int().min(30).max(1800),
     minimumPaidPercent: z.number().int().min(0).max(100),
     taxBasisPoints: z.number().int().min(0).max(10000),
@@ -52,6 +71,26 @@ export const tenantSchema = z
 export const updateConfigSchema = z
   .object({ version: z.number().int().positive(), config: configSchema })
   .strict();
+export const businessProfileSchema = z
+  .object({
+    displayName: label,
+    streetAddress: z.string().trim().max(160).default(""),
+    suite: z.string().trim().max(80).default(""),
+    city: z.string().trim().max(100).default(""),
+    stateParish: z.string().trim().max(100).default(""),
+    postalCode: z.string().trim().max(40).default(""),
+    country: z.string().regex(/^[A-Z]{2}$/),
+    email: z.string().email().max(254),
+    phone: z.string().trim().max(40).default(""),
+  })
+  .strict();
+export const authorizedContactSchema = z
+  .object({
+    name: label,
+    email: z.string().email().max(254),
+    phone: z.string().trim().max(40).default(""),
+  })
+  .strict();
 export const roles = [
   "owner",
   "admin",
@@ -59,6 +98,11 @@ export const roles = [
   "dispatcher",
   "finance",
   "auditor",
+  "guide",
+  "driver",
+  "resource_manager",
+  "operations_manager",
+  "partner_manager",
 ] as const;
 export type Role = (typeof roles)[number];
 export const grants: Record<Role, readonly string[]> = {
@@ -69,9 +113,28 @@ export const grants: Record<Role, readonly string[]> = {
     "catalog.read",
     "bookings.write",
     "bookings.read",
+    "inventory.overbook",
     "payment.write",
+    "payment.correct",
     "manifest.read",
     "operations.write",
+    "waiver.template.publish",
+    "resources.write",
+    "documents.expiry.manage",
+    "assignments.write",
+    "safety.assignment.override",
+    "checkin.write",
+    "print.templates.manage",
+    "print.jobs.create",
+    "print.jobs.read",
+    "partner.manage",
+    "partner.collection.record",
+    "partner.collection.verify",
+    "partner.statement.read",
+    "integration.manage",
+    "integration.inbox.read",
+    "notifications.request",
+    "notifications.read",
     "audit.read",
   ],
   admin: [
@@ -82,32 +145,133 @@ export const grants: Record<Role, readonly string[]> = {
     "bookings.read",
     "manifest.read",
     "operations.write",
+    "resources.write",
+    "documents.expiry.manage",
+    "assignments.write",
+    "checkin.write",
+    "print.templates.manage",
+    "print.jobs.create",
+    "print.jobs.read",
+    "partner.manage",
+    "integration.manage",
+    "integration.inbox.read",
+    "notifications.request",
+    "notifications.read",
   ],
   reservations: [
     "catalog.read",
     "bookings.write",
     "bookings.read",
+    "inventory.overbook",
     "payment.write",
     "manifest.read",
+    "partner.collection.record",
+    "notifications.request",
+    "notifications.read",
   ],
   dispatcher: [
     "catalog.read",
     "bookings.read",
     "manifest.read",
     "operations.write",
+    "inventory.overbook",
+    "assignments.write",
+    "checkin.write",
+    "print.jobs.create",
+    "print.jobs.read",
   ],
-  finance: ["catalog.read", "bookings.read", "payment.write", "audit.read"],
-  auditor: ["catalog.read", "bookings.read", "manifest.read", "audit.read"],
+  finance: [
+    "catalog.read",
+    "bookings.read",
+    "payment.write",
+    "payment.correct",
+    "audit.read",
+    "partner.collection.record",
+    "partner.collection.verify",
+    "partner.statement.read",
+  ],
+  auditor: [
+    "catalog.read",
+    "bookings.read",
+    "manifest.read",
+    "audit.read",
+    "partner.statement.read",
+    "integration.inbox.read",
+    "notifications.read",
+  ],
+  guide: ["crew.trip.read", "checkin.write"],
+  driver: ["crew.trip.read", "checkin.write"],
+  resource_manager: [
+    "catalog.read",
+    "manifest.read",
+    "resources.write",
+    "documents.expiry.manage",
+  ],
+  operations_manager: [
+    "catalog.read",
+    "bookings.read",
+    "inventory.overbook",
+    "manifest.read",
+    "operations.write",
+    "resources.write",
+    "documents.expiry.manage",
+    "assignments.write",
+    "checkin.write",
+    "print.jobs.create",
+    "print.jobs.read",
+  ],
+  partner_manager: ["catalog.read", "bookings.read", "partner.manage"],
 };
 export const memberSchema = z
   .object({
     name: label,
     email: z.string().email().max(254),
-    role: z.enum(roles).exclude(["owner"]),
+    role: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]{1,80}$/)
+      .refine((role) => role !== "owner", "Owner cannot be assigned here"),
   })
   .strict();
 export const memberUpdateSchema = z
-  .object({ active: z.boolean(), role: z.enum(roles).exclude(["owner"]) })
+  .object({
+    active: z.boolean(),
+    role: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]{1,80}$/)
+      .refine((role) => role !== "owner", "Owner cannot be assigned here"),
+  })
+  .strict();
+export const invitationSchema = z
+  .object({
+    name: label,
+    email: z.string().email().max(254),
+    role: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]{1,80}$/)
+      .refine((role) => role !== "owner", "Owner cannot be assigned here"),
+  })
+  .strict();
+export const invitationAcceptSchema = z
+  .object({
+    token: z.string().regex(/^[a-zA-Z0-9_-]{40,100}$/),
+    password: z.string().min(12).max(1024),
+  })
+  .strict();
+export const roleSchema = z
+  .object({
+    name: label,
+    permissions: z
+      .array(z.string().regex(/^[a-z]+\.[a-z]+$/))
+      .min(1)
+      .max(40),
+  })
+  .strict();
+export const userProfileSchema = z
+  .object({
+    name: label,
+    email: z.string().email().max(254),
+    phoneNumber: z.string().trim().max(30).default(""),
+  })
   .strict();
 export const productSchema = z
   .object({
@@ -161,6 +325,17 @@ export const bookingSchema = z
     holdId: id,
     leadName: label,
     leadEmail: z.string().email().max(254),
+    leadPhone: z.string().trim().max(40).default(""),
+    purchaser: z.object({
+      name: label,
+      email: z.string().email().max(254),
+      phone: z.string().trim().max(40).default(""),
+    }).strict().optional(),
+    emergencyContact: z.object({
+      name: label,
+      phone: z.string().trim().min(1).max(40),
+      relationship: z.string().trim().min(1).max(80),
+    }).strict().optional(),
     source: slug,
     pickup: z.discriminatedUnion("kind", [
       z.object({ kind: z.literal("none") }).strict(),
@@ -178,6 +353,39 @@ export const bookingSchema = z
         })
         .strict(),
     ]),
+    stay: z
+      .discriminatedUnion("kind", [
+        z.object({ kind: z.literal("none") }).strict(),
+        z
+          .object({
+            kind: z.literal("cruise"),
+            cruiseCallId: id.optional(),
+            vesselName: label,
+            cabinNumber: z.string().trim().max(40).default(""),
+          })
+          .strict(),
+        z
+          .object({
+            kind: z.literal("hotel"),
+            accommodationId: id.optional(),
+            hotelName: label,
+            roomNumber: z.string().trim().max(40).default(""),
+          })
+          .strict(),
+      ])
+      .default({ kind: "none" }),
+    partner: z
+      .object({
+        partnerId: id,
+        externalReference: z.string().trim().max(120).default(""),
+        collectionMode: z.enum([
+          "guest_pays_tenant",
+          "partner_collects_for_tenant",
+          "partner_invoice",
+        ]),
+        invoiceRequired: z.boolean().default(false),
+      })
+      .optional(),
   })
   .strict();
 export const paymentSchema = z
@@ -191,6 +399,12 @@ export const paymentSchema = z
     occurredAt: z.string().datetime({ offset: true }),
   })
   .strict();
+export const paymentAdjustmentSchema = z.object({
+  kind: z.enum(["void", "reversal"]),
+  reference: z.string().trim().min(1).max(120),
+  reason: z.string().trim().min(8).max(500),
+  occurredAt: z.string().datetime({ offset: true }),
+}).strict();
 export const confirmSchema = z
   .object({ version: z.number().int().positive() })
   .strict();

@@ -4,9 +4,9 @@
 
 ## Implemented scope
 
-NestJS modular API with real PostgreSQL storage: mock tenant provisioning, opaque expiring sessions, owner-managed staff presets/revocation, versioned tenant policies, shared-tour category/season prices, recurring departures, seat holds, manual reservations/payments, explicit confirmation, immutable snapshots, manifest reads, audit and a durable local outbox consumer.
+NestJS modular API with persistent PostgreSQL storage and a Next.js tenant workspace: database-backed tenant identity and RBAC, support grants, tenant settings, catalog and schedules, availability/holds, reservations and changes, customers/passengers, manual payments, partner finance, operations/resources/pickups, waivers/check-in, integration inbox, notifications queue, reports, audit/outbox, browser/PDF print output, and a connected Expo crew client.
 
-The next approved increment adds a Next.js tenant workspace: overview, reservations, departures/manifests, catalog creation, recurring schedules, team roles/revocation, tenant policies and audit reads. No Expo application exists yet. API startup deliberately rejects production mode. Interactive login/MFA/invitations, support grants, actual gateways, partner finance, currency conversion, add-ons/contract overrides and remaining Track A workflows are later increments. This is working development software, not launch-ready software.
+Migrations 001–051 are applied to the persistent local database and the fresh-database API/PostgreSQL suite passes 40 of 40 tests. API startup still deliberately rejects production mode. Privileged MFA, actual gateways, provider-backed delivery, offline mobile data, physical printer-agent delivery, tenant-one data validation, and cutover acceptance remain. This is working development software, not launch-ready software.
 
 ## Quick start
 
@@ -16,10 +16,12 @@ From the project root:
 
 ```sh
 npm ci
-npm run demo:web
+npm run db:migrate
+npm run db:seed
+npm run workspace:dev
 ```
 
-Open http://127.0.0.1:3191 and choose a mock tenant as its owner. This is a local development selector, not production login. If a port is occupied, update `PORT`, `WEB_PORT`, and `WEB_ORIGIN` consistently in `.env`. `npm run demo` remains available for API-only work.
+Open http://127.0.0.1:3191 and sign in with a seeded persistent database identity. The local access-file fallback has been removed from the normal workspace path. If a port is occupied, update `PORT`, `WEB_PORT`, and `WEB_ORIGIN` consistently in `.env`. `npm run demo` remains available for isolated API-only work.
 
 This builds TypeScript, starts a new isolated local PostgreSQL cluster with a random password/runtime role, applies migrations, launches the API on loopback port 3190, and creates two synthetic tenants with USD and XCD configurations respectively. Each gets one paid and confirmed reservation. There is no live money collection or outbound messaging.
 
@@ -39,19 +41,26 @@ The demo uses owner sessions. Team administration creates mock membership record
 
 ## Developer commands
 
-- `npm run demo:web`: start the complete temporary mock workspace.
+- `npm run workspace:dev`: start the persistent local API and workspace using the seeded Sample tenants.
+- `npm run demo:web`: start the complete temporary mock workspace for isolated demo checks only.
 - `npm run web:build`: optimized Next.js build including frontend TypeScript checks.
 - `npm run web:typecheck`: frontend types without a build.
 - `npm run web:smoke`: HTTP integration checks against the running demo at port 3191; creates a synthetic booking. It does not automate browser clicks.
-
+- `npm run mobile:typecheck`: validate the connected Expo crew client.
+- `EXPO_PUBLIC_API_BASE_URL=http://<device-reachable-host>:3180 npm run mobile:start`: start the crew client for iOS/Android development.
 
 - `npm run typecheck`: strict TypeScript checks.
 - `npm test`: build and execute real database/API tests in an isolated native PostgreSQL cluster. If PostgreSQL binaries are not installed, set `TEST_ADMIN_DATABASE_URL` to a fresh disposable PostgreSQL database; never a production or shared database.
-- `npm run db:migrate`: apply checksum-verified migrations using `.env`'s owner connection, granting an already-created runtime role only the required privileges. Create that login role with no superuser, bypass-RLS, database-creation or role-creation privileges. The API refuses a table-owner or bypass-RLS connection.
+- `npm run db:migrate`: apply checksum-verified migrations using `.env`'s owner connection, granting an already-created runtime role only the required privileges. A successful run ends with `Migration result: COMPLETE` and `Pending: 0`; an incomplete run reports its failed and pending scripts and confirms transaction rollback. See [Persistent local PostgreSQL and TablePlus](local-postgres-tableplus.md#migration-result-output). Create the runtime login role with no superuser, bypass-RLS, database-creation or role-creation privileges. The API refuses a table-owner or bypass-RLS connection.
+- `npm run db:seed`: add or complete two persistent, clearly labelled Sample tenants in the configured local database. It is idempotent and never changes another tenant. It creates catalog, schedules, team members, bookings, payments, pickup plans and waiver evidence through application services; it never creates live payment, messaging or external-integration data. It also writes eight-hour owner sessions to `.local/persistent-sample-access.json` for the local workspace selector.
 - `npm run dev`: start against `.env` configuration after migrations. Requires explicit demo/test mode and an issued development session; no default credentials.
 - `npm run outbox:drain`: consume a tenant's pending outbox in bounded batches using `STAFF_SESSION_TOKEN`. Only the idempotent local observer exists; this does not send email or invoke a payment gateway.
 
+`npm run workspace:dev` starts both the API and web app with the persistent Sample tenant sessions. Run `npm run db:seed` again when those local sessions expire after eight hours.
+
 The optional Compose PostgreSQL service needs explicit credentials. Redis is under the `future-integrations` profile. S3-compatible storage is deferred until documents are implemented, so no unused storage service is started. CI declares PostgreSQL 18; local acceptance was performed against installed PostgreSQL 14.17. The CI workflow must run remotely before claiming PostgreSQL 18 verification.
+
+For a durable Docker database and TablePlus connections, including the distinct owner and runtime role setup, see [Persistent local PostgreSQL and TablePlus](local-postgres-tableplus.md).
 
 ## Configuration vs implementation limits
 
@@ -89,4 +98,4 @@ Open **Operations** and select a tenant-local operating date. The board shows co
 
 Only future, confirmed bookings with an arranged pickup can be added. Pickup time cannot be later than departure start. Cancelling a booking, changing its departure, or changing its pickup away from arranged removes its stop. Locations, plans and edits are tenant-scoped and audited.
 
-Open **Pickup list** from an operations card or pickup plan to prepare a paper list. The server returns the current departure, plan version, ordered stops and exceptions for unresolved or unplanned pickups. **Print or save PDF** opens the browser's native print dialog. The list deliberately excludes email, payment status and customer-facing pickup instructions. It does not calculate routes, create stored PDFs, enable offline use or certify readiness. Crew/resource assignments, vehicle/vessel documents, cruise-call constraints, weather action and check-in are still pending.
+Open **Pickup list** from an operations card or pickup plan to prepare a paper list. The server returns the current departure, plan version, ordered stops and exceptions for unresolved or unplanned pickups. **Print** opens the browser dialog; **Download PDF** creates an auditable print job and streams a tenant-authorized PDF. The list deliberately excludes email, payment status and customer-facing pickup instructions. PDFs are generated on demand and are not retained server-side. It does not calculate routes or enable offline use. Crew/resource assignments and expiry checks are available from **Team & resources**; the departure manifest supports arrival, clearance and boarding only after the payment and waiver gates pass. Physical printer-agent delivery remains planned.

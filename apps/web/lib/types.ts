@@ -6,8 +6,12 @@ import type {
 export type { TenantConfig, ProductInput, Quote };
 export type Session = {
   actorId: string;
+  actorName: string;
+  actorEmail: string;
+  actorPhone?: string | null;
   role: string;
   permissions: string[];
+  supportAccess?: { id:string; purpose:string; permissions:string[]; expires_at:string } | null;
   tenant: {
     id: string;
     name: string;
@@ -15,9 +19,22 @@ export type Session = {
     version: number;
     config: TenantConfig;
     is_mock: boolean;
+    logo_path?: string | null;
+    business_profile?: {
+      displayName: string;
+      streetAddress: string;
+      suite: string;
+      city: string;
+      stateParish: string;
+      postalCode: string;
+      country: string;
+      email: string;
+      phone: string;
+    };
+    authorized_contact?: { name: string; email: string; phone: string };
   };
 };
-export type DemoTenant = { tenantId: string; name: string };
+export type DemoTenant = { tenantId: string; name: string; email: string };
 export type Product = {
   id: string;
   name: string;
@@ -32,6 +49,7 @@ export type Departure = {
   starts_at: string;
   capacity: number;
   committed: number;
+  overbooked?: number;
   available: number;
   categories: ProductInput["categories"];
 };
@@ -56,9 +74,12 @@ export type Pickup =
   | { kind: "selected"; location: string; instructions: string };
 export type Booking = {
   id: string;
+  customer_id: string;
   departure_id: string;
   lead_name: string;
   lead_email: string;
+  purchaser: { name: string; email: string; phone: string };
+  emergency_contact: { name?: string; phone?: string; relationship?: string };
   source: string;
   state: string;
   version: number;
@@ -66,11 +87,52 @@ export type Booking = {
   pickup: Pickup;
   quote: Quote;
   paidMinor: number;
+  payments: {
+    id:string; amount_minor:number; currency:string; method:string; status:"settled"|"pending";
+    reference:string; reason:string; occurred_at:string; adjustment_id:string|null;
+    adjustment_kind:"void"|"reversal"|null; adjustment_reference:string|null;
+    adjustment_reason:string|null; adjustment_occurred_at:string|null;
+  }[];
+  partnerCreditMinor?: number;
   balanceMinor: number;
   expiresAt: string;
   historicalBalanceMinor: number;
   financeReviewRequired: boolean;
   departure: { starts_at: string };
+};
+export type Partner = { id: string; name: string; email?: string | null; phone?: string | null; status?: string };
+export type BookingFinanceSummary = {
+  bookingId: string;
+  partnerId: string;
+  collectionMode: string;
+  currency: string;
+  totalMinor: number;
+  guestPaidMinor: number;
+  partnerCreditMinor: number;
+  guestBalanceMinor: number;
+  partnerObligationMinor: number;
+};
+export type NotificationMessage = {
+  id: string;
+  kind: "booking_confirmation" | "payment_request" | "waiver_request" | "cancellation";
+  channel: "email";
+  recipient: string;
+  subject: string;
+  status: "held_provider" | "queued" | "sent" | "failed" | "cancelled";
+  requested_at: string;
+};
+export type PartnerClaim = {
+  id: string;
+  booking_id: string;
+  partner_id: string;
+  partner_name: string;
+  amount_minor: string | number;
+  currency: string;
+  reference: string;
+  notes: string;
+  recorded_at: string;
+  decision: "accepted" | "rejected" | null;
+  decision_reason: string | null;
 };
 export type Member = {
   id: string;
@@ -89,12 +151,16 @@ export type Audit = {
 };
 export type Manifest = {
   departure: { id: string; starts_at: string; capacity: number };
+  itinerary: { id: string; sequence: number; name: string; address: string; directions: string; latitude: number | null; longitude: number | null; map_url: string; visibility: "internal" | "guest" }[];
   bookings: {
     booking_id: string;
     lead_name: string;
     pickup: Pickup;
     party: Record<string, number>;
     party_size: number;
+    checkin_state: string | null;
+    checkin_version: number | null;
+    passengers: { id: string; name: string; category: string; is_minor: boolean; checkin_state: string | null }[];
   }[];
 };
 export type Page<T> = { items: T[]; nextCursor: string | null };
@@ -115,12 +181,45 @@ export type DispatchRow = {
   operational_reason: string;
   operational_version: number;
 };
+export type RebookingOption = {
+  id: string;
+  starts_at: string;
+  capacity: number;
+  committed: number;
+  available: number;
+  product_name: string;
+};
+export type RebookingPreview = {
+  sourceDepartureId: string;
+  targetDepartureId: string;
+  affected: number;
+  eligible: number;
+  excluded: number;
+  messagesQueued: number;
+  items: Array<{
+    bookingId: string;
+    leadName: string;
+    eligible: boolean;
+    reason?: string;
+    quoteId?: string;
+    version?: number;
+    previousTotalMinor?: number;
+    differenceMinor?: number;
+    balanceMinor?: number;
+    quote?: { currency: string; totalMinor: number };
+  }>;
+};
 export type PickupLocation = {
   id: string;
   slug: string;
   name: string;
   kind: string;
   notes: string;
+  address: string;
+  latitude: string | number | null;
+  longitude: string | number | null;
+  map_url: string;
+  visibility: "internal" | "guest";
   active: boolean;
 };
 export type PickupPlan = {

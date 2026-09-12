@@ -128,12 +128,9 @@ export class AuthController {
       ]);
       throw new UnauthorizedException("Email or password is incorrect.");
     }
-    // Block sign-in if e-mail not yet verified
-    const { rows: verifiedRows } = await this.db.pool.query(
-      "SELECT email_verified_at FROM staff_users WHERE id=$1",
-      [identity.actor_id],
-    );
-    if (!verifiedRows[0]?.email_verified_at) {
+    // email_verified_at comes from staff_login_identity (SECURITY DEFINER);
+    // a direct staff_users SELECT fails under RLS during public sign-in.
+    if (!identity.email_verified_at) {
       throw new UnauthorizedException(
         "Please verify your email address before signing in. Check your inbox for a verification link.",
       );

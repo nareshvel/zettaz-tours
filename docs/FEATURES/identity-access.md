@@ -10,7 +10,7 @@ The data model deliberately separates three concerns:
 
 Phone, profile image path, email verification, sign-up completion, last-login and active status live with the global profile. Tenant-specific activation and roles remain in memberships. Location/store assignment will be modeled separately because an operator can have multiple depots, vessels or locations.
 
-The local workspace authenticates against the persistent database through the API. The server verifies the stored password hash, creates a tenant-scoped short-lived session and reads accessible memberships from database functions; no local access-file fallback exists. The seeded local password is development-only.
+The local workspace authenticates against the persistent database through the API. The server verifies the stored password hash via `staff_login_identity` (SECURITY DEFINER), which also returns `email_verified_at`. Sign-in must **not** query `staff_users` directly on the public path: RLS hides the row when `app.actor` is unset, which previously caused a false “verify your email” rejection. See [../ISSUES_FIXES/signin-email-verified-rls.md](../ISSUES_FIXES/signin-email-verified-rls.md). After a password match and verified email, the API creates a tenant-scoped short-lived session and reads accessible memberships from database functions; no local access-file fallback exists. The seeded local password is development-only.
 
 Tenant-defined roles are assignable from Team & access. System roles remain protected. The API resolves permissions from `role_permissions` for every session; the stored membership permission snapshot is kept as an audit-friendly denormalization, not the authorization source.
 

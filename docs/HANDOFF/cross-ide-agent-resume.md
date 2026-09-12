@@ -1,6 +1,6 @@
 # Cross-IDE agent resume guide
 
-**Updated:** 11 September 2026  
+**Updated:** 12 September 2026  
 **Audience:** ChatGPT Codex, Cursor, Claude, Devin, or another IDE agent continuing this project
 
 This file is the portable resume packet for Zettaz Tours & Charters. Use it when work moves between tools, then update it when a session changes the implementation state, task order, or a standing decision.
@@ -27,8 +27,9 @@ When these conflict, the authority table in `docs/README.md` wins.
 ## Current implementation state
 
 - Persistent local PostgreSQL is the normal development database. Do not return to the removed browser/local-file sign-in path.
-- Migrations are current through `056_document_storage.sql`.
-- `npm run db:migrate` should report `Migration result: COMPLETE` and `Pending: 0` on the persistent local database.
+- Migrations are current through `061_staff_login_email_verified.sql` (public sign-in reads `email_verified_at` from `staff_login_identity`, not a direct `staff_users` SELECT under RLS). See `docs/ISSUES_FIXES/signin-email-verified-rls.md`.
+- `npm run db:migrate` / `db:migrate:prod` should report `Migration result: COMPLETE` and `Pending: 0`.
+- Production demo (`tours.zettaz.com`): tenant `f6e566ce-…` seeded via into-tenant Rock export; owner login preserved (not `demo.owner@…`). Ops notes: `docs/HANDOFF/demo-tenant-export.md`.
 - `npm test` currently verifies the database-backed API suite.
 - The Next.js workspace, tenant RBAC, staff sessions, tenant settings, subscriptions read model, dashboard, reservations list, manual reservation flow (partner source inline + returnTo), booking changes, customers, operations, resources, partner finance, boarding Pay / partner clearance on the web manifest, integration inbox, reports, print/PDF output, catalog foundation, fixed availability foundation, operational departure views and connected Expo crew app all exist as development foundations.
 - Connected crew waiver capture exists for assigned staff, pending passenger names, stay details and signature evidence. Encrypted offline sync, retained authoritative waiver PDFs and optional drive-copy adapters remain open.

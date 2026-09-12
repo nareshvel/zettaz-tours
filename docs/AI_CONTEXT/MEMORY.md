@@ -2,7 +2,7 @@
 
 Keep under 200 lines. Update after sessions that change standing decisions.
 
-**Last updated:** 2026-09-11
+**Last updated:** 2026-09-12
 
 ## Standing decisions
 
@@ -70,6 +70,12 @@ See [../STRATEGY/delivery.md](../STRATEGY/delivery.md).
 - **Subscription polish (partial, 11 September 2026):** Embedded under profile for owners; plan grid responsive 4→2→1 columns (inline four-column override removed). Billing-cycle / grace messaging polish still open. See `docs/TESTING/subscription-polish-evidence.md`.
 - **Shared countries:** `packages/shared/src/countries.ts` is the single ISO list; web re-exports `@/lib/countries`.
 - **Dev log quieting:** Nest route dumps off unless `NEST_LOG=verbose`; Next.js incoming request dumps off unless `NEXT_REQUEST_LOG=verbose`.
+
+## Production demo + sign-in — 12 September 2026
+
+- Into-tenant Rock seed applied to production tenant `f6e566ce-…`; owner login unchanged (not demo.owner). See `docs/HANDOFF/demo-tenant-export.md`.
+- Public sign-in must not SELECT `staff_users` without `app.actor` — RLS made verified accounts look unverified. Fixed in migration 061 + `staff_login_identity.email_verified_at`. Write-up: `docs/ISSUES_FIXES/signin-email-verified-rls.md`.
+- Web: Nest problem+json messages surfaced on `/api/session`; session cookie `Secure` when `WEB_ORIGIN` is https; welcome banner hydration fixed.
 
 ## Tenant workspace — 9 September 2026
 

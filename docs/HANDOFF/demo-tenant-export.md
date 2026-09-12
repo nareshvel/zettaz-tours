@@ -47,6 +47,8 @@ sudo -u postgres psql -d zettaz_tours -f apps/api/scripts/sql/generated/seed-int
 
 The into-tenant SQL remaps catalog/booking UUIDs onto the existing tenant and rewrites actor FKs to that tenant’s owner. It does **not** create staff or change the login email/password.
 
+After seeding, sign in with that tenant’s **existing owner** account (production example: `cloudadmin@zettaz.com`), not a `demo.owner@…` address from new-tenant export mode. If the password is unknown, reset it with `upsert_user_credentials` over `ADMIN_DATABASE_URL` (runtime `DATABASE_URL` cannot see `staff_users` under RLS). See [../ISSUES_FIXES/signin-email-verified-rls.md](../ISSUES_FIXES/signin-email-verified-rls.md) if login incorrectly asks to verify email.
+
 ### Apply on production (into existing tenant)
 
 1. Copy the generated SQL to the VPS (file is gitignored):

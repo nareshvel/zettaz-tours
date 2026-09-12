@@ -121,6 +121,7 @@ function sqlArrayLiteral(
   col?: string,
   asJsonb = false,
 ): string {
+  if (asJsonb) {
     const json = JSON.stringify(values).replace(/'/g, "''");
     return `'${json}'::jsonb`;
   }

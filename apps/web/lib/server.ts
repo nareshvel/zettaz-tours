@@ -11,10 +11,17 @@ function apiBase() {
   return url.toString().replace(/\/$/, "");
 }
 export function validOrigin(request: Request) {
-  return (
-    Boolean(process.env.WEB_ORIGIN) &&
-    request.headers.get("origin") === process.env.WEB_ORIGIN
-  );
+  const configured = process.env.WEB_ORIGIN?.replace(/\/$/, "");
+  if (!configured) return false;
+  const origin = request.headers.get("origin");
+  if (origin === configured) return true;
+  // Same-origin GET/fetch often omits Origin; accept matching Referer for non-cors cases.
+  if (!origin) {
+    const referer = request.headers.get("referer");
+    if (referer?.startsWith(`${configured}/`) || referer === configured)
+      return true;
+  }
+  return false;
 }
 export async function upstream(
   path: string,
@@ -22,7 +29,13 @@ export async function upstream(
   token?: string,
 ) {
   const credential = token ?? (await cookies()).get(sessionCookie)?.value;
-  const publicAuth = path === "/auth/v1/sign-in" || path === "/auth/v1/register" || path === "/auth/v1/invitations/accept" || path.startsWith("/auth/v1/password-recovery/");
+  const pathOnly = path.split("?")[0] ?? path;
+  const publicAuth =
+    pathOnly === "/auth/v1/sign-in" ||
+    pathOnly === "/auth/v1/register" ||
+    pathOnly === "/auth/v1/verify-email" ||
+    pathOnly === "/auth/v1/invitations/accept" ||
+    pathOnly.startsWith("/auth/v1/password-recovery/");
   if (!credential && !publicAuth)
     return Response.json(
       { message: "Choose a demo tenant to continue." },

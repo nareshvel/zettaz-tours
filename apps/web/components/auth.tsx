@@ -442,11 +442,20 @@ export function VerifyEmail() {
       .then(res => res.json().then(body => ({ ok: res.ok, body })))
       .then(async ({ ok, body }) => {
         if (!ok) { setState("error"); setErrorMsg(body.message ?? "Verification failed."); return; }
-        await fetch("/api/session", {
+        const sessionRes = await fetch("/api/session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ _rawToken: body.token, tenantId: body.tenantId }),
         });
+        if (!sessionRes.ok) {
+          const sessionBody = await sessionRes.json().catch(() => null);
+          setState("error");
+          setErrorMsg(
+            sessionBody?.message ??
+              "Email verified, but sign-in could not be completed. Try signing in.",
+          );
+          return;
+        }
         setState("success");
         setTimeout(() => { window.location.href = "/?welcome=1"; }, 1200);
       })

@@ -1,9 +1,9 @@
-import { unavailable, upstream, validOrigin } from "@/lib/server";
+import { unavailable, upstream } from "@/lib/server";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  if (!validOrigin(request))
-    return Response.json({ message: "Request origin rejected." }, { status: 403 });
+  // Public email-link verification; Origin is often omitted on same-origin GET fetch.
+  // Mutating session establishment still goes through /api/session with origin checks.
   try {
     const url = new URL(request.url);
     const token = url.searchParams.get("token") ?? "";
@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     const body = await res.json();
     if (!res.ok)
       return Response.json(
-        { message: body.message ?? "Verification failed." },
+        { message: body.message ?? body.detail?.detail ?? "Verification failed." },
         { status: 400 },
       );
     return Response.json(body, { headers: { "Cache-Control": "no-store" } });

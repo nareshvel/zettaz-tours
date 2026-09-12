@@ -1,6 +1,8 @@
 import { cookies } from "next/headers";
 import {
+  problemMessage,
   sessionCookie,
+  sessionCookieOptions,
   unavailable,
   upstream,
   validOrigin,
@@ -47,7 +49,7 @@ export async function POST(request: Request) {
     if (input._rawToken) {
       const res = await upstream("/staff/v1/workspace/session", {}, input._rawToken);
       if (!res.ok) return Response.json({ message: "Registration session could not be established." }, { status: 401 });
-      (await cookies()).set(sessionCookie, input._rawToken, { httpOnly: true, sameSite: "strict", secure: false, path: "/", maxAge: 8 * 60 * 60 });
+      (await cookies()).set(sessionCookie, input._rawToken, sessionCookieOptions());
       const tenants = input.tenantId
         ? [{ tenantId: input.tenantId, name: "", email: "" }]
         : [];
@@ -79,7 +81,9 @@ export async function POST(request: Request) {
     if (!auth.ok) {
       const body = await auth.json();
       return Response.json(
-        { message: body.detail?.detail ?? "Email or password is incorrect." },
+        {
+          message: problemMessage(body, "Email or password is incorrect."),
+        },
         { status: auth.status === 401 ? 401 : 400 },
       );
     }
@@ -94,13 +98,7 @@ export async function POST(request: Request) {
         { message: "Sign-in session could not be established." },
         { status: 401 },
       );
-    (await cookies()).set(sessionCookie, signedIn.token, {
-      httpOnly: true,
-      sameSite: "strict",
-      secure: false,
-      path: "/",
-      maxAge: 8 * 60 * 60,
-    });
+    (await cookies()).set(sessionCookie, signedIn.token, sessionCookieOptions());
     return Response.json(
       {
         session: await res.json(),
@@ -133,7 +131,11 @@ export async function DELETE(request: Request) {
         current,
       );
   } finally {
-    (await cookies()).delete(sessionCookie);
+    (await cookies()).delete({
+      name: sessionCookie,
+      path: "/",
+      secure: Boolean(process.env.WEB_ORIGIN?.startsWith("https://")),
+    });
   }
   return Response.json({ ok: true });
 }

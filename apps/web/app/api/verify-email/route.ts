@@ -1,4 +1,4 @@
-import { unavailable, upstream } from "@/lib/server";
+import { problemMessage, unavailable, upstream } from "@/lib/server";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     const body = await res.json();
     if (!res.ok)
       return Response.json(
-        { message: body.message ?? body.detail?.detail ?? "Verification failed." },
+        { message: problemMessage(body, "Verification failed.") },
         { status: 400 },
       );
     return Response.json(body, { headers: { "Cache-Control": "no-store" } });

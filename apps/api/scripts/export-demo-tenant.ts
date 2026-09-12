@@ -119,7 +119,11 @@ function sqlArrayLiteral(
   intoTenantId: string | undefined,
   ownerSql: string | null,
   col?: string,
+  asJsonb = false,
 ): string {
+    const json = JSON.stringify(values).replace(/'/g, "''");
+    return `'${json}'::jsonb`;
+  }
   if (values.length === 0) return "'{}'";
   const parts = values.map((item) => {
     if (item === null || item === undefined) return "NULL";
@@ -142,7 +146,6 @@ function sqlArrayLiteral(
     }
     return String(item);
   });
-  // Let Postgres infer element type from the target column.
   return `ARRAY[${parts.join(",")}]`;
 }
 
@@ -222,6 +225,22 @@ async function main() {
       ? baseTables.filter((t) => !INTO_SKIP.has(t))
       : baseTables;
 
+    const columnTypes = new Map<string, string>();
+    if (tables.length) {
+      const { rows: typeRows } = await pool.query<{
+        table_name: string;
+        column_name: string;
+        udt_name: string;
+      }>(
+        `SELECT table_name, column_name, udt_name
+         FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = ANY($1::text[])`,
+        [tables],
+      );
+      for (const row of typeRows)
+        columnTypes.set(`${row.table_name}.${row.column_name}`, row.udt_name);
+    }
+
     const tableRows = new Map<string, Record<string, unknown>[]>();
     for (const table of tables) {
       const { rows } = await pool.query(
@@ -253,6 +272,7 @@ async function main() {
     function sqlLiteral(
       value: unknown,
       col?: string,
+      table?: string,
     ): string {
       if (value === null || value === undefined) return "NULL";
       if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
@@ -263,6 +283,8 @@ async function main() {
       if (value instanceof Date) return `'${value.toISOString()}'::timestamptz`;
       if (Buffer.isBuffer(value))
         return `'\\x${value.toString("hex")}'::bytea`;
+      const udt =
+        table && col ? columnTypes.get(`${table}.${col}`) : undefined;
       if (Array.isArray(value))
         return sqlArrayLiteral(
           value,
@@ -271,6 +293,7 @@ async function main() {
           intoTenantId,
           ownerSql,
           col,
+          udt === "jsonb" || udt === "json",
         );
       if (typeof value === "object") {
         const json = JSON.stringify(value).replace(/'/g, "''");
@@ -288,6 +311,9 @@ async function main() {
         const mapped = map.get(key) ?? text;
         return `'${mapped}'::uuid`;
       }
+      if (udt === "time" || udt === "timetz")
+        return `'${text.replace(/'/g, "''")}'::time`;
+      if (udt === "date") return `'${text.replace(/'/g, "''")}'::date`;
       return `'${text.replace(/'/g, "''")}'`;
     }
 
@@ -439,7 +465,6 @@ async function main() {
       lines.push(`-- ${table} (${rows.length})`);
       for (const row of rows) {
         const cols = Object.keys(row).filter((c) => {
-          // Nullable crew refs skipped when into-tenant and value was a staff id
           if (
             intoTenantId &&
             (c === "crew_actor_id" || c === "membership_actor_id")
@@ -456,7 +481,7 @@ async function main() {
                 keepPlans.has(String(row[c]).toLowerCase())
               )
                 return `'${row[c]}'::uuid`;
-              return sqlLiteral(row[c], c);
+              return sqlLiteral(row[c], c, table);
             })
             .join(",")});`,
         );

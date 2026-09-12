@@ -1,4 +1,4 @@
-import { unavailable, upstream, validOrigin } from "@/lib/server";
+import { problemMessage, unavailable, upstream, validOrigin } from "@/lib/server";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     const body = await res.json();
     if (!res.ok)
       return Response.json(
-        { message: body.detail?.detail ?? body.message ?? "Registration failed." },
+        { message: problemMessage(body, "Registration failed.") },
         { status: res.status === 409 ? 409 : 400 },
       );
     return Response.json(body, { headers: { "Cache-Control": "no-store" } });

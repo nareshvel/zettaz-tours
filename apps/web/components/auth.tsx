@@ -48,7 +48,6 @@ export function Entry({
   const [activationError, setActivationError] = useState("");
   const [recoveryToken,setRecoveryToken]=useState("");
   const [recoveryMessage,setRecoveryMessage]=useState("");
-  const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
   // Pre-fill token from email link on mount
   useEffect(() => {
     if (recovery) {

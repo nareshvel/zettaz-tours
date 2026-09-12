@@ -10,6 +10,35 @@ function apiBase() {
     throw new Error("API base must not contain credentials");
   return url.toString().replace(/\/$/, "");
 }
+/** HttpOnly session cookie; Secure when WEB_ORIGIN is https (required behind TLS). */
+export function sessionCookieOptions(maxAge = 8 * 60 * 60) {
+  return {
+    httpOnly: true,
+    sameSite: "strict" as const,
+    secure: Boolean(process.env.WEB_ORIGIN?.startsWith("https://")),
+    path: "/",
+    maxAge,
+  };
+}
+/** Nest problem+json puts UnauthorizedException text in detail.message (or detail as string). */
+export function problemMessage(body: unknown, fallback: string): string {
+  if (!body || typeof body !== "object") return fallback;
+  const record = body as Record<string, unknown>;
+  const detail = record.detail;
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (detail && typeof detail === "object") {
+    const nested = detail as Record<string, unknown>;
+    if (typeof nested.message === "string" && nested.message.trim())
+      return nested.message;
+    if (Array.isArray(nested.message))
+      return nested.message.map(String).join("; ");
+    if (typeof nested.detail === "string" && nested.detail.trim())
+      return nested.detail;
+  }
+  if (typeof record.message === "string" && record.message.trim())
+    return record.message;
+  return fallback;
+}
 export function validOrigin(request: Request) {
   const configured = process.env.WEB_ORIGIN?.replace(/\/$/, "");
   if (!configured) return false;

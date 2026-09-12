@@ -179,7 +179,9 @@ export function Workspace({
     [loading, setLoading] = useState(() => !Boolean(retainedSession ?? initialSession)),
     [error, setError] = useState(""),
     [menu, setMenu] = useState(false),
-    [accountMenu, setAccountMenu] = useState(false);
+    [accountMenu, setAccountMenu] = useState(false),
+    [showWelcome, setShowWelcome] = useState(false),
+    [topbarDate, setTopbarDate] = useState("");
   const path = usePathname(),
     router = useRouter();
   const setSession = (value: Session | null) => {
@@ -192,6 +194,25 @@ export function Workspace({
   };
   const normalizeSession = (value: Session | null): Session | null =>
     normalizeBootstrap(value);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("welcome") === "1")
+      setShowWelcome(true);
+  }, []);
+  useEffect(() => {
+    if (!session?.tenant.timezone) {
+      setTopbarDate("");
+      return;
+    }
+    setTopbarDate(
+      new Intl.DateTimeFormat("en", {
+        timeZone: session.tenant.timezone,
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }).format(new Date()),
+    );
+  }, [session?.tenant.timezone]);
   const load = async (opts?: { silent?: boolean }) => {
     const silent = Boolean(opts?.silent);
     if (!silent) setLoading(true);
@@ -653,14 +674,8 @@ export function Workspace({
                 "Overview"}
             </strong>
           </div>
-          <span className="topbar-date">
-            {new Intl.DateTimeFormat("en", {
-              timeZone: session.tenant.timezone,
-              weekday: "short",
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            }).format(new Date())}
+          <span className="topbar-date" suppressHydrationWarning>
+            {topbarDate}
           </span>
         </header>
         {session.supportAccess && (
@@ -668,7 +683,7 @@ export function Workspace({
             <ShieldCheck size={17} />
             <strong>Zettaz support access</strong>
             <span>{session.supportAccess.purpose}</span>
-            <span>
+            <span suppressHydrationWarning>
               Expires{" "}
               {new Intl.DateTimeFormat("en", {
                 timeZone: session.tenant.timezone,
@@ -679,7 +694,7 @@ export function Workspace({
           </div>
         )}
         <main id="main" className="page" key={session.tenant.id + path}>
-          {typeof window !== "undefined" && new URLSearchParams(window.location.search).get("welcome") === "1" && (
+          {showWelcome && (
             <div className="welcome-banner" role="status">
               <CheckCircle2 size={18} aria-hidden />
               <div className="welcome-banner-copy">
@@ -696,6 +711,7 @@ export function Workspace({
                   type="button"
                   className="welcome-banner-dismiss"
                   onClick={() => {
+                    setShowWelcome(false);
                     const u = new URL(window.location.href);
                     u.searchParams.delete("welcome");
                     window.history.replaceState({}, "", u.toString());

@@ -24,3 +24,5 @@ Next ADR is `010-<slug>.md`. Status line: Proposed or Accepted, plus date.
 - [013 — Weather and closure controls](013-weather-closure-controls.md) — non-sellable operational status before commercial policy actions.
 - [014 — Tenant branding and localization](014-tenant-branding-localization.md) — local logo files, presentation preferences and versioned waiver content.
 - [015 — Channel-neutral booking core](015-channel-neutral-booking-core.md) — canonical booking ownership with source-specific adapters and reconciliation.
+- [016 — Rock launch payments and operating controls](016-rock-launch-operations.md) — Stripe Connect/USD, SMTP, MFA, printer enrollment, offline data, and cutover controls.
+- [017 — Development schema redesign and reset policy](017-development-schema-reset-policy.md) — permits coordinated schema replacement and demo-data reseeding before production, while retaining target invariants.

@@ -24,13 +24,15 @@ The Expo app may preview/share a PDF and later use a compatible local-print adap
 - `printer_routes`: tenant, station, document type, printer/device target, template selection and fallback policy.
 - `print_jobs`: tenant, source document reference, template/version, route/device, idempotency key, rendered artifact reference, status, attempts, timestamps and error detail.
 
-Rendered artifacts require tenant-scoped storage paths and a retention policy. Operational documents minimize passenger data by document type and audience.
+Rendered artifacts require tenant-scoped storage paths and a retention policy. Operational documents minimize passenger data by document type and audience. Short-lived waiver PDF hot copies and archive sync-out follow [document storage](document-storage.md): ≤7 day hot retention, immediate sync-out when a drive target is configured, and purge of production hot space after sync or expiry.
 
 ## Current implementation
 
 Migration 023 provides tenant-scoped `print_templates`, `printer_routes`, and `print_jobs`, including RLS, append-only template versions, one published default per document type, audit/outbox events, and idempotent browser-job requests. A job provides a tenant-authorized PDF download derived from the canonical manifest or pickup-list data and the web workspace also supports the native browser print dialog. The job records the requested output; it does not claim that a browser download or physical print completed.
 
-The Go agent, agent enrollment credentials, job polling, stored-artifact rendering, retries, completion callbacks, and retention policy are still pending. They require a separately deployed service and approved operational/privacy requirements. Current PDFs are generated on demand and are not retained server-side.
+Migration 056 adds `document_artifacts` for short-lived hot PDF copies (waiver first), tenant `documentStorage` config, filesystem hot store, archive sync-out queueing, and purge. Google Drive / OneDrive / Dropbox adapters remain feature-flagged until OAuth credentials are approved.
+
+The Go agent, agent enrollment credentials, job polling, stored-artifact rendering for station printers, retries, and completion callbacks are still pending. They require a separately deployed service and approved operational/privacy requirements.
 
 ## Acceptance
 

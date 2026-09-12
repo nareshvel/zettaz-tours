@@ -67,6 +67,32 @@ export class FinanceService {
       throw new ConflictException("Partner credit total outside supported range");
     return credit;
   }
+  /** Guest boarding clearance: partner invoice/collect modes clear by policy; else paid + accepted credit. */
+  async boardingBalanceSettled(
+    tx: Tx,
+    actor: Actor,
+    bookingId: string,
+    totalMinor: number,
+    paidMinor: number,
+  ) {
+    const {
+      rows: [snap],
+    } = await tx.query(
+      `SELECT collection_mode
+       FROM booking_partner_snapshots
+       WHERE tenant_id=$1 AND booking_id=$2
+       ORDER BY booking_version DESC, partner_id DESC
+       LIMIT 1`,
+      [actor.tenantId, bookingId],
+    );
+    if (
+      snap?.collection_mode === "partner_invoice" ||
+      snap?.collection_mode === "partner_collects_for_tenant"
+    )
+      return true;
+    const credit = await this.partnerCredit(tx, actor, bookingId);
+    return BigInt(paidMinor) + BigInt(credit) >= BigInt(totalMinor);
+  }
   async record(
     tx: Tx,
     actor: Actor,

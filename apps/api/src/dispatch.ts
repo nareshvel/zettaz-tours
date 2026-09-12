@@ -2,41 +2,49 @@ import {
   Body,
   ConflictException,
   Controller,
+  Delete,
   Get,
   Headers,
   Injectable,
   NotFoundException,
   Param,
+  Patch,
   Post,
   Query,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { Actor, id } from "../../../packages/shared/src/contracts";
+import { LimitsService } from "./limits";
 import { Database, record } from "./database";
 import { Access, CurrentActor, keySchema, parse } from "./http";
 import { InventoryService } from "./inventory";
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const boardQuery = z.object({ date: day }).strict();
-export const pickupLocationSchema = z
-  .object({
-    slug: z.string().regex(/^[a-z][a-z0-9_-]{1,49}$/),
-    name: z.string().trim().min(1).max(120),
-    kind: z.enum(["hotel", "port", "meeting_point", "other"]),
-    notes: z.string().trim().max(500).default(""),
-    address: z.string().trim().max(300).default(""),
-    latitude: z.number().min(-90).max(90).optional(),
-    longitude: z.number().min(-180).max(180).optional(),
-    mapUrl: z.string().url().max(2048).or(z.literal("")).default(""),
-    visibility: z.enum(["internal", "guest"]).default("internal"),
-  })
-  .refine(
-    (location) =>
-      (location.latitude === undefined && location.longitude === undefined) ||
-      (location.latitude !== undefined && location.longitude !== undefined),
-    "Latitude and longitude must be provided together",
-  )
+// Zod v4: .omit() cannot be called on a schema that already has .refine().
+// Solution: share the raw object, derive the update shape first, then add .refine() to both.
+const pickupLocationLatLonCheck = (location: { latitude?: number; longitude?: number }) =>
+  (location.latitude === undefined && location.longitude === undefined) ||
+  (location.latitude !== undefined && location.longitude !== undefined);
+const LAT_LON_MSG = "Latitude and longitude must be provided together";
+const _pickupLocationBase = z.object({
+  slug: z.string().regex(/^[a-z][a-z0-9_-]{1,49}$/),
+  name: z.string().trim().min(1).max(120),
+  kind: z.enum(["hotel", "port", "meeting_point", "other"]),
+  notes: z.string().trim().max(500).default(""),
+  address: z.string().trim().max(300).default(""),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+  mapUrl: z.string().url().max(2048).or(z.literal("")).default(""),
+  visibility: z.enum(["internal", "guest"]).default("internal"),
+});
+export const pickupLocationSchema = _pickupLocationBase
+  .refine(pickupLocationLatLonCheck, LAT_LON_MSG)
+  .strict();
+export const pickupLocationUpdateSchema = _pickupLocationBase
+  .omit({ slug: true })
+  .refine(pickupLocationLatLonCheck, LAT_LON_MSG)
   .strict();
 export const pickupPlanSchema = z
   .object({
@@ -143,6 +151,91 @@ export class DispatchService {
           input,
         );
         return { id: idValue, ...input, active: true };
+      },
+    );
+  }
+  updateLocation(actor: Actor, locationId: string, key: string, raw: unknown) {
+    const input = parse(pickupLocationUpdateSchema, raw);
+    return this.db.command(
+      actor,
+      `pickup_location.update:${locationId}`,
+      key,
+      input,
+      async (tx) => {
+        const {
+          rows: [before],
+        } = await tx.query(
+          "SELECT id,slug,name,kind,notes,address,latitude,longitude,map_url,visibility,active FROM pickup_locations WHERE tenant_id=$1 AND id=$2 AND active FOR UPDATE",
+          [actor.tenantId, locationId],
+        );
+        if (!before) throw new NotFoundException("Pickup location not found");
+        const {
+          rows: [row],
+        } = await tx.query(
+          `UPDATE pickup_locations SET name=$3,kind=$4,notes=$5,address=$6,latitude=$7,longitude=$8,map_url=$9,visibility=$10
+           WHERE tenant_id=$1 AND id=$2 RETURNING id,slug,name,kind,notes,address,latitude,longitude,map_url,visibility,active`,
+          [
+            actor.tenantId,
+            locationId,
+            input.name,
+            input.kind,
+            input.notes,
+            input.address,
+            input.latitude ?? null,
+            input.longitude ?? null,
+            input.mapUrl,
+            input.visibility,
+          ],
+        );
+        await record(
+          tx,
+          actor,
+          "pickup_location.updated",
+          locationId,
+          before,
+          input,
+        );
+        return row;
+      },
+    );
+  }
+  deleteLocation(actor: Actor, locationId: string, key: string) {
+    return this.db.command(
+      actor,
+      `pickup_location.delete:${locationId}`,
+      key,
+      { locationId },
+      async (tx) => {
+        const {
+          rows: [before],
+        } = await tx.query(
+          "SELECT id,slug,name,kind,notes,address,latitude,longitude,map_url,visibility,active FROM pickup_locations WHERE tenant_id=$1 AND id=$2 AND active FOR UPDATE",
+          [actor.tenantId, locationId],
+        );
+        if (!before) throw new NotFoundException("Pickup location not found");
+        const {
+          rows: [inUse],
+        } = await tx.query(
+          "SELECT 1 AS used FROM pickup_stops WHERE tenant_id=$1 AND location_id=$2 LIMIT 1",
+          [actor.tenantId, locationId],
+        );
+        if (inUse)
+          throw new ConflictException(
+            "Location is used on a saved pickup plan. Reassign those stops first.",
+          );
+        await tx.query(
+          "UPDATE pickup_locations SET active=false WHERE tenant_id=$1 AND id=$2",
+          [actor.tenantId, locationId],
+        );
+        await record(
+          tx,
+          actor,
+          "pickup_location.deactivated",
+          locationId,
+          before,
+          { active: false },
+        );
+        return { id: locationId, active: false };
       },
     );
   }
@@ -385,7 +478,7 @@ export class DispatchService {
 }
 @Controller("ops/v1")
 export class DispatchController {
-  constructor(private readonly service: DispatchService) {}
+  constructor(private readonly service: DispatchService, private readonly limits: LimitsService) {}
   @Get("board") @Access("manifest.read") board(
     @CurrentActor() a: Actor,
     @Query() q: unknown,
@@ -397,12 +490,37 @@ export class DispatchController {
   ) {
     return this.service.locations(a);
   }
-  @Post("pickup-locations") @Access("operations.write") createLocation(
+  @Post("pickup-locations") @Access("operations.write") async createLocation(
     @CurrentActor() a: Actor,
     @Headers("idempotency-key") k: string,
     @Body() b: unknown,
   ) {
+    await this.limits.enforce(a, "locations");
     return this.service.createLocation(a, parse(keySchema, k), b);
+  }
+  @Patch("pickup-locations/:id") @Access("operations.write") updateLocation(
+    @CurrentActor() a: Actor,
+    @Param("id") locationId: string,
+    @Headers("idempotency-key") k: string,
+    @Body() b: unknown,
+  ) {
+    return this.service.updateLocation(
+      a,
+      parse(id, locationId),
+      parse(keySchema, k),
+      b,
+    );
+  }
+  @Delete("pickup-locations/:id") @Access("operations.write") deleteLocation(
+    @CurrentActor() a: Actor,
+    @Param("id") locationId: string,
+    @Headers("idempotency-key") k: string,
+  ) {
+    return this.service.deleteLocation(
+      a,
+      parse(id, locationId),
+      parse(keySchema, k),
+    );
   }
   @Get("departures/:id/pickups") @Access("manifest.read") plan(
     @CurrentActor() a: Actor,

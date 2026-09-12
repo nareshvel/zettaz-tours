@@ -5,10 +5,12 @@ import {
   CalendarDays,
   Download,
   MapPin,
+  Pencil,
   Plus,
   Printer,
   Save,
   Settings2,
+  Trash2,
 } from "lucide-react";
 import type {
   DispatchRow,
@@ -27,7 +29,31 @@ import {
   useMutation,
   useResource,
 } from "@/lib/client";
-import { Back, Empty, Field, Heading, Loading, Notice, Status } from "./common";
+import {
+  Back,
+  ConfirmDialog,
+  Empty,
+  Field,
+  FormDialog,
+  Heading,
+  Loading,
+  Notice,
+  Status,
+} from "./common";
+
+const emptyLocationForm = {
+  name: "",
+  slug: "",
+  kind: "hotel",
+  notes: "",
+  address: "",
+  latitude: "",
+  longitude: "",
+  mapUrl: "",
+  visibility: "internal",
+};
+
+type LocationForm = typeof emptyLocationForm;
 
 const localDay = (zone: string) =>
   new Intl.DateTimeFormat("en-CA", {
@@ -44,14 +70,14 @@ export function OperationsBoard({ session }: { session: Session }) {
   return (
     <>
       <Heading
-        eyebrow="OPERATIONS"
+        eyebrow="DAY BOARD"
         title="Day board"
-        description="Confirmed departures, pickup readiness and unresolved pickup work."
+        description="Today’s trips: pickup readiness, weather holds, and board guests."
         action={
           <label className="date-control">
             <CalendarDays size={16} />
             <input
-              aria-label="Operations date"
+              aria-label="Day board date"
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
@@ -60,8 +86,9 @@ export function OperationsBoard({ session }: { session: Session }) {
         }
       />
       <Notice>
-        Pickup plans are staff-entered sequences. This workspace does not
-        calculate or optimize a route.
+        Plan pickups edits the staff stop sequence. Print pickup list is the
+        paper/PDF view. Guest check-in, payment, waiver and boarding happen on
+        the departure manifest — open Board guests from a trip card.
       </Notice>
       {board.error ? (
         <Notice error>{board.error}</Notice>
@@ -137,23 +164,22 @@ export function OperationsBoard({ session }: { session: Session }) {
                       className="text-link"
                       href={`/operations/${d.id}/pickup-list`}
                     >
-                      <Printer size={15} /> Pickup list
+                      <Printer size={15} /> Print pickup list
                     </Link>
-                    {session.permissions.includes("operations.write") ? (
+                    {session.permissions.includes("operations.write") && (
                       <Link
                         className="button secondary"
                         href={`/operations/${d.id}/pickups`}
                       >
-                        <MapPin size={16} /> Pickup plan
-                      </Link>
-                    ) : (
-                      <Link
-                        className="text-link"
-                        href={`/departures/${d.id}/manifest`}
-                      >
-                        View manifest
+                        <MapPin size={16} /> Plan pickups
                       </Link>
                     )}
+                    <Link
+                      className="button"
+                      href={`/departures/${d.id}/manifest?from=operations`}
+                    >
+                      Board guests
+                    </Link>
                   </div>
                 </div>
               </article>
@@ -180,6 +206,7 @@ export function RebookingPage({
   const applyMutation = useMutation();
   const [targetDepartureId, setTargetDepartureId] = useState("");
   const [reason, setReason] = useState("");
+  const [applyOpen, setApplyOpen] = useState(false);
   const [preview, setPreview] = useState<RebookingPreview | null>(null);
   const [result, setResult] = useState<{
     succeeded: number;
@@ -203,12 +230,15 @@ export function RebookingPage({
         item.eligible && Boolean(item.quoteId) && Boolean(item.version),
     );
     if (!eligible.length) return;
-    if (
-      !window.confirm(
-        `Move ${eligible.length} eligible booking${eligible.length === 1 ? "" : "s"} to the selected departure? Each booking will retain its payment history and receive a new price snapshot.`,
-      )
-    )
-      return;
+    setApplyOpen(true);
+  }
+  async function confirmApply() {
+    if (!preview) return;
+    const eligible = preview.items.filter(
+      (item): item is typeof item & { quoteId: string; version: number } =>
+        item.eligible && Boolean(item.quoteId) && Boolean(item.version),
+    );
+    if (!eligible.length) return;
     const data = await applyMutation.run<{
       succeeded: number;
       failed: number;
@@ -221,12 +251,15 @@ export function RebookingPage({
         quoteId: item.quoteId,
       })),
     });
-    if (data) setResult(data);
+    if (data) {
+      setResult(data);
+      setApplyOpen(false);
+    }
   }
 
   return (
     <>
-      <Back href="/operations">Operations</Back>
+      <Back href="/operations">Day Board</Back>
       <Heading
         eyebrow="OPERATIONS"
         title="Departure recovery"
@@ -358,6 +391,18 @@ export function RebookingPage({
           )}
         </div>
       )}
+      <ConfirmDialog
+        open={applyOpen}
+        title="Apply recovery rebooking?"
+        description={`Move ${preview?.eligible ?? 0} eligible booking${(preview?.eligible ?? 0) === 1 ? "" : "s"} to the selected departure. Each booking keeps its payment history and gets a new price snapshot. Customer messages stay unsent.`}
+        confirmLabel="Move bookings"
+        busy={applyMutation.busy}
+        error={applyMutation.error}
+        onClose={() => {
+          if (!applyMutation.busy) setApplyOpen(false);
+        }}
+        onConfirm={() => void confirmApply()}
+      />
     </>
   );
 }
@@ -369,38 +414,97 @@ function OperationalStatusControl({
   reload: () => void;
 }) {
   const change = useMutation();
-  async function set(status: "open" | "weather_hold" | "closed") {
-    const reason = window.prompt(
-      status === "open"
-        ? "Why is this departure reopening?"
-        : `Reason for ${label(status)}:`,
-    );
-    if (!reason) return;
-    if (
-      await change.run(`ops/v1/departures/${departure.id}/operational-status`, {
+  const [draft, setDraft] = useState<"open" | "weather_hold" | "closed" | null>(
+    null,
+  );
+
+  async function confirm(reason: string) {
+    if (!draft) return;
+    const ok = await change.run(
+      `ops/v1/departures/${departure.id}/operational-status`,
+      {
         version: departure.operational_version,
-        status,
+        status: draft,
         reason,
-      })
-    )
+      },
+    );
+    if (ok) {
+      setDraft(null);
       reload();
+    }
   }
-  return departure.operational_status === "open" ? (
-    <button
-      className="text-link danger"
-      disabled={change.busy}
-      onClick={() => set("weather_hold")}
-    >
-      Weather hold
-    </button>
-  ) : (
-    <button
-      className="text-link"
-      disabled={change.busy}
-      onClick={() => set("open")}
-    >
-      Reopen
-    </button>
+
+  const isOpen = departure.operational_status === "open";
+  const title =
+    draft === "open"
+      ? "Reopen this departure?"
+      : draft === "closed"
+        ? "Close this departure?"
+        : "Place weather hold?";
+  const description =
+    draft === "open"
+      ? "Guests can be booked again once the departure is open."
+      : draft === "closed"
+        ? "Closed departures are not sellable. Use Recovery if confirmed guests need another trip."
+        : "Weather hold stops new sales for this departure until you reopen it.";
+  const confirmLabel =
+    draft === "open"
+      ? "Reopen"
+      : draft === "closed"
+        ? "Close departure"
+        : "Hold departure";
+
+  return (
+    <>
+      {isOpen ? (
+        <>
+          <button
+            className="text-link danger"
+            disabled={change.busy}
+            type="button"
+            onClick={() => setDraft("weather_hold")}
+          >
+            Weather hold
+          </button>
+          <button
+            className="text-link danger"
+            disabled={change.busy}
+            type="button"
+            onClick={() => setDraft("closed")}
+          >
+            Close
+          </button>
+        </>
+      ) : (
+        <button
+          className="text-link"
+          disabled={change.busy}
+          type="button"
+          onClick={() => setDraft("open")}
+        >
+          Reopen
+        </button>
+      )}
+      <ConfirmDialog
+        open={draft !== null}
+        title={title}
+        description={description}
+        confirmLabel={confirmLabel}
+        danger={draft !== "open"}
+        reasonRequired
+        reasonLabel={
+          draft === "open" ? "Reopen reason" : "Internal operational reason"
+        }
+        reasonHint="Stored on the departure audit trail. Not shown to guests."
+        reasonPlaceholder="e.g. Swell at Jolly Harbour"
+        busy={change.busy}
+        error={change.error}
+        onClose={() => {
+          if (!change.busy) setDraft(null);
+        }}
+        onConfirm={confirm}
+      />
+    </>
   );
 }
 export function PickupPlanPage({
@@ -417,14 +521,14 @@ export function PickupPlanPage({
   if (plan.error)
     return (
       <>
-        <Back href="/operations">Operations</Back>
+        <Back href="/operations">Day Board</Back>
         <Notice error>{plan.error}</Notice>
       </>
     );
   if (!plan.data || !locations.data)
     return (
       <>
-        <Back href="/operations">Operations</Back>
+        <Back href="/operations">Day Board</Back>
         <Loading />
       </>
     );
@@ -480,27 +584,36 @@ export function PrintablePickupListPage({
   if (list.error)
     return (
       <>
-        <Back href="/operations">Operations</Back>
+        <Back href="/operations">Day Board</Back>
         <Notice error>{list.error}</Notice>
       </>
     );
   if (!list.data)
     return (
       <>
-        <Back href="/operations">Operations</Back>
+        <Back href="/operations">Day Board</Back>
         <Loading />
       </>
     );
   const { departure, plan, stops, exceptions } = list.data;
+  const when = dateTime(departure.starts_at, session.tenant.timezone);
   return (
-    <>
-      <Back href="/operations">Operations</Back>
+    <div className="pickup-print-page">
+      <Back href="/operations">Day Board</Back>
       <Heading
         eyebrow="DAY-OF OPERATIONS"
-        title="Pickup list"
-        description={`${departure.product_name} · ${dateTime(departure.starts_at, session.tenant.timezone)}`}
+        title="Print pickup list"
+        description={`${departure.product_name} · ${when}. Paper-safe stop sequence for the driver. Edit on Plan pickups.`}
         action={
-          <div className="button-row no-print">
+          <div className="button-row no-print pickup-print-actions">
+            {session.permissions.includes("operations.write") && (
+              <Link
+                className="button secondary"
+                href={`/operations/${departureId}/pickups`}
+              >
+                <MapPin size={16} /> Plan pickups
+              </Link>
+            )}
             <button
               className="button secondary"
               disabled={printJob.busy}
@@ -520,22 +633,25 @@ export function PrintablePickupListPage({
         }
       />
       {printJob.error && <Notice error>{printJob.error}</Notice>}
-      <section className="panel pickup-print-summary">
+      <header className="panel pickup-print-masthead">
         <div>
-          <p className="eyebrow">SAVED PLAN</p>
-          <strong>{plan ? `Version ${plan.version}` : "No plan saved"}</strong>
+          <p className="eyebrow">DEPARTURE</p>
+          <strong>{departure.product_name}</strong>
+          <span>{when}</span>
         </div>
         <div>
-          <p className="eyebrow">PLANNED STOPS</p>
-          <strong>{stops.length}</strong>
+          <p className="eyebrow">PLAN</p>
+          <strong>{plan ? `Version ${plan.version}` : "Not saved"}</strong>
+          <span>
+            {stops.length} stop{stops.length === 1 ? "" : "s"}
+            {exceptions.length
+              ? ` · ${exceptions.length} exception${
+                  exceptions.length === 1 ? "" : "s"
+                }`
+              : ""}
+          </span>
         </div>
-        <div>
-          <p className="eyebrow">EXCEPTIONS</p>
-          <strong className={exceptions.length ? "danger" : ""}>
-            {exceptions.length}
-          </strong>
-        </div>
-      </section>
+      </header>
       {plan?.notes && (
         <Notice>
           <strong>Dispatcher note:</strong> {plan.notes}
@@ -550,35 +666,62 @@ export function PrintablePickupListPage({
         </div>
         {!stops.length ? (
           <Empty title="No pickup stops saved">
-            <p>Review the exceptions before this departure is ready.</p>
+            <p>
+              Save an ordered plan on Plan pickups before printing. Review
+              exceptions below.
+            </p>
           </Empty>
         ) : (
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Stop</th>
-                  <th>Pickup time</th>
-                  <th>Location</th>
-                  <th>Lead guest</th>
-                  <th>Guests</th>
-                  <th>Stop note</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stops.map((stop) => (
-                  <tr key={stop.sequence}>
-                    <td>{stop.sequence}</td>
-                    <td>{dateTime(stop.pickup_at, session.tenant.timezone)}</td>
-                    <td>{stop.location_name}</td>
-                    <td>{stop.lead_name}</td>
-                    <td>{stop.party_size}</td>
-                    <td>{stop.notes || "—"}</td>
+          <>
+            <ol className="pickup-print-stops">
+              {stops.map((stop) => (
+                <li key={stop.sequence} className="pickup-print-stop">
+                  <span className="pickup-print-stop-index" aria-hidden>
+                    {stop.sequence}
+                  </span>
+                  <div className="pickup-print-stop-main">
+                    <strong>{stop.location_name}</strong>
+                    <span>
+                      {dateTime(stop.pickup_at, session.tenant.timezone)} ·{" "}
+                      {stop.lead_name} · {stop.party_size} guest
+                      {stop.party_size === 1 ? "" : "s"}
+                    </span>
+                    {stop.notes ? (
+                      <small className="muted">{stop.notes}</small>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ol>
+            <div className="table-scroll pickup-print-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Stop</th>
+                    <th>Pickup time</th>
+                    <th>Location</th>
+                    <th>Lead guest</th>
+                    <th>Guests</th>
+                    <th>Stop note</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {stops.map((stop) => (
+                    <tr key={`table-${stop.sequence}`}>
+                      <td>{stop.sequence}</td>
+                      <td>
+                        {dateTime(stop.pickup_at, session.tenant.timezone)}
+                      </td>
+                      <td>{stop.location_name}</td>
+                      <td>{stop.lead_name}</td>
+                      <td>{stop.party_size}</td>
+                      <td>{stop.notes || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </section>
       <section
@@ -608,7 +751,7 @@ export function PrintablePickupListPage({
           </ul>
         )}
       </section>
-    </>
+    </div>
   );
 }
 function PickupEditor({
@@ -625,7 +768,8 @@ function PickupEditor({
   reload: () => void;
 }) {
   const save = useMutation(),
-    add = useMutation();
+    locationMutation = useMutation(),
+    removeLocation = useMutation();
   const [stops, setStops] = useState(
     initial.stops.map((s) => ({
       bookingId: s.booking_id,
@@ -635,23 +779,48 @@ function PickupEditor({
     })),
   );
   const [notes, setNotes] = useState(initial.plan?.notes ?? "");
-  const [newLocation, setNewLocation] = useState({
-    name: "",
-    slug: "",
-    kind: "hotel",
-    notes: "",
-    address: "",
-    latitude: "",
-    longitude: "",
-    mapUrl: "",
-    visibility: "internal",
-  });
+  const [locationForm, setLocationForm] =
+    useState<LocationForm>(emptyLocationForm);
+  const [locationEditor, setLocationEditor] = useState<
+    null | { mode: "create" } | { mode: "edit"; location: PickupLocation }
+  >(null);
+  const [pendingDelete, setPendingDelete] = useState<PickupLocation | null>(
+    null,
+  );
   const selected = useMemo(
     () => new Set(stops.map((s) => s.bookingId)),
     [stops],
   );
   const eligible = initial.eligible.filter((b) => !selected.has(b.booking_id));
   const departure = initial.stops[0]?.pickup_at ?? "";
+  const canWrite = session.permissions.includes("operations.write");
+
+  function openCreateLocation() {
+    setLocationForm(emptyLocationForm);
+    setLocationEditor({ mode: "create" });
+    locationMutation.clear();
+  }
+  function openEditLocation(location: PickupLocation) {
+    setLocationForm({
+      name: location.name,
+      slug: location.slug,
+      kind: location.kind,
+      notes: location.notes ?? "",
+      address: location.address ?? "",
+      latitude:
+        location.latitude === null || location.latitude === undefined
+          ? ""
+          : String(location.latitude),
+      longitude:
+        location.longitude === null || location.longitude === undefined
+          ? ""
+          : String(location.longitude),
+      mapUrl: location.map_url ?? "",
+      visibility: location.visibility,
+    });
+    setLocationEditor({ mode: "edit", location });
+    locationMutation.clear();
+  }
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const result = await save.run(`ops/v1/departures/${departureId}/pickups`, {
@@ -664,48 +833,79 @@ function PickupEditor({
     });
     if (result) reload();
   }
-  async function createLocation(e: React.FormEvent) {
-    e.preventDefault();
-    const result = await add.run("ops/v1/pickup-locations", {
-      ...newLocation,
-      latitude: newLocation.latitude ? Number(newLocation.latitude) : undefined,
-      longitude: newLocation.longitude
-        ? Number(newLocation.longitude)
+  async function submitLocation() {
+    if (!locationEditor) return;
+    const payload = {
+      name: locationForm.name,
+      kind: locationForm.kind,
+      notes: locationForm.notes,
+      address: locationForm.address,
+      latitude: locationForm.latitude
+        ? Number(locationForm.latitude)
         : undefined,
-    });
+      longitude: locationForm.longitude
+        ? Number(locationForm.longitude)
+        : undefined,
+      mapUrl: locationForm.mapUrl,
+      visibility: locationForm.visibility,
+      ...(locationEditor.mode === "create" ? { slug: locationForm.slug } : {}),
+    };
+    const result =
+      locationEditor.mode === "create"
+        ? await locationMutation.run("ops/v1/pickup-locations", payload)
+        : await locationMutation.run(
+            `ops/v1/pickup-locations/${locationEditor.location.id}`,
+            payload,
+            "PATCH",
+          );
     if (result) {
-      setNewLocation({
-        name: "",
-        slug: "",
-        kind: "hotel",
-        notes: "",
-        address: "",
-        latitude: "",
-        longitude: "",
-        mapUrl: "",
-        visibility: "internal",
-      });
+      setLocationEditor(null);
+      setLocationForm(emptyLocationForm);
+      reload();
+    }
+  }
+  async function confirmDeleteLocation() {
+    if (!pendingDelete) return;
+    const deletedId = pendingDelete.id;
+    const result = await removeLocation.run(
+      `ops/v1/pickup-locations/${deletedId}`,
+      {},
+      "DELETE",
+    );
+    if (result) {
+      setPendingDelete(null);
+      setStops((current) =>
+        current.map((stop) =>
+          stop.locationId === deletedId
+            ? {
+                ...stop,
+                locationId:
+                  locations.find((l) => l.id !== deletedId)?.id ?? "",
+              }
+            : stop,
+        ),
+      );
       reload();
     }
   }
   return (
     <>
-      <Back href="/operations">Operations</Back>
+      <Back href="/operations">Day Board</Back>
       <Heading
         eyebrow="DISPATCH"
-        title="Pickup plan"
-        description="Order confirmed guests with an arranged pickup. Saving replaces the current ordered plan."
+        title="Plan pickups"
+        description="Edit the ordered stop sequence for arranged pickups. Saving replaces the current plan. Print from Print pickup list."
         action={
           <Link
             className="button secondary"
             href={`/operations/${departureId}/pickup-list`}
           >
-            <Printer size={16} /> Print list
+            <Printer size={16} /> Print pickup list
           </Link>
         }
       />
       <div className="pickup-layout">
-        <form className="panel form-panel" onSubmit={submit}>
+        <form className="panel form-panel pickup-plan-main" onSubmit={submit}>
           <div className="panel-heading plain">
             <div>
               <h2>Ordered stops</h2>
@@ -723,67 +923,71 @@ function PickupEditor({
           {!stops.length && (
             <Empty title="No stops added">
               <p>
-                Choose an arranged-pickup booking below. Unresolved pickups
-                cannot be routed.
+                Add arranged-pickup bookings below. Unresolved pickups cannot be
+                sequenced here.
               </p>
             </Empty>
           )}
-          {stops.map((stop, i) => {
-            const guest =
-              initial.eligible.find((b) => b.booking_id === stop.bookingId) ||
-              initial.stops.find((s) => s.booking_id === stop.bookingId);
-            return (
-              <div className="pickup-stop" key={stop.bookingId}>
-                <span className="stop-number">{i + 1}</span>
-                <div className="stop-main">
-                  <strong>{guest?.lead_name}</strong>
-                  <small>
-                    {guest?.party_size} guest
-                    {guest?.party_size === 1 ? "" : "s"}
-                  </small>
-                </div>
-                <Field label="Location">
-                  <select
-                    value={stop.locationId}
-                    onChange={(e) =>
-                      setStops((v) =>
-                        v.map((x, n) =>
-                          n === i ? { ...x, locationId: e.target.value } : x,
-                        ),
-                      )
-                    }
+          <div className="pickup-stop-list">
+            {stops.map((stop, i) => {
+              const guest =
+                initial.eligible.find((b) => b.booking_id === stop.bookingId) ||
+                initial.stops.find((s) => s.booking_id === stop.bookingId);
+              return (
+                <div className="pickup-stop" key={stop.bookingId}>
+                  <span className="stop-number">{i + 1}</span>
+                  <div className="stop-main">
+                    <strong>{guest?.lead_name}</strong>
+                    <small>
+                      {guest?.party_size} guest
+                      {guest?.party_size === 1 ? "" : "s"}
+                    </small>
+                  </div>
+                  <div className="pickup-stop-fields">
+                    <Field label="Location">
+                      <select
+                        value={stop.locationId}
+                        onChange={(e) =>
+                          setStops((v) =>
+                            v.map((x, n) =>
+                              n === i ? { ...x, locationId: e.target.value } : x,
+                            ),
+                          )
+                        }
+                      >
+                        {locations.map((l) => (
+                          <option key={l.id} value={l.id}>
+                            {l.name} · {label(l.kind)}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Pickup time">
+                      <input
+                        required
+                        type="datetime-local"
+                        value={stop.pickupAt}
+                        onChange={(e) =>
+                          setStops((v) =>
+                            v.map((x, n) =>
+                              n === i ? { ...x, pickupAt: e.target.value } : x,
+                            ),
+                          )
+                        }
+                      />
+                    </Field>
+                  </div>
+                  <button
+                    type="button"
+                    className="text-link danger"
+                    onClick={() => setStops((v) => v.filter((_, n) => n !== i))}
                   >
-                    {locations.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {l.name} · {label(l.kind)}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Pickup time">
-                  <input
-                    required
-                    type="datetime-local"
-                    value={stop.pickupAt}
-                    onChange={(e) =>
-                      setStops((v) =>
-                        v.map((x, n) =>
-                          n === i ? { ...x, pickupAt: e.target.value } : x,
-                        ),
-                      )
-                    }
-                  />
-                </Field>
-                <button
-                  type="button"
-                  className="text-link danger"
-                  onClick={() => setStops((v) => v.filter((_, n) => n !== i))}
-                >
-                  Remove
-                </button>
-              </div>
-            );
-          })}
+                    Remove
+                  </button>
+                </div>
+              );
+            })}
+          </div>
           {!!eligible.length && (
             <section className="eligible-list">
               <h3>Arranged pickups not yet in this plan</h3>
@@ -830,143 +1034,220 @@ function PickupEditor({
           </Field>
           {save.error && <Notice error>{save.error}</Notice>}
         </form>
-        <aside className="panel form-panel">
+        <aside className="panel form-panel pickup-plan-aside">
           <div className="panel-heading plain">
             <div>
-              <p className="eyebrow">CONTROLLED DATA</p>
+              <p className="eyebrow">LOCATIONS</p>
               <h2>Pickup locations</h2>
             </div>
             <Settings2 size={18} />
           </div>
           <p className="muted">
-            Use a controlled location for every stop. Existing guest
-            instructions remain on the reservation.
+            Every stop must use a controlled location. Guest-facing instructions
+            stay on the reservation.
           </p>
-          <form onSubmit={createLocation}>
-            <Field label="Location name">
-              <input
-                required
-                maxLength={120}
-                value={newLocation.name}
-                onChange={(e) =>
-                  setNewLocation((v) => ({
-                    ...v,
-                    name: e.target.value,
-                    slug:
-                      v.slug ||
+          {!locations.length && (
+            <Notice error>
+              Add at least one location before sequencing stops.
+            </Notice>
+          )}
+          <div className="location-list">
+            {locations.map((l) => (
+              <div key={l.id} className="location-list-row">
+                <div>
+                  <strong>{l.name}</strong>
+                  <small>
+                    {label(l.kind)} · {l.slug}
+                    {l.latitude !== null && l.longitude !== null
+                      ? " · mapped"
+                      : ""}
+                  </small>
+                </div>
+                {canWrite && (
+                  <div className="location-list-actions">
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label={`Edit ${l.name}`}
+                      onClick={() => openEditLocation(l)}
+                    >
+                      <Pencil size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-button danger"
+                      aria-label={`Delete ${l.name}`}
+                      onClick={() => {
+                        removeLocation.clear();
+                        setPendingDelete(l);
+                      }}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          {canWrite && (
+            <button
+              type="button"
+              className="button secondary"
+              onClick={openCreateLocation}
+            >
+              <Plus size={16} /> Add location
+            </button>
+          )}
+        </aside>
+      </div>
+      <FormDialog
+        open={locationEditor !== null}
+        title={
+          locationEditor?.mode === "edit"
+            ? "Edit pickup location"
+            : "Add pickup location"
+        }
+        description="Controlled locations can be reused across departures."
+        busy={locationMutation.busy}
+        error={locationMutation.error}
+        submitLabel={
+          locationEditor?.mode === "edit" ? "Save location" : "Add location"
+        }
+        onClose={() => {
+          if (!locationMutation.busy) setLocationEditor(null);
+        }}
+        onSubmit={submitLocation}
+      >
+        <Field label="Location name">
+          <input
+            required
+            maxLength={120}
+            value={locationForm.name}
+            onChange={(e) =>
+              setLocationForm((v) => ({
+                ...v,
+                name: e.target.value,
+                slug:
+                  locationEditor?.mode === "edit"
+                    ? v.slug
+                    : v.slug ||
                       e.target.value
                         .toLowerCase()
                         .replace(/[^a-z0-9]+/g, "_")
                         .replace(/^_|_$/g, ""),
-                  }))
-                }
-              />
-            </Field>
-            <Field label="Location code">
-              <input
-                required
-                pattern="[a-z][a-z0-9_-]{1,49}"
-                value={newLocation.slug}
-                onChange={(e) =>
-                  setNewLocation((v) => ({ ...v, slug: e.target.value }))
-                }
-              />
-            </Field>
-            <Field label="Kind">
-              <select
-                value={newLocation.kind}
-                onChange={(e) =>
-                  setNewLocation((v) => ({ ...v, kind: e.target.value }))
-                }
-              >
-                <option value="hotel">Hotel</option>
-                <option value="port">Port</option>
-                <option value="meeting_point">Meeting point</option>
-                <option value="other">Other</option>
-              </select>
-            </Field>
-            <Field label="Operational notes">
-              <textarea
-                maxLength={500}
-                value={newLocation.notes}
-                onChange={(e) =>
-                  setNewLocation((v) => ({ ...v, notes: e.target.value }))
-                }
-              />
-            </Field>
-            <Field label="Address or directions">
-              <input
-                maxLength={300}
-                value={newLocation.address}
-                onChange={(e) =>
-                  setNewLocation((v) => ({ ...v, address: e.target.value }))
-                }
-              />
-            </Field>
-            <div className="form-grid">
-              <Field label="Latitude">
-                <input
-                  inputMode="decimal"
-                  value={newLocation.latitude}
-                  onChange={(e) =>
-                    setNewLocation((v) => ({ ...v, latitude: e.target.value }))
-                  }
-                />
-              </Field>
-              <Field label="Longitude">
-                <input
-                  inputMode="decimal"
-                  value={newLocation.longitude}
-                  onChange={(e) =>
-                    setNewLocation((v) => ({ ...v, longitude: e.target.value }))
-                  }
-                />
-              </Field>
-            </div>
-            <Field
-              label="Map link"
-              hint="Optional tenant-controlled reference."
-            >
-              <input
-                type="url"
-                value={newLocation.mapUrl}
-                onChange={(e) =>
-                  setNewLocation((v) => ({ ...v, mapUrl: e.target.value }))
-                }
-              />
-            </Field>
-            <Field label="Visibility">
-              <select
-                value={newLocation.visibility}
-                onChange={(e) =>
-                  setNewLocation((v) => ({ ...v, visibility: e.target.value }))
-                }
-              >
-                <option value="internal">Internal operations only</option>
-                <option value="guest">May be shown to guests</option>
-              </select>
-            </Field>
-            {add.error && <Notice error>{add.error}</Notice>}
-            <button className="button secondary" disabled={add.busy}>
-              {add.busy ? "Adding…" : "Add location"}
-              <Plus size={16} />
-            </button>
-          </form>
-          <div className="location-list">
-            {locations.map((l) => (
-              <div key={l.id}>
-                <strong>{l.name}</strong>
-                <small>
-                  {label(l.kind)} · {l.slug}
-                  {l.latitude !== null && l.longitude !== null
-                    ? " · mapped"
-                    : ""}
-                </small>
-              </div>
-            ))}
-          </div>
-        </aside>
-      </div>
+              }))
+            }
+          />
+        </Field>
+        <Field label="Location code">
+          <input
+            required
+            pattern="[a-z][a-z0-9_-]{1,49}"
+            value={locationForm.slug}
+            disabled={locationEditor?.mode === "edit"}
+            onChange={(e) =>
+              setLocationForm((v) => ({ ...v, slug: e.target.value }))
+            }
+          />
+        </Field>
+        <Field label="Kind">
+          <select
+            value={locationForm.kind}
+            onChange={(e) =>
+              setLocationForm((v) => ({ ...v, kind: e.target.value }))
+            }
+          >
+            <option value="hotel">Hotel</option>
+            <option value="port">Port</option>
+            <option value="meeting_point">Meeting point</option>
+            <option value="other">Other</option>
+          </select>
+        </Field>
+        <Field label="Operational notes">
+          <textarea
+            maxLength={500}
+            value={locationForm.notes}
+            onChange={(e) =>
+              setLocationForm((v) => ({ ...v, notes: e.target.value }))
+            }
+          />
+        </Field>
+        <Field label="Address or directions">
+          <input
+            maxLength={300}
+            value={locationForm.address}
+            onChange={(e) =>
+              setLocationForm((v) => ({ ...v, address: e.target.value }))
+            }
+          />
+        </Field>
+        <div className="form-grid">
+          <Field label="Latitude">
+            <input
+              inputMode="decimal"
+              value={locationForm.latitude}
+              onChange={(e) =>
+                setLocationForm((v) => ({
+                  ...v,
+                  latitude: e.target.value,
+                }))
+              }
+            />
+          </Field>
+          <Field label="Longitude">
+            <input
+              inputMode="decimal"
+              value={locationForm.longitude}
+              onChange={(e) =>
+                setLocationForm((v) => ({
+                  ...v,
+                  longitude: e.target.value,
+                }))
+              }
+            />
+          </Field>
+        </div>
+        <Field label="Map link" hint="Optional tenant-controlled reference.">
+          <input
+            type="url"
+            value={locationForm.mapUrl}
+            onChange={(e) =>
+              setLocationForm((v) => ({ ...v, mapUrl: e.target.value }))
+            }
+          />
+        </Field>
+        <Field label="Visibility">
+          <select
+            value={locationForm.visibility}
+            onChange={(e) =>
+              setLocationForm((v) => ({
+                ...v,
+                visibility: e.target.value,
+              }))
+            }
+          >
+            <option value="internal">Internal operations only</option>
+            <option value="guest">May be shown to guests</option>
+          </select>
+        </Field>
+      </FormDialog>
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="Remove pickup location?"
+        description={
+          pendingDelete
+            ? `${pendingDelete.name} will be deactivated and removed from new plans. Existing saved stops that still reference it must be reassigned first.`
+            : undefined
+        }
+        confirmLabel="Remove location"
+        danger
+        busy={removeLocation.busy}
+        error={removeLocation.error}
+        onClose={() => {
+          if (!removeLocation.busy) setPendingDelete(null);
+        }}
+        onConfirm={confirmDeleteLocation}
+      />
     </>
   );
 }

@@ -5,6 +5,7 @@ import {
   Headers,
   Post,
   UnauthorizedException,
+  ConflictException,
 } from "@nestjs/common";
 import { randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -12,6 +13,8 @@ import { Database, digest } from "./database";
 import { Access, CurrentActor, parse } from "./http";
 import type { Actor } from "../../../packages/shared/src/contracts";
 import { hashPassword, verifyPassword } from "../scripts/sessions";
+import { sendPasswordRecovery } from "./email";
+import { TenantService } from "./tenant";
 import { invitationAcceptSchema } from "../../../packages/shared/src/contracts";
 
 const credentialsSchema = z
@@ -27,8 +30,26 @@ const passwordChangeSchema = z
     newPassword: z.string().min(12).max(1024),
   })
   .strict();
-const recoveryRequestSchema=z.object({email:z.string().email().max(254)}).strict();
-const recoveryCompleteSchema=z.object({token:z.string().min(40).max(100),password:z.string().min(12).max(1024)}).strict();
+const recoveryRequestSchema = z
+  .object({ email: z.string().email().max(254) })
+  .strict();
+const registerSchema = z
+  .object({
+    companyName: z.string().min(2).max(120),
+    country: z.string().min(2).max(2),
+    timezone: z.string().min(1).max(80),
+    currency: z.string().min(3).max(3),
+    ownerName: z.string().min(2).max(120),
+    email: z.string().email().max(254),
+    password: z.string().min(12).max(1024),
+  })
+  .strict();
+const recoveryCompleteSchema = z
+  .object({
+    token: z.string().min(40).max(100),
+    password: z.string().min(12).max(1024),
+  })
+  .strict();
 
 function token() {
   return randomBytes(32).toString("base64url");
@@ -41,27 +62,43 @@ function bearer(authorization?: string) {
 
 @Controller("auth/v1")
 export class AuthController {
-  constructor(private readonly db: Database) {}
+  constructor(private readonly db: Database, private readonly tenantSvc: TenantService) {}
 
   @Post("password-recovery/request")
   @Access("public")
-  async requestPasswordRecovery(@Body() body:unknown){
-    const input=parse(recoveryRequestSchema,body),value=token();
-    const {rows}=await this.db.pool.query("SELECT begin_password_reset($1,$2) AS created",[input.email,digest(value)]);
+  async requestPasswordRecovery(@Body() body: unknown) {
+    const input = parse(recoveryRequestSchema, body),
+      value = token();
+    const { rows } = await this.db.pool.query(
+      "SELECT begin_password_reset($1,$2) AS created",
+      [input.email, digest(value)],
+    );
+    if (rows[0]?.created) {
+      const resetUrl = `${process.env.FRONTEND_URL ?? "http://localhost:3000"}/reset-password?token=${value}`;
+      void sendPasswordRecovery({ to: input.email, resetUrl }).catch(() => {});
+    }
     return {
-      accepted:true,
-      delivery:"held_provider",
-      ...(rows[0]?.created&&process.env.EXPOSE_RECOVERY_TOKEN==="1"&&process.env.APP_MODE!=="production"?{token:value}:{}),
+      accepted: true,
+      delivery: "email",
+      ...(rows[0]?.created &&
+      process.env.EXPOSE_RECOVERY_TOKEN === "1" &&
+      process.env.APP_MODE !== "production"
+        ? { token: value }
+        : {}),
     };
   }
 
   @Post("password-recovery/complete")
   @Access("public")
-  async completePasswordRecovery(@Body() body:unknown){
-    const input=parse(recoveryCompleteSchema,body);
-    const {rows}=await this.db.pool.query("SELECT complete_password_reset($1,$2) AS actor_id",[digest(input.token),await hashPassword(input.password)]);
-    if(!rows[0]?.actor_id) throw new UnauthorizedException("Recovery token is invalid or expired.");
-    return {ok:true};
+  async completePasswordRecovery(@Body() body: unknown) {
+    const input = parse(recoveryCompleteSchema, body);
+    const { rows } = await this.db.pool.query(
+      "SELECT complete_password_reset($1,$2) AS actor_id",
+      [digest(input.token), await hashPassword(input.password)],
+    );
+    if (!rows[0]?.actor_id)
+      throw new UnauthorizedException("Recovery token is invalid or expired.");
+    return { ok: true };
   }
 
   @Post("sign-in")
@@ -69,19 +106,24 @@ export class AuthController {
   async signIn(@Body() body: unknown) {
     const input = parse(credentialsSchema, body);
     const identityHash = digest(input.email.trim().toLowerCase());
-    const { rows: allowed } = await this.db.pool.query("SELECT login_attempt_allowed($1) AS allowed",[identityHash]);
-    if (!allowed[0]?.allowed) throw new UnauthorizedException("Email or password is incorrect.");
+    const { rows: allowed } = await this.db.pool.query(
+      "SELECT login_attempt_allowed($1) AS allowed",
+      [identityHash],
+    );
+    if (!allowed[0]?.allowed)
+      throw new UnauthorizedException("Email or password is incorrect.");
     const {
       rows: [identity],
     } = await this.db.pool.query("SELECT * FROM staff_login_identity($1)", [
       input.email,
     ]);
-    const valid = Boolean(identity) && await verifyPassword(input.password, identity?.password_hash ?? "");
-    if (
-      !identity ||
-      !valid
-    ) {
-      await this.db.pool.query("SELECT record_login_attempt($1,false)",[identityHash]);
+    const valid =
+      Boolean(identity) &&
+      (await verifyPassword(input.password, identity?.password_hash ?? ""));
+    if (!identity || !valid) {
+      await this.db.pool.query("SELECT record_login_attempt($1,false)", [
+        identityHash,
+      ]);
       throw new UnauthorizedException("Email or password is incorrect.");
     }
     const { rows: tenants } = await this.db.pool.query(
@@ -92,7 +134,9 @@ export class AuthController {
       ? tenants.find((tenant) => tenant.tenant_id === input.tenantId)
       : tenants[0];
     if (!selected) {
-      await this.db.pool.query("SELECT record_login_attempt($1,false)",[identityHash]);
+      await this.db.pool.query("SELECT record_login_attempt($1,false)", [
+        identityHash,
+      ]);
       throw new UnauthorizedException("Email or password is incorrect.");
     }
     const value = token();
@@ -101,7 +145,9 @@ export class AuthController {
       [identity.actor_id, selected.tenant_id, digest(value)],
     );
     if (!issued[0]?.issued) throw new UnauthorizedException();
-    await this.db.pool.query("SELECT record_login_attempt($1,true)",[identityHash]);
+    await this.db.pool.query("SELECT record_login_attempt($1,true)", [
+      identityHash,
+    ]);
     return { token: value, tenantId: selected.tenant_id, tenants };
   }
 
@@ -114,7 +160,8 @@ export class AuthController {
       [digest(input.token), await hashPassword(input.password)],
     );
     const invitation = accepted[0];
-    if (!invitation) throw new UnauthorizedException("Invitation is invalid or expired.");
+    if (!invitation)
+      throw new UnauthorizedException("Invitation is invalid or expired.");
     const value = token();
     const { rows: issued } = await this.db.pool.query(
       "SELECT issue_staff_session($1,$2,$3) AS issued",
@@ -122,13 +169,14 @@ export class AuthController {
     );
     if (!issued[0]?.issued) throw new UnauthorizedException();
     const { rows: tenants } = await this.db.pool.query(
-      "SELECT * FROM staff_login_tenants($1)", [invitation.actor_id],
+      "SELECT * FROM staff_login_tenants($1)",
+      [invitation.actor_id],
     );
     return { token: value, tenantId: invitation.tenant_id, tenants };
   }
 
   @Get("tenants")
-  @Access("catalog.read")
+  @Access("authenticated")
   tenants(@CurrentActor() actor: Actor) {
     return this.db.pool
       .query("SELECT * FROM staff_login_tenants($1)", [actor.actorId])
@@ -136,7 +184,7 @@ export class AuthController {
   }
 
   @Post("switch-tenant")
-  @Access("catalog.read")
+  @Access("authenticated")
   async switchTenant(@CurrentActor() actor: Actor, @Body() body: unknown) {
     const tenantId = parse(
       z.object({ tenantId: z.string().uuid() }).strict(),
@@ -152,15 +200,23 @@ export class AuthController {
   }
 
   @Post("sign-out")
-  @Access("catalog.read")
-  async signOut(@CurrentActor() actor: Actor, @Headers("authorization") authorization?: string) {
-    const tokenHash=digest(bearer(authorization));
-    await this.db.pool.query(actor.role==="support" ? "SELECT revoke_support_session($1)" : "SELECT revoke_staff_session($1)", [tokenHash]);
+  @Access("authenticated")
+  async signOut(
+    @CurrentActor() actor: Actor,
+    @Headers("authorization") authorization?: string,
+  ) {
+    const tokenHash = digest(bearer(authorization));
+    await this.db.pool.query(
+      actor.role === "support"
+        ? "SELECT revoke_support_session($1)"
+        : "SELECT revoke_staff_session($1)",
+      [tokenHash],
+    );
     return { ok: true };
   }
 
   @Post("sign-out-all")
-  @Access("catalog.read")
+  @Access("authenticated")
   async signOutAll(@CurrentActor() actor: Actor) {
     const { rows } = await this.db.pool.query(
       "SELECT revoke_all_staff_sessions($1) AS revoked",
@@ -170,7 +226,7 @@ export class AuthController {
   }
 
   @Post("change-password")
-  @Access("catalog.read")
+  @Access("authenticated")
   async changePassword(@CurrentActor() actor: Actor, @Body() body: unknown) {
     const input = parse(passwordChangeSchema, body);
     return this.db.transaction(actor, async (tx) => {
@@ -192,4 +248,81 @@ export class AuthController {
       return { ok: true };
     });
   }
+
+  @Post("register")
+  @Access("public")
+  async register(@Body() body: unknown) {
+    const input = registerSchema.parse(body);
+    // Check email not already in use (SECURITY DEFINER function; bypasses RLS)
+    const { rows: existing } = await this.db.pool.query(
+      "SELECT 1 FROM staff_users WHERE lower(email)=lower($1) LIMIT 1",
+      [input.email],
+    );
+    if (existing.length > 0)
+      throw new ConflictException("An account with that email address already exists.");
+    // Derive a URL-safe slug from the company name
+    const slug = input.companyName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 60) + "-" + Date.now().toString(36);
+    const defaultConfig = {
+      supportedLocales: ["en"],
+      locale: "en",
+      dateFormat: "DD/MM/YYYY",
+      timeFormat: "12h",
+      weekStartsOn: 1,
+      numberFormat: "comma_decimal",
+      measurementSystem: "metric",
+      bookingCurrency: input.currency,
+      collectionCurrency: input.currency,
+      reportingCurrency: input.currency,
+      holdSeconds: 1800,
+      minimumPaidPercent: 100,
+      taxBasisPoints: 0,
+      allowUnresolvedPickup: false,
+      allowAmendmentBalance: true,
+      manualPaymentMethods: ["cash", "card", "online", "bank_transfer"],
+      bookingSources: ["phone", "walk_in", "website", "partner_reseller"],
+      documentStorage: {
+        hotProvider: "filesystem",
+        archiveProvider: "none",
+        hotRetentionDays: 7,
+      },
+    };
+    // Platform-level actor for tenant creation
+    const platformActor = {
+      actorId: "00000000-0000-0000-0000-000000000000",
+      tenantId: null,
+      platform: true,
+      role: "platform",
+      permissions: ["tenant.provision"] as string[],
+    };
+    const { tenantId, ownerId } = await this.tenantSvc.create(platformActor, {
+      slug,
+      name: input.companyName,
+      timezone: input.timezone,
+      config: defaultConfig,
+      ownerName: input.ownerName,
+      ownerEmail: input.email,
+      country: input.country,
+    });
+    // Set password for the owner
+    const passwordHash = await hashPassword(input.password);
+    await this.db.pool.query(
+      "INSERT INTO user_credentials(user_id,password_hash) VALUES($1,$2) ON CONFLICT(user_id) DO UPDATE SET password_hash=EXCLUDED.password_hash",
+      [ownerId, passwordHash],
+    );
+    // Issue session
+    const value = token();
+    await this.db.pool.query(
+      "SELECT issue_staff_session($1,$2,$3) AS issued",
+      [ownerId, tenantId, digest(value)],
+    );
+    await this.db.pool.query("SELECT record_login_attempt($1,true)", [
+      digest(input.email.trim().toLowerCase()),
+    ]);
+    return { token: value, tenantId };
+  }
+
 }

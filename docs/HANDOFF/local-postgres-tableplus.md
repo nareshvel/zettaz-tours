@@ -25,6 +25,8 @@ docker compose ps
 docker compose exec postgres psql -U zettaz_owner -d zettaz_tours -c "SELECT current_user, current_database();"
 ```
 
+Stopping Docker cleanly shuts down PostgreSQL and makes database-backed sign-in unavailable until the service is started again. Messages such as `checkpoint starting: shutdown immediate` followed by `database system is shut down` describe a normal shutdown; they do not indicate database corruption and do not require deleting `zettaz_tours` or any older database. The Compose health check uses `POSTGRES_DB`, so it always checks the same database that the container creates.
+
 If port 5432 is already occupied, use port 5433 as above rather than stopping an unrelated local service.
 
 ## TablePlus connections

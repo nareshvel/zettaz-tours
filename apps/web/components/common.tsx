@@ -1,7 +1,8 @@
 "use client";
-import { ArrowLeft, Search } from "lucide-react";
+import { useEffect, useId, useState } from "react";
+import { ArrowLeft, Search, X } from "lucide-react";
 import Link from "next/link";
-import { label } from "@/lib/client";
+import { dateOnly, label } from "@/lib/client";
 export function Heading({
   eyebrow,
   title,
@@ -15,12 +16,16 @@ export function Heading({
 }) {
   return (
     <div className="page-heading">
-      <div>
+      <div className="page-heading-copy">
         {eyebrow && <p className="eyebrow">{eyebrow}</p>}
-        <h1>{title}</h1>
+        <div className="page-heading-title-row">
+          <h1>{title}</h1>
+          {action ? (
+            <div className="page-heading-action">{action}</div>
+          ) : null}
+        </div>
         {description && <p className="subtitle">{description}</p>}
       </div>
-      {action}
     </div>
   );
 }
@@ -73,34 +78,320 @@ export function Field({
   label: caption,
   children,
   hint,
+  error,
+  required,
 }: {
   label: string;
   children: React.ReactNode;
   hint?: string;
+  error?: string;
+  required?: boolean;
 }) {
   return (
-    <label className="field">
-      <span>{caption}</span>
+    <label className={"field " + (error ? "field-error" : "")}>
+      <span>
+        {caption}
+        {required && <i aria-hidden="true"> *</i>}
+      </span>
       {children}
-      {hint && <small>{hint}</small>}
+      {error ? (
+        <small className="field-message" role="alert">
+          {error}
+        </small>
+      ) : (
+        hint && <small>{hint}</small>
+      )}
     </label>
   );
 }
+export function SectionHeading({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="section-heading">
+      <div>
+        <h2>{title}</h2>
+        {description && <p>{description}</p>}
+      </div>
+      {action}
+    </div>
+  );
+}
+export function FormActions({
+  children,
+  stickyOnMobile = false,
+}: {
+  children: React.ReactNode;
+  stickyOnMobile?: boolean;
+}) {
+  return (
+    <div className={"form-actions " + (stickyOnMobile ? "mobile-sticky" : "")}>
+      {children}
+    </div>
+  );
+}
+
+/** In-app confirm with optional required reason — replaces window.prompt/confirm. */
+export function ConfirmDialog({
+  open,
+  title,
+  description,
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  danger,
+  reasonRequired,
+  reasonLabel = "Reason",
+  reasonHint,
+  reasonPlaceholder,
+  busy,
+  error,
+  onConfirm,
+  onClose,
+}: {
+  open: boolean;
+  title: string;
+  description?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  danger?: boolean;
+  reasonRequired?: boolean;
+  reasonLabel?: string;
+  reasonHint?: string;
+  reasonPlaceholder?: string;
+  busy?: boolean;
+  error?: string | null;
+  onConfirm: (reason: string) => void | Promise<void>;
+  onClose: () => void;
+}) {
+  const titleId = useId();
+  const [reason, setReason] = useState("");
+  const [localError, setLocalError] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setReason("");
+    setLocalError("");
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape" && !busy) onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, busy, onClose]);
+
+  if (!open) return null;
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setLocalError("");
+    const trimmed = reason.trim();
+    if (reasonRequired && !trimmed) {
+      setLocalError("Enter a reason to continue.");
+      return;
+    }
+    await onConfirm(trimmed);
+  }
+
+  return (
+    <div className="confirm-dialog-root" role="presentation">
+      <button
+        type="button"
+        className="confirm-dialog-scrim"
+        aria-label="Dismiss"
+        disabled={busy}
+        onClick={() => {
+          if (!busy) onClose();
+        }}
+      />
+      <form
+        className="panel confirm-dialog-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onSubmit={(event) => void submit(event)}
+      >
+        <header className="confirm-dialog-head">
+          <div>
+            <h2 id={titleId}>{title}</h2>
+            {description && <p className="muted">{description}</p>}
+          </div>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Close"
+            disabled={busy}
+            onClick={onClose}
+          >
+            <X size={18} />
+          </button>
+        </header>
+        <div className="confirm-dialog-body">
+          {reasonRequired && (
+            <Field
+              label={reasonLabel}
+              hint={reasonHint}
+              error={localError || undefined}
+              required
+            >
+              <textarea
+                autoFocus
+                required
+                maxLength={500}
+                placeholder={reasonPlaceholder}
+                value={reason}
+                disabled={busy}
+                onChange={(event) => setReason(event.target.value)}
+              />
+            </Field>
+          )}
+          {(error || localError) && !reasonRequired && (
+            <Notice error>{error || localError}</Notice>
+          )}
+          {error && reasonRequired && <Notice error>{error}</Notice>}
+          <div className="confirm-dialog-actions">
+            <button
+              type="button"
+              className="button secondary"
+              disabled={busy}
+              onClick={onClose}
+            >
+              {cancelLabel}
+            </button>
+            <button
+              type="submit"
+              className={"button" + (danger ? " danger" : "")}
+              disabled={busy}
+            >
+              {busy ? "Working…" : confirmLabel}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+/** Modal form sheet for create/edit flows — same shell as ConfirmDialog. */
+export function FormDialog({
+  open,
+  title,
+  description,
+  children,
+  busy,
+  error,
+  submitLabel = "Save",
+  cancelLabel = "Cancel",
+  onSubmit,
+  onClose,
+}: {
+  open: boolean;
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+  busy?: boolean;
+  error?: string | null;
+  submitLabel?: string;
+  cancelLabel?: string;
+  onSubmit: () => void | Promise<void>;
+  onClose: () => void;
+}) {
+  const titleId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape" && !busy) onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, busy, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div className="confirm-dialog-root" role="presentation">
+      <button
+        type="button"
+        className="confirm-dialog-scrim"
+        aria-label="Dismiss"
+        disabled={busy}
+        onClick={() => {
+          if (!busy) onClose();
+        }}
+      />
+      <form
+        className="panel confirm-dialog-sheet form-dialog-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void onSubmit();
+        }}
+      >
+        <header className="confirm-dialog-head">
+          <div>
+            <h2 id={titleId}>{title}</h2>
+            {description && <p className="muted">{description}</p>}
+          </div>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Close"
+            disabled={busy}
+            onClick={onClose}
+          >
+            <X size={18} />
+          </button>
+        </header>
+        <div className="confirm-dialog-body">
+          {children}
+          {error && <Notice error>{error}</Notice>}
+          <div className="confirm-dialog-actions">
+            <button
+              type="button"
+              className="button secondary"
+              disabled={busy}
+              onClick={onClose}
+            >
+              {cancelLabel}
+            </button>
+            <button type="submit" className="button" disabled={busy}>
+              {busy ? "Working…" : submitLabel}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export function Toggle({
   label: caption,
   description,
   checked,
   onChange,
   disabled,
+  className,
 }: {
   label: string;
   description?: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
   disabled?: boolean;
+  className?: string;
 }) {
   return (
-    <label className="toggle">
+    <label className={"toggle" + (className ? ` ${className}` : "")}>
       <input
         type="checkbox"
         checked={checked}
@@ -149,6 +440,48 @@ export function SearchBox({
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />
+    </label>
+  );
+}
+export function TenantDateInput({
+  label: caption,
+  value,
+  onChange,
+  locale,
+  dateFormat,
+  min,
+  max,
+  compact,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  locale: string;
+  dateFormat: "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD";
+  min?: string;
+  max?: string;
+  compact?: boolean;
+}) {
+  return (
+    <label
+      className={
+        (compact ? "compact-control" : "field") + " tenant-date-control"
+      }
+    >
+      <span>{caption}</span>
+      <span className="tenant-date-input">
+        <input
+          type="date"
+          lang={locale}
+          value={value}
+          min={min}
+          max={max}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <span aria-hidden="true">
+          {value ? dateOnly(value, dateFormat, locale) : dateFormat}
+        </span>
+      </span>
     </label>
   );
 }

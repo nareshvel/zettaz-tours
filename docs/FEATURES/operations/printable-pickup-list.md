@@ -11,8 +11,9 @@ Provide a paper-safe, day-of view of a tenant's saved pickup plan. It supports c
 - Each stop contains its sequence, pickup time, controlled location, operational stop note, lead name, and party size.
 - Exceptions identify confirmed bookings whose pickup is unresolved or whose selected pickup has not been included in the saved plan.
 - The browser's native print dialog provides paper output. An auditable print job can also stream a deterministic server-produced PDF. No generated document is stored.
+- The web Print pickup list surface shows a departure masthead, numbered stop sequence on phone/print, and a denser table on desktop, with Plan pickups as the edit path.
 
-Operational locations may include a tenant-supplied address, coordinate pair and map reference. Coordinates support dispatch context; they do not activate live GPS or route optimization.
+Operational locations may include a tenant-supplied address, coordinate pair and map reference. Coordinates support dispatch context; they do not activate live GPS or route optimization. Staff manage controlled pickup locations from Plan pickups via modal create/edit and confirmed deactivate (blocked while referenced by a saved stop).
 
 ## Data minimization
 

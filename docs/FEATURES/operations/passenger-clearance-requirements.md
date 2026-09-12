@@ -16,14 +16,17 @@ Each confirmed booking has explicit passenger records. Staff can record arrival 
 - Passenger waiver evidence is now append-only and may be attributed to an adult passenger or to a minor with an eligible adult guardian from the same current roster. Existing booking-level waiver evidence remains available only for confirmed legacy bookings without a roster.
 - Passenger check-in events are append-only. Arrival, clearance, boarding, and no-show are recorded per passenger; clearance and boarding are rejected until the booking balance and that passenger's waiver requirements are satisfied.
 - Guides and drivers remain restricted to passengers on their actively assigned departure.
+- Web manifest boarding balance collection and partner financial-clearance policy are specified in [boarding-balance-collection.md](boarding-balance-collection.md).
 
 ## Guards
 
 - A passenger belongs to one tenant booking only.
 - Boarding requires the booking’s financial clearance and a signed valid waiver for that passenger or an eligible guardian relationship.
+- Financial clearance treats `partner_invoice` and `partner_collects_for_tenant` as policy-cleared; other bookings require guest paid plus accepted partner credit to cover the total.
 - No browser or mobile client may mark a passenger boarded without server-side assignment and clearance checks.
 - Passenger data follows tenant retention policy; no health or incident data belongs in this first increment.
 
 ## Deferred
 
-- Guest self-service links, QR token issuance, offline conflict-aware syncing, ID scanning, and live GPS.
+- Guest self-service links, offline conflict-aware syncing, ID scanning, and live GPS.
+- Complimentary/prepaid policy flags, authorized boarding exceptions, mixed collection allocation, and crew-mobile Pay UI (see [boarding-balance-collection.md](boarding-balance-collection.md)).

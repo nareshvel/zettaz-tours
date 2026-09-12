@@ -24,9 +24,9 @@ The database must enforce tenant-scoped foreign keys and prevent an active resou
 
 ## API and UI sequence
 
-1. Manage resources and crew records in **Team & resources**.
-2. Record expiry documents with a tenant-controlled evidence reference.
-3. View a departure's assignment/readiness panel and assign an available subject.
+1. Manage resources and crew records in **Team & resources** (create/edit via modal; remove deactivates).
+2. Record expiry documents with a tenant-controlled evidence reference (edit/delete supported).
+3. View a departure's assignment/readiness panel and assign an available **active** subject.
 4. Show unassigned and blocked items on Operations today.
 5. Expose only the assigned crew member's minimum trip data to the future mobile surface.
 

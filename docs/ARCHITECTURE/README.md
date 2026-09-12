@@ -13,4 +13,5 @@ September 9 requirements elaboration: [module map](module-feature-map.md), [RBAC
 | [finance-and-offline.md](finance-and-offline.md) | Ledger, FX, sync conflict matrix |
 | [integrations.md](integrations.md) | Channels, payments, comms |
 | [ux-security-reporting.md](ux-security-reporting.md) | Surfaces, security, metrics |
+| [responsive-admin-layout.md](responsive-admin-layout.md) | Phone / tablet / desktop layout rules for workspace pages |
 | [configuration-schema.md](configuration-schema.md) | Tenant seed / workbook contract |

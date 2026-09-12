@@ -11,7 +11,7 @@ import {
   usePaged,
   useResource,
 } from "@/lib/client";
-import { Back, Field, Heading, Loading, More, Notice } from "./common";
+import { Back, ConfirmDialog, Field, FormActions, Heading, Loading, More, Notice } from "./common";
 
 type ChangeQuote = {
   quoteId: string;
@@ -54,14 +54,16 @@ export function BookingHistory({
         <p className="muted">No amendments or cancellations recorded.</p>
       ) : (
         history.data.map((c) => (
-          <div className="history-item" key={c.id}>
-            <strong>
-              {label(c.kind)} · version {c.version}
-            </strong>
-            <small>{dateTime(c.occurred_at, session.tenant.timezone)}</small>
+          <article className="history-item" key={c.id}>
+            <div className="history-item-head">
+              <strong>
+                {label(c.kind)} · v{c.version}
+              </strong>
+              <small>{dateTime(c.occurred_at, session.tenant.timezone)}</small>
+            </div>
             <p>{c.reason}</p>
             {c.before_data.quote && c.after_data.quote && (
-              <p className="muted">
+              <p className="history-money">
                 {money(
                   c.before_data.quote.totalMinor,
                   c.before_data.quote.currency,
@@ -74,11 +76,9 @@ export function BookingHistory({
               </p>
             )}
             {c.after_data.financeReviewRequired && (
-              <p className="muted">
-                Finance review required. No refund issued.
-              </p>
+              <span className="status held">Finance review</span>
             )}
-          </div>
+          </article>
         ))
       )}
     </section>
@@ -138,6 +138,7 @@ function ChangeForm({
     [reason, setReason] = useState(""),
     [quote, setQuote] = useState<ChangeQuote | null>(null),
     [ack, setAck] = useState(false),
+    [cancelOpen, setCancelOpen] = useState(false),
     [now, setNow] = useState(Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -181,6 +182,10 @@ function ChangeForm({
   }
   async function cancelBooking(e: React.FormEvent) {
     e.preventDefault();
+    if (!ack || !reason.trim()) return;
+    setCancelOpen(true);
+  }
+  async function confirmCancel() {
     const result = await cancellation.run(`staff/v1/bookings/${b.id}/cancel`, {
       version: b.version,
       reason,
@@ -189,57 +194,73 @@ function ChangeForm({
   }
   if (cancel)
     return (
-      <form className="panel form-panel wide-form" onSubmit={cancelBooking}>
-        <h2>{b.lead_name}</h2>
-        <p className="muted">
-          {dateTime(b.departure.starts_at, session.tenant.timezone)}
-        </p>
-        <Notice>
-          Cancellation releases this party’s seats and removes confirmed
-          passengers from the manifest. It does not issue a refund or determine
-          cancellation fees.
-        </Notice>
-        <dl className="detail-grid">
-          <div>
-            <dt>Historical booking total</dt>
-            <dd>{money(b.quote.totalMinor, b.quote.currency)}</dd>
-          </div>
-          <div>
-            <dt>Recorded payments preserved</dt>
-            <dd>{money(b.paidMinor, b.quote.currency)}</dd>
-          </div>
-        </dl>
-        <Field label="Cancellation reason">
-          <textarea
-            required
-            maxLength={500}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-          />
-        </Field>
-        <label className="checkbox">
-          <input
-            type="checkbox"
-            required
-            checked={ack}
-            onChange={(e) => setAck(e.target.checked)}
-          />
-          I understand that cancellation releases the seats and any payment
-          records require separate finance review.
-        </label>
-        {cancellation.error && <Notice error>{cancellation.error}</Notice>}
-        <div className="form-actions">
-          <Link className="button secondary" href={"/reservations/" + b.id}>
-            Keep reservation
-          </Link>
-          <button
-            className="button destructive"
-            disabled={!ack || cancellation.busy}
-          >
-            {cancellation.busy ? "Cancelling…" : "Cancel reservation"}
-          </button>
-        </div>
-      </form>
+      <>
+        <form className="panel form-panel wide-form booking-cancel-form" onSubmit={cancelBooking}>
+          <h2>{b.lead_name}</h2>
+          <p className="muted">
+            {dateTime(b.departure.starts_at, session.tenant.timezone)}
+          </p>
+          <Notice>
+            Cancellation releases this party’s seats and removes confirmed
+            passengers from the manifest. It does not issue a refund or determine
+            cancellation fees.
+          </Notice>
+          <dl className="detail-grid">
+            <div>
+              <dt>Historical booking total</dt>
+              <dd>{money(b.quote.totalMinor, b.quote.currency)}</dd>
+            </div>
+            <div>
+              <dt>Recorded payments preserved</dt>
+              <dd>{money(b.paidMinor, b.quote.currency)}</dd>
+            </div>
+          </dl>
+          <Field label="Cancellation reason" required>
+            <textarea
+              required
+              maxLength={500}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            />
+          </Field>
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              required
+              checked={ack}
+              onChange={(e) => setAck(e.target.checked)}
+            />
+            I understand that cancellation releases the seats and any payment
+            records require separate finance review.
+          </label>
+          {cancellation.error && <Notice error>{cancellation.error}</Notice>}
+          <FormActions stickyOnMobile>
+            <Link className="button secondary" href={"/reservations/" + b.id}>
+              Keep reservation
+            </Link>
+            <button
+              className="button destructive"
+              disabled={!ack || !reason.trim() || cancellation.busy}
+            >
+              {cancellation.busy ? "Cancelling…" : "Cancel reservation"}
+            </button>
+          </FormActions>
+        </form>
+        <ConfirmDialog
+          open={cancelOpen}
+          title="Cancel this reservation?"
+          description="Seats will be released and passengers removed from the manifest. Payment records are preserved for finance review — no refund is issued by this action."
+          confirmLabel="Cancel reservation"
+          cancelLabel="Keep reservation"
+          danger
+          busy={cancellation.busy}
+          error={cancellation.error}
+          onClose={() => {
+            if (!cancellation.busy) setCancelOpen(false);
+          }}
+          onConfirm={() => void confirmCancel()}
+        />
+      </>
     );
   const shortfall =
     quote &&
@@ -454,8 +475,9 @@ function ChangeForm({
               <Notice error>Quote expired. Request a fresh quote.</Notice>
             )}
             {accept.error && <Notice error>{accept.error}</Notice>}
-            <div className="form-actions">
+            <FormActions stickyOnMobile>
               <button
+                type="button"
                 className="button secondary"
                 disabled={accept.busy}
                 onClick={() => {
@@ -466,13 +488,14 @@ function ChangeForm({
                 Revise
               </button>
               <button
+                type="button"
                 className="button"
                 disabled={expired || Boolean(shortfall) || accept.busy}
                 onClick={apply}
               >
                 {accept.busy ? "Applying…" : "Accept change"}
               </button>
-            </div>
+            </FormActions>
           </>
         )}
       </aside>

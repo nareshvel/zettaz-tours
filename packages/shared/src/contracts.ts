@@ -42,6 +42,20 @@ export const configSchema = z
     allowAmendmentBalance: z.boolean().default(false),
     manualPaymentMethods: z.array(slug).min(1).max(20),
     bookingSources: z.array(slug).min(1).max(50),
+    documentStorage: z
+      .object({
+        hotProvider: z.enum(["filesystem", "s3"]).default("filesystem"),
+        archiveProvider: z
+          .enum(["none", "google_drive", "onedrive", "dropbox"])
+          .default("none"),
+        /** Hot copies auto-purge within this window. Max 7 unless a purchased storage plan lands later. */
+        hotRetentionDays: z.number().int().min(1).max(7).default(7),
+      })
+      .default({
+        hotProvider: "filesystem",
+        archiveProvider: "none",
+        hotRetentionDays: 7,
+      }),
   })
   .strict()
   .refine(
@@ -162,7 +176,6 @@ export const grants: Record<Role, readonly string[]> = {
     "catalog.read",
     "bookings.write",
     "bookings.read",
-    "inventory.overbook",
     "payment.write",
     "manifest.read",
     "partner.collection.record",
@@ -174,7 +187,6 @@ export const grants: Record<Role, readonly string[]> = {
     "bookings.read",
     "manifest.read",
     "operations.write",
-    "inventory.overbook",
     "assignments.write",
     "checkin.write",
     "print.jobs.create",
@@ -276,8 +288,18 @@ export const userProfileSchema = z
 export const productSchema = z
   .object({
     name: label,
+    description: z.string().trim().max(2000).default(""),
+    productKind: z
+      .enum(["tour", "activity", "experience", "charter", "transport", "rental", "ticket"])
+      .default("tour"),
+    availabilityMode: z
+      .enum(["fixed_departure", "opening_hours", "open_dated", "on_request", "resource_window"])
+      .default("fixed_departure"),
     optionName: label,
-    durationMinutes: z.number().int().min(1).max(1440),
+    durationMinutes: z.number().int().min(1).max(10080),
+    pricingModel: z.enum(["per_person", "per_group", "per_unit"]).default("per_person"),
+    privateBooking: z.boolean().default(false),
+    confirmationMode: z.enum(["instant", "request"]).default("instant"),
     categories: z
       .array(
         z.object({ slug, label, countsTowardCapacity: z.boolean() }).strict(),
@@ -299,7 +321,20 @@ export const productSchema = z
       .max(100),
   })
   .strict();
-export type ProductInput = z.infer<typeof productSchema>;
+export type ProductInput = z.input<typeof productSchema>;
+export const productUpdateSchema = productSchema
+  .omit({ availabilityMode: true })
+  .extend({
+    version: z.number().int().positive(),
+    status: z.enum(["active", "archived"]),
+  })
+  .strict();
+export const availabilityRuleUpdateSchema = z
+  .object({
+    version: z.number().int().positive(),
+    status: z.enum(["active", "paused"]),
+  })
+  .strict();
 export const scheduleSchema = z
   .object({
     productId: id,
@@ -320,22 +355,35 @@ export const partySchema = z
 export const holdSchema = z
   .object({ departureId: id, party: partySchema })
   .strict();
+export const bookingConcessionSchema = z
+  .object({
+    discountMinor: z.number().int().min(1).max(1_000_000_000_000),
+    reason: z.string().trim().min(3).max(500),
+    promoCode: z.string().trim().max(40).default(""),
+  })
+  .strict();
 export const bookingSchema = z
   .object({
     holdId: id,
     leadName: label,
     leadEmail: z.string().email().max(254),
     leadPhone: z.string().trim().max(40).default(""),
-    purchaser: z.object({
-      name: label,
-      email: z.string().email().max(254),
-      phone: z.string().trim().max(40).default(""),
-    }).strict().optional(),
-    emergencyContact: z.object({
-      name: label,
-      phone: z.string().trim().min(1).max(40),
-      relationship: z.string().trim().min(1).max(80),
-    }).strict().optional(),
+    purchaser: z
+      .object({
+        name: label,
+        email: z.string().email().max(254),
+        phone: z.string().trim().max(40).default(""),
+      })
+      .strict()
+      .optional(),
+    emergencyContact: z
+      .object({
+        name: label,
+        phone: z.string().trim().min(1).max(40),
+        relationship: z.string().trim().min(1).max(80),
+      })
+      .strict()
+      .optional(),
     source: slug,
     pickup: z.discriminatedUnion("kind", [
       z.object({ kind: z.literal("none") }).strict(),
@@ -372,8 +420,22 @@ export const bookingSchema = z
             roomNumber: z.string().trim().max(40).default(""),
           })
           .strict(),
+        z
+          .object({
+            kind: z.literal("private_accommodation"),
+            propertyName: label,
+            address: z.string().trim().min(1).max(300),
+          })
+          .strict(),
+        z
+          .object({
+            kind: z.literal("local"),
+            address: z.string().trim().max(300).default(""),
+          })
+          .strict(),
       ])
       .default({ kind: "none" }),
+    concession: bookingConcessionSchema.optional(),
     partner: z
       .object({
         partnerId: id,
@@ -394,17 +456,19 @@ export const paymentSchema = z
     currency,
     method: slug,
     status: z.enum(["settled", "pending"]),
-    reference: z.string().trim().min(1).max(120),
-    reason: z.string().trim().min(1).max(500),
+    reference: z.string().trim().max(120).default(""),
+    reason: z.string().trim().max(500).default(""),
     occurredAt: z.string().datetime({ offset: true }),
   })
   .strict();
-export const paymentAdjustmentSchema = z.object({
-  kind: z.enum(["void", "reversal"]),
-  reference: z.string().trim().min(1).max(120),
-  reason: z.string().trim().min(8).max(500),
-  occurredAt: z.string().datetime({ offset: true }),
-}).strict();
+export const paymentAdjustmentSchema = z
+  .object({
+    kind: z.enum(["void", "reversal"]),
+    reference: z.string().trim().min(1).max(120),
+    reason: z.string().trim().min(8).max(500),
+    occurredAt: z.string().datetime({ offset: true }),
+  })
+  .strict();
 export const confirmSchema = z
   .object({ version: z.number().int().positive() })
   .strict();
@@ -430,6 +494,9 @@ export type Quote = {
   productVersion: number;
   minimumPaidPercent: number;
   allowUnresolvedPickup: boolean;
+  discountMinor?: number;
+  discountReason?: string;
+  promoCode?: string;
 };
 export type Actor = {
   actorId: string;

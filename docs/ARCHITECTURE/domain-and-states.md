@@ -20,8 +20,8 @@ This document wins on entities, invariants, and states. Index: [README.md](../RE
 | --- | --- |
 | Platform | Tenant, Subscription, PlanFeatureFlag, TenantDomain, TenantSetting, ConnectorFeatureFlag |
 | Identity | User, Role, Permission, Membership, SupportAccessGrant, Device |
-| Catalog | Product, ProductOption, PassengerCategory, AddOn, Policy, Media |
-| Schedule | ScheduleRule, Departure, Blackout, CapacityPool, InventoryHold, WaitlistEntry (Track B) |
+| Catalog | Product, ProductOption, PassengerUnit, RatePlan, AddOn, Policy, Media |
+| Schedule | AvailabilityRule, AvailabilityRuleTime, AvailabilityException, Departure, CapacityPool, InventoryHold, WaitlistEntry (Track B) |
 | Resources | ResourceType, Resource, ResourcePool, RequirementRule, ResourceAssignment |
 | People | StaffProfile, Qualification, Availability, StaffAssignment |
 | Customer | Customer, Passenger, ContactMethod, AccommodationStay, CustomerConsent |
@@ -55,6 +55,14 @@ This document wins on entities, invariants, and states. Index: [README.md](../RE
 | ConnectorFeatureFlag | Engineering: unfinished or uncertified integration | Viator adapter, OCTO façade |
 
 Do not use one flag table for both. A dark connector is not a pricing plan.
+
+## Catalog and availability boundary
+
+`Product` describes the customer-facing thing being sold. A product owns one or more `ProductOption` records; each option defines duration, confirmation and pricing behavior. `PassengerUnit` defines bookable units such as adult, child, group or vehicle, while `RatePlan` supplies dated prices. Core commercial fields are relational; connector-specific extensions may use namespaced JSON.
+
+Every product declares one availability mode: `fixed_departure`, `opening_hours`, `open_dated`, `on_request`, or `resource_window`. `AvailabilityRule` expresses the reusable selling rule and local timezone, `AvailabilityRuleTime` stores its daily times, and `AvailabilityException` closes or overrides a particular local date. A `Departure` is the operational dated instance generated from a rule. Private charters use resource-window inventory and must not be represented as a one-seat shared departure.
+
+Migration 055 preserves existing product, schedule, departure, booking, and reservation identifiers while backfilling the normalized records. The legacy product definition and schedule tables remain compatibility inputs until all booking and connector adapters read the normalized model.
 
 ## Key invariants
 
@@ -128,7 +136,7 @@ One record per required guest (or per booking passenger allocation). Staff see t
 | no_show | This passenger did not attend |
 | exception_approved | Authorized, reasoned, audited exception; may coexist with clearance |
 
-`cleared_to_board` requires both financial clearance and required digital signatures, unless an authorized exception exists. Partner-invoiced, prepaid, and complimentary bookings satisfy financial clearance by configured policy without taking a new payment.
+`cleared_to_board` requires both financial clearance and required digital signatures, unless an authorized exception exists. Partner-invoiced and partner-collects bookings satisfy financial clearance by configured policy without taking a new guest payment (Track A web boarding). Prepaid and complimentary clearance by policy remain pending explicit booking flags. See [boarding balance collection](../FEATURES/operations/boarding-balance-collection.md).
 
 A booking may be `confirmed` while every passenger is still `not_arrived`. A booking may remain `confirmed` after some passengers `boarded` and others `no_show`.
 

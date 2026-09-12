@@ -21,7 +21,7 @@ Implementation sequence: [claim and obligation design](implementation-design.md)
 - Persistent Sample seed data for referral, partner-collects, and partner-invoice examples.
 - Append-only voids for pending manual entries and external reversals for settled manual payments, restricted to owner/finance through `payment.correct`.
 
-The reservation form offers optional partner attribution and collection terms. Finance review exposes unverified collection claims and requires a reason to accept or reject them. Booking detail shows accepted partner credit separately from guest payments.
+The reservation form offers partner attribution when booking source is Partner / reseller (organization and collection mode inline). Finance review exposes unverified collection claims and requires a reason to accept or reject them. Booking detail shows accepted partner credit separately from guest payments. Confirm may skip guest payment for `partner_invoice` and `partner_collects_for_tenant`; boarding clearance follows the same policy (see [boarding balance collection](../operations/boarding-balance-collection.md)).
 
 ## Permissions
 
@@ -34,9 +34,9 @@ Existing payment permissions remain for guest-to-tenant payment facts. A partner
 
 ## Collection modes
 
-- `guest_pays_tenant`: partner is attribution only; no partner obligation.
-- `partner_collects_for_tenant`: accepted claim can reduce the guest balance under the explicit claim policy and produces a partner obligation for the same amount.
-- `partner_invoice`: confirmation creates a partner obligation for the commercial snapshot; guest collection is not inferred.
+- `guest_pays_tenant`: partner is attribution only; no partner obligation. Guest balance follows deposit/`minimumPaidPercent` and may be collected at boarding.
+- `partner_collects_for_tenant`: confirm and boarding clear without a guest payment by policy; accepted claims still create remittance obligations and may credit guest balance when used.
+- `partner_invoice`: confirmation creates a partner obligation for the commercial snapshot; guest collection is not inferred; boarding clears by policy.
 - `mixed`: deferred until allocation rules and finance approval are defined.
 
 ## Guards and invariants
@@ -54,7 +54,8 @@ Existing payment permissions remain for guest-to-tenant payment facts. A partner
 - Stripe Connect, regional gateway connection, payment links, terminals, and live payment collection.
 - Partner remittance receipts, allocation, partial settlement, credit notes, aging, commission, payouts, and accounting exports.
 - Partner/reseller portal accounts, contracts/rates/allotments, vouchers, and self-service statements.
-- Complimentary policy, discounts, refunds, and FX.
+- Complimentary/prepaid boarding-policy flags, authorized boarding exceptions, mixed collection, crew-mobile Pay UI — see [boarding balance collection](../operations/boarding-balance-collection.md).
+- Discounts beyond the held concession path, refunds, and FX.
 
 ## Acceptance evidence
 

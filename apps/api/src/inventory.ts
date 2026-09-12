@@ -43,6 +43,26 @@ export class InventoryService {
     if (!row) throw new NotFoundException();
     return row;
   }
+  async requireFixedDeparture(
+    tx: Tx,
+    actor: Actor,
+    departureId: string,
+    lock = false,
+  ) {
+    const dep = await this.departure(tx, actor, departureId, lock);
+    const {
+      rows: [product],
+    } = await tx.query(
+      `SELECT p.availability_mode FROM products p
+       WHERE p.tenant_id=$1 AND p.id=$2`,
+      [actor.tenantId, dep.product_id],
+    );
+    if ((product?.availability_mode ?? "fixed_departure") !== "fixed_departure")
+      throw new BadRequestException(
+        "This product is not booked as a shared departure. Use its availability-mode workflow.",
+      );
+    return dep;
+  }
   async availability(tx: Tx, actor: Actor, departureId: string) {
     // One SQL snapshot prevents a concurrent confirm being counted both as hold and commitment.
     const {
@@ -142,7 +162,12 @@ export class InventoryService {
     const data = parse(holdSchema, input);
     return this.db.command(actor, "hold.create", key, data, async (tx) => {
       const settings = await tenant(tx, actor);
-      const dep = await this.departure(tx, actor, data.departureId, true);
+      const dep = await this.requireFixedDeparture(
+        tx,
+        actor,
+        data.departureId,
+        true,
+      );
       const {
         rows: [future],
       } = await tx.query("SELECT $1::timestamptz>clock_timestamp() AS future", [
@@ -198,7 +223,7 @@ export class InventoryService {
     const data = parse(overbookHoldSchema, input);
     return this.db.command(actor, "hold.overbook", key, data, async (tx) => {
       const settings = await tenant(tx, actor);
-      const dep = await this.departure(tx, actor, data.departureId, true);
+      const dep = await this.requireFixedDeparture(tx, actor, data.departureId, true);
       const { rows: [future] } = await tx.query(
         "SELECT $1::timestamptz>clock_timestamp() AS future",
         [dep.starts_at],

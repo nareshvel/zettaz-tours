@@ -14,8 +14,30 @@ const querySchema = z
     cursor: id.optional(),
     limit: z.coerce.number().int().min(1).max(100).default(30),
     search: z.string().trim().max(100).default(""),
+    view: z.enum(["records", "upcoming"]).default("records"),
   })
   .strict();
+const departureQuerySchema = querySchema.extend({
+  from: z.iso.date().optional(),
+  to: z.iso.date().optional(),
+  productId: id.optional(),
+  departureId: id.optional(),
+  availabilityMode: z
+    .enum([
+      "fixed_departure",
+      "opening_hours",
+      "open_dated",
+      "on_request",
+      "resource_window",
+    ])
+    .optional(),
+});
+const reservationQuerySchema = querySchema.extend({
+  state: z.enum(["held", "confirmed", "cancelled", "expired"]).optional(),
+  source: z.string().trim().max(60).optional(),
+  from: z.iso.date().optional(),
+  to: z.iso.date().optional(),
+});
 function page<T extends { id: string }>(rows: T[], limit: number) {
   return {
     items: rows.slice(0, limit),
@@ -26,16 +48,31 @@ function page<T extends { id: string }>(rows: T[], limit: number) {
 export class WorkspaceController {
   constructor(private readonly db: Database) {}
   @Get("session")
-  @Access("catalog.read")
+  @Access("authenticated")
   session(@CurrentActor() actor: Actor) {
     return this.db.transaction(actor, async (tx) => {
-      const { rows: [staff] } = actor.role === "support"
-        ? await tx.query("SELECT * FROM current_support_actor_profile($1)",[actor.actorId])
-        : await tx.query("SELECT name,email,phone_number FROM staff_users WHERE id=$1",[actor.actorId]);
-      const {rows:[supportAccess]}=actor.role==="support"?await tx.query(
-        `SELECT id,purpose,permissions,expires_at FROM support_access_grants
+      const {
+        rows: [staff],
+      } =
+        actor.role === "support"
+          ? await tx.query("SELECT * FROM current_support_actor_profile($1)", [
+              actor.actorId,
+            ])
+          : await tx.query(
+              "SELECT name,email,phone_number FROM staff_users WHERE id=$1",
+              [actor.actorId],
+            );
+      const {
+        rows: [supportAccess],
+      } =
+        actor.role === "support"
+          ? await tx.query(
+              `SELECT id,purpose,permissions,expires_at FROM support_access_grants
          WHERE tenant_id=$1 AND platform_actor_id=$2 AND status='approved' AND expires_at>clock_timestamp()
-         ORDER BY expires_at LIMIT 1`,[actor.tenantId,actor.actorId]):{rows:[]};
+         ORDER BY expires_at LIMIT 1`,
+              [actor.tenantId, actor.actorId],
+            )
+          : { rows: [] };
       return {
         actorId: actor.actorId,
         actorName: staff.name,
@@ -43,13 +80,13 @@ export class WorkspaceController {
         actorPhone: staff.phone_number,
         role: actor.role,
         permissions: actor.permissions,
-        supportAccess:supportAccess??null,
+        supportAccess: supportAccess ?? null,
         tenant: await tenant(tx, actor),
       };
     });
   }
   @Patch("profile")
-  @Access("catalog.read")
+  @Access("authenticated")
   profile(
     @CurrentActor() actor: Actor,
     @Headers("idempotency-key") key: string,
@@ -87,15 +124,35 @@ export class WorkspaceController {
   @Get("departures")
   @Access("catalog.read")
   departures(@CurrentActor() actor: Actor, @Query() raw: unknown) {
-    const q = parse(querySchema, raw);
+    const q = parse(departureQuerySchema, raw);
     return this.db.transaction(actor, async (tx) => {
       const { rows } = await tx.query(
-        `SELECT d.id,d.product_id,d.starts_at,d.capacity,(d.committed+d.overbooked)::int AS committed,d.overbooked,p.name AS product_name,
+        `SELECT d.id,d.product_id,d.starts_at,d.capacity,d.status,(d.committed+d.overbooked)::int AS committed,d.overbooked,p.name AS product_name,
+      p.availability_mode,p.product_kind,
       p.definition->>'optionName' AS option_name,p.definition->'categories' AS categories,
+      NULLIF(p.definition->>'durationMinutes','')::int AS duration_minutes,
+      COALESCE((SELECT SUM(h.seats) FROM holds h WHERE h.tenant_id=d.tenant_id AND h.departure_id=d.id AND NOT h.consumed AND h.expires_at>clock_timestamp()),0)::int AS held,
       CASE WHEN d.starts_at<=clock_timestamp() THEN 0 ELSE GREATEST(0,d.capacity-d.committed-d.overbooked-COALESCE((SELECT SUM(h.seats) FROM holds h WHERE h.tenant_id=d.tenant_id AND h.departure_id=d.id AND NOT h.consumed AND h.expires_at>clock_timestamp()),0))::int END AS available
       FROM departures d JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id
-      WHERE d.tenant_id=$1 AND ($2::uuid IS NULL OR d.id>$2) AND p.name ILIKE $3 ORDER BY d.id LIMIT $4`,
-        [actor.tenantId, q.cursor ?? null, "%" + q.search + "%", q.limit + 1],
+      WHERE d.tenant_id=$1 AND ($2::uuid IS NULL OR d.id>$2) AND p.name ILIKE $3
+      AND ($10::uuid IS NOT NULL OR $6::date IS NULL OR d.starts_at >= $6::date)
+      AND ($10::uuid IS NOT NULL OR $7::date IS NULL OR d.starts_at < ($7::date + interval '1 day'))
+      AND ($10::uuid IS NOT NULL OR $8::uuid IS NULL OR d.product_id=$8)
+      AND ($10::uuid IS NOT NULL OR $9::text IS NULL OR p.availability_mode=$9)
+      AND ($10::uuid IS NULL OR d.id=$10)
+      ORDER BY CASE WHEN $5='upcoming' THEN d.starts_at END,d.id LIMIT $4`,
+        [
+          actor.tenantId,
+          q.cursor ?? null,
+          "%" + q.search + "%",
+          q.limit + 1,
+          q.view,
+          q.from ?? null,
+          q.to ?? null,
+          q.productId ?? null,
+          q.availabilityMode ?? null,
+          q.departureId ?? null,
+        ],
       );
       return page(rows, q.limit);
     });
@@ -103,7 +160,7 @@ export class WorkspaceController {
   @Get("reservations")
   @Access("bookings.read")
   reservations(@CurrentActor() actor: Actor, @Query() raw: unknown) {
-    const q = parse(querySchema, raw);
+    const q = parse(reservationQuerySchema, raw);
     return this.db.transaction(actor, async (tx) => {
       const { rows } = await tx.query(
         `SELECT b.id,b.departure_id,b.lead_name,b.source,b.pickup,b.version,
@@ -115,8 +172,23 @@ export class WorkspaceController {
       FROM bookings b JOIN holds h ON h.tenant_id=b.tenant_id AND h.id=b.hold_id
       JOIN departures d ON d.tenant_id=b.tenant_id AND d.id=b.departure_id
       JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id
-      WHERE b.tenant_id=$1 AND ($2::uuid IS NULL OR b.id>$2) AND (b.lead_name ILIKE $3 OR b.id::text ILIKE $3) ORDER BY b.id LIMIT $4`,
-        [actor.tenantId, q.cursor ?? null, "%" + q.search + "%", q.limit + 1],
+      WHERE b.tenant_id=$1 AND ($2::uuid IS NULL OR b.id>$2)
+      AND (b.lead_name ILIKE $3 OR b.id::text ILIKE $3 OR p.name ILIKE $3)
+      AND ($5::text IS NULL OR (CASE WHEN b.state='held' AND h.expires_at<=clock_timestamp() THEN 'expired' ELSE b.state END)=$5)
+      AND ($6::text IS NULL OR b.source=$6)
+      AND ($7::date IS NULL OR d.starts_at >= $7::date)
+      AND ($8::date IS NULL OR d.starts_at < ($8::date + interval '1 day'))
+      ORDER BY b.id LIMIT $4`,
+        [
+          actor.tenantId,
+          q.cursor ?? null,
+          "%" + q.search + "%",
+          q.limit + 1,
+          q.state ?? null,
+          q.source ?? null,
+          q.from ?? null,
+          q.to ?? null,
+        ],
       );
       return page(rows, q.limit);
     });
@@ -172,15 +244,22 @@ export class WorkspaceController {
   subscription(@CurrentActor() actor: Actor) {
     return this.db.transaction(actor, async (tx) => {
       const { rows: plans } = await tx.query(
-        "SELECT id,name,description,monthly_minor,yearly_minor,currency,features,limits FROM subscription_plans WHERE active ORDER BY monthly_minor",
+        "SELECT id,name,description,monthly_minor,yearly_minor,currency,features,limits,stripe_price_id_monthly FROM subscription_plans WHERE active ORDER BY monthly_minor",
       );
       const {
         rows: [current],
       } = await tx.query(
-        "SELECT s.plan_id,s.status,s.billing_cycle,s.period_ends_at,s.trial_ends_at,s.cancel_at_period_end,p.name,p.description,p.monthly_minor,p.yearly_minor,p.currency,p.features,p.limits FROM tenant_subscriptions s JOIN subscription_plans p ON p.id=s.plan_id WHERE s.tenant_id=$1",
+        "SELECT s.plan_id,s.status,s.billing_cycle,s.period_ends_at,s.trial_ends_at,s.cancel_at_period_end,s.stripe_subscription_id,p.name,p.description,p.monthly_minor,p.yearly_minor,p.currency,p.features,p.limits FROM tenant_subscriptions s JOIN subscription_plans p ON p.id=s.plan_id WHERE s.tenant_id=$1",
         [actor.tenantId],
       );
-      return { current: current ?? null, plans, billingReady: false };
+      // billingReady: true once Stripe price IDs are real (no placeholder prefix) and webhook is configured.
+      const samplePlan = plans[0] as { stripe_price_id_monthly?: string } | undefined;
+      const billingReady =
+        !!process.env.STRIPE_SECRET_KEY &&
+        !!process.env.STRIPE_WEBHOOK_SECRET &&
+        !!samplePlan?.stripe_price_id_monthly &&
+        !samplePlan.stripe_price_id_monthly.startsWith("price_REPLACE");
+      return { current: current ?? null, plans, billingReady };
     });
   }
 }

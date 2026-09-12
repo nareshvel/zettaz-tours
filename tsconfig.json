@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "commonjs",
-    "moduleResolution": "node",
+    "module": "Node16",
+    "moduleResolution": "Node16",
     "outDir": "dist",
     "rootDir": ".",
     "strict": true,
@@ -13,5 +13,8 @@
     "forceConsistentCasingInFileNames": true,
     "noUncheckedIndexedAccess": true
   },
-  "include": ["apps/api/**/*.ts", "packages/**/*.ts"]
+  "include": [
+    "apps/api/**/*.ts",
+    "packages/**/*.ts"
+  ]
 }

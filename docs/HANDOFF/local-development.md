@@ -6,11 +6,11 @@
 
 NestJS modular API with persistent PostgreSQL storage and a Next.js tenant workspace: database-backed tenant identity and RBAC, support grants, tenant settings, catalog and schedules, availability/holds, reservations and changes, customers/passengers, manual payments, partner finance, operations/resources/pickups, waivers/check-in, integration inbox, notifications queue, reports, audit/outbox, browser/PDF print output, and a connected Expo crew client.
 
-Migrations 001–051 are applied to the persistent local database and the fresh-database API/PostgreSQL suite passes 40 of 40 tests. API startup still deliberately rejects production mode. Privileged MFA, actual gateways, provider-backed delivery, offline mobile data, physical printer-agent delivery, tenant-one data validation, and cutover acceptance remain. This is working development software, not launch-ready software.
+Migrations 001–055 are applied to the persistent local database and the fresh-database API/PostgreSQL suite passes 43 of 43 tests. API startup still deliberately rejects production mode. Privileged MFA, actual gateways, provider-backed delivery, encrypted offline mobile data, physical printer-agent delivery, retained waiver PDFs, tenant-one data validation, and cutover acceptance remain. This is working development software, not launch-ready software.
 
 ## Quick start
 
-Prerequisites: Node 22.14+ and npm; local PostgreSQL binaries (`initdb`, `pg_ctl`) on PATH for the self-contained demo/test path. Docker is optional. Existing databases are not used by the demo.
+Prerequisites: Node 22.14+ and npm. The persistent workspace requires its configured PostgreSQL server; for the documented local setup, start Docker Desktop and run `docker compose up -d postgres`. Local PostgreSQL binaries (`initdb`, `pg_ctl`) are needed only for the self-contained temporary demo/test path.
 
 From the project root:
 
@@ -23,11 +23,11 @@ npm run workspace:dev
 
 Open http://127.0.0.1:3191 and sign in with a seeded persistent database identity. The local access-file fallback has been removed from the normal workspace path. If a port is occupied, update `PORT`, `WEB_PORT`, and `WEB_ORIGIN` consistently in `.env`. `npm run demo` remains available for isolated API-only work.
 
-This builds TypeScript, starts a new isolated local PostgreSQL cluster with a random password/runtime role, applies migrations, launches the API on loopback port 3190, and creates two synthetic tenants with USD and XCD configurations respectively. Each gets one paid and confirmed reservation. There is no live money collection or outbound messaging.
+This builds TypeScript, applies migrations to the persistent PostgreSQL database configured in `.env`, starts the API on loopback port 3190, and starts the Next.js workspace on loopback port 3191.
 
-Session tokens and IDs are written to `.local/demo-access.json` with owner-only file permissions. They expire after eight hours and are ignored by Git. Do not paste tokens into shared documents. Ctrl-C stops the web server/API/database; each subsequent demo uses a new isolated cluster. Temporary clusters are stopped but retained in the OS temporary directory for debugging; this workflow is not durable operator storage.
+Persistent workspace development uses database-backed sign-in. Seeded local sessions may also be written to `.local/persistent-sample-access.json` for development helpers; they expire after eight hours and are ignored by Git. Do not paste tokens into shared documents. Ctrl-C stops the web server/API process; it does not delete the persistent database.
 
-The non-secret demo manifest results are saved to `.local/demo-manifests.json` for inspection after the smoke test.
+The disposable `npm run demo` path still creates a temporary isolated PostgreSQL cluster and may write non-secret demo output under `.local/`. Use it for isolated API checks, not normal persistent workspace development.
 
 Visit [API contract](http://127.0.0.1:3190/openapi.json) and [health](http://127.0.0.1:3190/health). These are JSON endpoints, not a frontend. Make authenticated requests with `Authorization: Bearer <tenant token>`; the token selects tenant context. Mutations under tenant façades require a unique `Idempotency-Key` (8–128 permitted characters). Reusing a key with different input returns 409.
 
@@ -47,7 +47,7 @@ The demo uses owner sessions. Team administration creates mock membership record
 - `npm run web:typecheck`: frontend types without a build.
 - `npm run web:smoke`: HTTP integration checks against the running demo at port 3191; creates a synthetic booking. It does not automate browser clicks.
 - `npm run mobile:typecheck`: validate the connected Expo crew client.
-- `EXPO_PUBLIC_API_BASE_URL=http://<device-reachable-host>:3180 npm run mobile:start`: start the crew client for iOS/Android development.
+- `EXPO_PUBLIC_API_BASE_URL=http://<device-reachable-host>:3190 npm run mobile:start`: start the crew client for iOS/Android development.
 
 - `npm run typecheck`: strict TypeScript checks.
 - `npm test`: build and execute real database/API tests in an isolated native PostgreSQL cluster. If PostgreSQL binaries are not installed, set `TEST_ADMIN_DATABASE_URL` to a fresh disposable PostgreSQL database; never a production or shared database.
@@ -56,7 +56,7 @@ The demo uses owner sessions. Team administration creates mock membership record
 - `npm run dev`: start against `.env` configuration after migrations. Requires explicit demo/test mode and an issued development session; no default credentials.
 - `npm run outbox:drain`: consume a tenant's pending outbox in bounded batches using `STAFF_SESSION_TOKEN`. Only the idempotent local observer exists; this does not send email or invoke a payment gateway.
 
-`npm run workspace:dev` starts both the API and web app with the persistent Sample tenant sessions. Run `npm run db:seed` again when those local sessions expire after eight hours.
+`npm run workspace:dev` starts both the API and web app with the persistent Sample tenant sessions. Run `npm run db:seed` again when those local sessions expire after eight hours. Nest bootstrap route dumps and Next.js incoming-request dumps stay quiet by default; set `NEST_LOG=verbose` or `NEXT_REQUEST_LOG=verbose` in `.env.development` when you need them.
 
 The optional Compose PostgreSQL service needs explicit credentials. Redis is under the `future-integrations` profile. S3-compatible storage is deferred until documents are implemented, so no unused storage service is started. CI declares PostgreSQL 18; local acceptance was performed against installed PostgreSQL 14.17. The CI workflow must run remotely before claiming PostgreSQL 18 verification.
 

@@ -1,5 +1,9 @@
 {
   "name": "@zettaz/api",
   "version": "0.1.0",
-  "private": true
+  "private": true,
+  "dependencies": {
+    "@types/nodemailer": "^8.0.1",
+    "nodemailer": "^10.0.8"
+  }
 }

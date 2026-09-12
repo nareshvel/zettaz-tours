@@ -6,6 +6,7 @@ import {
   Plus,
   Trash2,
   Check,
+  X,
   ArrowRight,
   ShieldCheck,
   Building2,
@@ -17,337 +18,1175 @@ import {
   FileText,
   Ship,
   Hotel,
+  Lock,
+  Handshake,
 } from "lucide-react";
-import type { Session, Product, Member } from "@/lib/types";
+import type {
+  Session,
+  Product,
+  Member,
+  AvailabilityRule,
+  Partner,
+} from "@/lib/types";
+import { availabilityModes, modeLabel, weekdayLabels } from "@/lib/types";
+import { COUNTRIES } from "@/lib/countries";
 import {
+  dateOnly,
+  dateTime,
+  digits,
   label,
   minor,
   money,
+  priceFromMinor,
   useMutation,
   usePaged,
   useResource,
 } from "@/lib/client";
 import {
   Back,
+  ConfirmDialog,
   Empty,
   Field,
+  FormActions,
+  FormDialog,
   Heading,
   Loading,
   More,
   Notice,
-  SearchBox,
+  SectionHeading,
   Status,
+  TenantDateInput,
   Toggle,
 } from "./common";
 import { Integrations } from "./integrations";
 
+function catalogTab(next: "products" | "availability") {
+  window.history.replaceState(
+    null,
+    "",
+    next === "availability" ? "/catalog?tab=availability" : "/catalog",
+  );
+}
+const SETTINGS_TABS = new Set([
+  "general",
+  "localization",
+  "commercial",
+  "printers",
+  "stays",
+  "resellers",
+  "payments",
+  "waivers",
+  "integrations",
+  "security",
+]);
+function settingsTab(next: string) {
+  const url = new URL(window.location.href);
+  if (next === "general") url.searchParams.delete("tab");
+  else url.searchParams.set("tab", next);
+  window.history.replaceState(null, "", url.pathname + url.search);
+}
+function durationHint(minutes: string) {
+  const value = Number(minutes);
+  if (!value || value < 1)
+    return "Used for itinerary length and departure end time.";
+  if (value < 60) return `${value} minutes`;
+  const hours = Math.floor(value / 60);
+  const rest = value % 60;
+  if (!rest) return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+  return `${hours}h ${rest}m`;
+}
+function localWhen(
+  value: string,
+  locale: string,
+  timezone: string,
+  withTime = true,
+) {
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    ...(withTime ? { timeStyle: "short" as const } : {}),
+    timeZone: timezone,
+  }).format(new Date(value));
+}
+
 export function Catalog({ session }: { session: Session }) {
   const products = useResource<Product[]>("admin/v1/products"),
-    [search, setSearch] = useState("");
+    rules = useResource<AvailabilityRule[]>("admin/v1/availability-rules"),
+    [view, setView] = useState<"products" | "availability">("products");
+  useEffect(() => {
+    if (
+      new URLSearchParams(window.location.search).get("tab") === "availability"
+    )
+      setView("availability");
+  }, []);
+  const canWrite = session.permissions.includes("catalog.write");
+  const items = products.data ?? [];
+  const active =
+    products.data?.filter((p) => (p.status ?? "active") === "active").length ??
+    0;
+  const scheduled =
+    rules.data?.reduce((sum, rule) => sum + rule.upcoming_departures, 0) ?? 0;
+  function show(next: "products" | "availability") {
+    setView(next);
+    catalogTab(next);
+  }
   return (
     <>
       <Heading
         title="Catalog"
-        description="Shared tours, passenger categories and seasonal rates."
-        action={
-          session.permissions.includes("catalog.write") && (
-            <Link href="/catalog/new" className="button">
-              <Plus size={17} />
-              Add tour
-            </Link>
-          )
-        }
+        description="The experiences you sell, their published rates, and when they can be booked."
       />
+      <div className="catalog-metrics" aria-label="Catalog summary">
+        <div>
+          <strong>{products.data ? products.data.length : "—"}</strong>
+          <span>Products</span>
+        </div>
+        <div>
+          <strong>{products.data ? active : "—"}</strong>
+          <span>Active</span>
+        </div>
+        <div>
+          <strong>{rules.data ? rules.data.length : "—"}</strong>
+          <span>Availability rules</span>
+        </div>
+        <div>
+          <strong>{rules.data ? scheduled : "—"}</strong>
+          <span>Upcoming departures</span>
+        </div>
+      </div>
+      <div className="catalog-view-bar view-action-bar">
+        <div
+          className="view-tabs compact"
+          role="tablist"
+          aria-label="Catalog views"
+        >
+          <button
+            role="tab"
+            aria-selected={view === "products"}
+            onClick={() => show("products")}
+          >
+            Products
+          </button>
+          <button
+            role="tab"
+            aria-selected={view === "availability"}
+            onClick={() => show("availability")}
+          >
+            Availability
+          </button>
+        </div>
+        {canWrite &&
+          (view === "products" ? (
+            <Link
+              href="/catalog/new"
+              className="button catalog-add-btn"
+              aria-label="Add product"
+            >
+              <Plus size={17} />
+              <span className="button-label">Add product</span>
+            </Link>
+          ) : (
+            <Link
+              href="/catalog/availability/new"
+              className="button secondary catalog-add-btn"
+              aria-label="Add availability"
+            >
+              <Plus size={17} />
+              <span className="button-label">Add availability</span>
+            </Link>
+          ))}
+      </div>
       {products.error ? (
         <Notice error>{products.error}</Notice>
       ) : !products.data ? (
         <Loading />
-      ) : (
+      ) : view === "products" ? (
         <>
-          <div className="catalog-toolbar">
-            <SearchBox
-              value={search}
-              onChange={setSearch}
-              placeholder="Find a tour"
-            />
-            <span className="muted">
-              {products.data.length} tours ·{" "}
-              {session.tenant.config.bookingCurrency}
-            </span>
-          </div>
-          <div className="catalog-grid">
-            {products.data
-              .filter((p) =>
-                p.name.toLowerCase().includes(search.toLowerCase()),
-              )
-              .map((p) => (
-                <article className="panel catalog-card" key={p.id}>
-                  <div className="tour-type">
-                    <span className="tour-mark">
-                      {p.name.replace("Mock ", "").slice(0, 1)}
-                    </span>
-                    <span>SHARED TOUR</span>
-                  </div>
-                  <h2>{p.name}</h2>
-                  <p>
-                    {p.definition.optionName} · {p.definition.durationMinutes}{" "}
-                    minutes
-                  </p>
-                  <div className="rate-list">
-                    {p.definition.rates.map((r, i) => (
-                      <div key={i}>
+          {items.length ? (
+            <section className="panel product-list">
+              {items.map((p) => {
+                const scheduledProduct =
+                  (p.availability_mode ?? "fixed_departure") ===
+                  "fixed_departure";
+                return (
+                  <article
+                    className={
+                      "product-row" +
+                      (canWrite && scheduledProduct ? " has-action" : "")
+                    }
+                    key={p.id}
+                  >
+                    <Link
+                      href={`/catalog/${p.id}`}
+                      className="product-row-main"
+                    >
+                      <div className="product-row-copy">
+                        <div className="product-row-meta">
+                          <span className="kind-chip">
+                            {label(p.product_kind ?? "tour")}
+                          </span>
+                          <Status state={p.status ?? "active"} />
+                        </div>
+                        <h2>{p.customer_title ?? p.name}</h2>
+                        <p>
+                          {p.definition.optionName} ·{" "}
+                          {durationHint(String(p.definition.durationMinutes))} ·{" "}
+                          {modeLabel(p.availability_mode)}
+                        </p>
+                      </div>
+                      <div className="product-row-when">
                         <span>
-                          <strong>
-                            {p.definition.categories.find(
-                              (c) => c.slug === r.category,
-                            )?.label ?? label(r.category)}
-                          </strong>
-                          <small>
-                            {r.startDate} — {r.endDate}
-                          </small>
+                          {scheduledProduct
+                            ? "Next departure"
+                            : "Selling model"}
                         </span>
                         <strong>
-                          {money(
-                            r.amountMinor,
-                            session.tenant.config.bookingCurrency,
-                          )}
+                          {p.next_departure_at
+                            ? localWhen(
+                                p.next_departure_at,
+                                session.tenant.config.locale,
+                                session.tenant.timezone,
+                              )
+                            : scheduledProduct
+                              ? "None scheduled"
+                              : modeLabel(p.availability_mode)}
+                        </strong>
+                        <small>
+                          {p.availability_rule_count ?? 0}{" "}
+                          {(p.availability_rule_count ?? 0) === 1
+                            ? "rule"
+                            : "rules"}
+                        </small>
+                      </div>
+                      <div className="product-row-price">
+                        <span>From</span>
+                        <strong>
+                          {priceFromMinor(p) != null
+                            ? money(
+                                priceFromMinor(p)!,
+                                session.tenant.config.bookingCurrency,
+                                session.tenant.config.locale,
+                              )
+                            : "No rate"}
                         </strong>
                       </div>
-                    ))}
-                  </div>
-                  {session.permissions.includes("catalog.write") && (
-                    <Link
-                      className="text-link"
-                      href={"/departures/new?product=" + p.id}
-                    >
-                      Schedule departures <ArrowRight size={16} />
                     </Link>
-                  )}
-                </article>
-              ))}
-          </div>
-          {!products.data.length && (
+                    {canWrite && scheduledProduct && (
+                      <Link
+                        className="product-row-action"
+                        href={"/catalog/availability/new?product=" + p.id}
+                      >
+                        Schedule
+                        <ArrowRight size={16} />
+                      </Link>
+                    )}
+                  </article>
+                );
+              })}
+            </section>
+          ) : (
             <Empty title="Your catalog is empty">
-              <Link href="/catalog/new">Add your first tour</Link>
+              {canWrite && (
+                <Link href="/catalog/new">Add your first product</Link>
+              )}
             </Empty>
           )}
           {products.data.length === 100 && (
-            <Notice>This first catalog view shows up to 100 products.</Notice>
+            <Notice>This catalog view shows up to 100 products.</Notice>
           )}
         </>
+      ) : rules.error ? (
+        <Notice error>{rules.error}</Notice>
+      ) : !rules.data ? (
+        <Loading />
+      ) : rules.data.length ? (
+        <section className="panel product-list">
+          {rules.data.map((rule) => (
+            <Link
+              key={rule.id}
+              href={`/catalog/availability/${rule.id}`}
+              className="product-row-main availability-item"
+            >
+              <div className="product-row-copy">
+                <div className="product-row-meta">
+                  <span className="kind-chip">{modeLabel(rule.mode)}</span>
+                  <Status state={rule.status} />
+                </div>
+                <h2>{rule.product_name}</h2>
+                <p>
+                  {rule.option_name} ·{" "}
+                  {rule.times.join(", ") || "Flexible time"}
+                </p>
+              </div>
+              <div className="product-row-when">
+                <span>Operating period</span>
+                <strong>
+                  {rule.start_date} — {rule.end_date}
+                </strong>
+                <small>
+                  {rule.weekdays
+                    .map((day) => weekdayLabels[day - 1])
+                    .join(" · ")}
+                </small>
+              </div>
+              <div className="product-row-price">
+                <span>Upcoming</span>
+                <strong>{rule.upcoming_departures}</strong>
+                <small>
+                  {rule.capacity == null
+                    ? "Rule based"
+                    : `${rule.capacity} seats`}
+                </small>
+              </div>
+            </Link>
+          ))}
+        </section>
+      ) : (
+        <Empty title="No availability rules">
+          {canWrite && (
+            <Link href="/catalog/availability/new">Create availability</Link>
+          )}
+        </Empty>
       )}
     </>
   );
 }
-const isoDay = () => new Date().toISOString().slice(0, 10);
-export function NewProduct({ session }: { session: Session }) {
-  const [name, setName] = useState(""),
-    [option, setOption] = useState(""),
-    [duration, setDuration] = useState("120"),
-    [error, setError] = useState("");
-  const [categories, setCategories] = useState([
-    { slug: "", label: "", countsTowardCapacity: true, amount: "" },
-  ]);
-  const [start, setStart] = useState(isoDay),
-    [end, setEnd] = useState("");
-  const mutation = useMutation(),
-    router = useRouter();
-  function category(
-    index: number,
-    update: Partial<(typeof categories)[number]>,
-  ) {
-    setCategories((v) =>
-      v.map((c, i) => (i === index ? { ...c, ...update } : c)),
+function tenantDay(timezone: string) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+function shiftDay(day: string, days: number) {
+  const date = new Date(`${day}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+function weekdayMon1(day: string) {
+  const js = new Date(`${day}T12:00:00Z`).getUTCDay();
+  return js === 0 ? 7 : js;
+}
+function plannedDates(
+  start: string,
+  end: string,
+  weekdays: number[],
+  blackouts: string[],
+) {
+  if (!start || !end || start > end) return [];
+  const dates: string[] = [];
+  for (let day = start; day <= end; day = shiftDay(day, 1)) {
+    if (weekdays.includes(weekdayMon1(day)) && !blackouts.includes(day))
+      dates.push(day);
+    if (dates.length > 400) break;
+  }
+  return dates;
+}
+function clockLabel(time: string, locale: string, timeFormat: "12h" | "24h") {
+  const [hour, minute] = time.split(":").map(Number);
+  if (hour == null || minute == null || Number.isNaN(hour)) return time;
+  return new Intl.DateTimeFormat(locale, {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: timeFormat === "12h",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(2026, 0, 1, hour, minute)));
+}
+type CategoryDraft = {
+  id: string;
+  slug: string;
+  label: string;
+  countsTowardCapacity: boolean;
+};
+type PeriodDraft = {
+  id: string;
+  startDate: string;
+  endDate: string;
+  amounts: Record<string, string>;
+};
+function categoryId() {
+  return crypto.randomUUID();
+}
+function periodId() {
+  return crypto.randomUUID();
+}
+const starterCategories: CategoryDraft[] = [
+  { id: "adult", slug: "adult", label: "Adult", countsTowardCapacity: true },
+  { id: "child", slug: "child", label: "Child", countsTowardCapacity: true },
+  {
+    id: "infant",
+    slug: "infant",
+    label: "Infant",
+    countsTowardCapacity: false,
+  },
+];
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+}
+function zeroAmount(currency: string) {
+  const places = digits(currency);
+  return places === 0 ? "0" : (0).toFixed(places);
+}
+function amountInput(amountMinor: number, currency: string) {
+  return (amountMinor / 10 ** digits(currency)).toFixed(digits(currency));
+}
+function formatAmountDraft(value: string, currency: string) {
+  try {
+    return amountInput(minor(value.trim() || "0", currency), currency);
+  } catch {
+    return zeroAmount(currency);
+  }
+}
+function emptyAmounts(
+  categories: CategoryDraft[],
+  previous: Record<string, string> = {},
+  currency?: string,
+) {
+  const fallback = currency ? zeroAmount(currency) : "";
+  return Object.fromEntries(
+    categories.map((category) => [
+      category.slug,
+      previous[category.slug] ?? fallback,
+    ]),
+  );
+}
+function sanitizeCategories(categories: CategoryDraft[]) {
+  return categories.map(({ slug, label, countsTowardCapacity }) => ({
+    slug,
+    label,
+    countsTowardCapacity,
+  }));
+}
+function periodsFromRates(
+  categories: CategoryDraft[],
+  rates: {
+    category: string;
+    startDate: string;
+    endDate: string;
+    amountMinor: number;
+  }[],
+  currency: string,
+  fallbackStart: string,
+): PeriodDraft[] {
+  const groups = new Map<string, PeriodDraft>();
+  for (const rate of rates) {
+    const key = `${rate.startDate}:${rate.endDate}`;
+    const current = groups.get(key) ?? {
+      id: periodId(),
+      startDate: rate.startDate,
+      endDate: rate.endDate,
+      amounts: emptyAmounts(categories, {}, currency),
+    };
+    current.amounts[rate.category] = amountInput(rate.amountMinor, currency);
+    groups.set(key, current);
+  }
+  return groups.size
+    ? [...groups.values()]
+    : [
+        {
+          id: periodId(),
+          startDate: fallbackStart,
+          endDate: shiftDay(fallbackStart, 364),
+          amounts: emptyAmounts(categories, {}, currency),
+        },
+      ];
+}
+function collectRates(
+  categories: CategoryDraft[],
+  periods: PeriodDraft[],
+  currency: string,
+) {
+  return periods.flatMap((period) =>
+    categories.map((category) => ({
+      category: category.slug,
+      startDate: period.startDate,
+      endDate: period.endDate,
+      amountMinor: minor(
+        period.amounts[category.slug]?.trim() || "0",
+        currency,
+      ),
+    })),
+  );
+}
+function PricingEditor({
+  session,
+  categories,
+  periods,
+  onCategories,
+  onPeriods,
+}: {
+  session: Session;
+  categories: CategoryDraft[];
+  periods: PeriodDraft[];
+  onCategories: (categories: CategoryDraft[]) => void;
+  onPeriods: (periods: PeriodDraft[]) => void;
+}) {
+  const currency = session.tenant.config.bookingCurrency;
+  function rename(index: number, label: string) {
+    const previous = categories[index]!.slug;
+    const slug = slugify(label);
+    const next = categories.map((category, i) =>
+      i === index ? { ...category, label, slug } : category,
+    );
+    onCategories(next);
+    onPeriods(
+      periods.map((period) => {
+        const amounts = emptyAmounts(next, period.amounts, currency);
+        if (slug && previous !== slug) {
+          amounts[slug] =
+            period.amounts[previous] ?? amounts[slug] ?? zeroAmount(currency);
+          delete amounts[previous];
+        }
+        return { ...period, amounts };
+      }),
     );
   }
+  return (
+    <>
+      <SectionHeading
+        title="Passenger categories"
+        description="Who can be booked. Removing a category hides it from new reservations; confirmed prices stay frozen."
+        action={
+          <button
+            type="button"
+            className="button secondary"
+            disabled={categories.length >= 10}
+            onClick={() => {
+              const added = {
+                id: categoryId(),
+                slug: "",
+                label: "",
+                countsTowardCapacity: true,
+              };
+              onCategories([...categories, added]);
+              onPeriods(
+                periods.map((period) => ({
+                  ...period,
+                  amounts: emptyAmounts(
+                    [...categories, added],
+                    period.amounts,
+                    currency,
+                  ),
+                })),
+              );
+            }}
+          >
+            <Plus size={16} />
+            Add category
+          </button>
+        }
+      />
+      <div className="category-list">
+        {categories.map((category, index) => (
+          <div className="category-row" key={category.id}>
+            <Field label="Category label">
+              <input
+                required
+                placeholder="e.g. Adult, Child"
+                value={category.label}
+                onChange={(e) => rename(index, e.target.value)}
+              />
+            </Field>
+            <Field label="Identifier code">
+              <input
+                required
+                className="mono-input"
+                placeholder="e.g. adult"
+                pattern="[a-z][a-z0-9_\-]{1,49}"
+                value={category.slug}
+                onChange={(e) => {
+                  const slug = e.target.value;
+                  const previous = categories[index]!.slug;
+                  onCategories(
+                    categories.map((item, i) =>
+                      i === index ? { ...item, slug } : item,
+                    ),
+                  );
+                  onPeriods(
+                    periods.map((period) => {
+                      const amounts = { ...period.amounts };
+                      amounts[slug] =
+                        amounts[previous] ??
+                        amounts[slug] ??
+                        zeroAmount(currency);
+                      if (previous !== slug) delete amounts[previous];
+                      return { ...period, amounts };
+                    }),
+                  );
+                }}
+              />
+            </Field>
+            <Toggle
+              className="toggle-inline category-capacity-toggle"
+              label="Counts toward seats"
+              checked={category.countsTowardCapacity}
+              onChange={(checked) =>
+                onCategories(
+                  categories.map((item, i) =>
+                    i === index
+                      ? { ...item, countsTowardCapacity: checked }
+                      : item,
+                  ),
+                )
+              }
+            />
+            <div className="category-remove-cell">
+              {categories.length > 1 ? (
+                <button
+                  type="button"
+                  className="icon-link danger"
+                  aria-label={"Remove " + (category.label || "category")}
+                  onClick={() => {
+                    onCategories(categories.filter((_, i) => i !== index));
+                    onPeriods(
+                      periods.map((period) => {
+                        const amounts = { ...period.amounts };
+                        delete amounts[category.slug];
+                        return { ...period, amounts };
+                      }),
+                    );
+                  }}
+                >
+                  <Trash2 size={16} />
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ))}
+      </div>
+      <SectionHeading
+        title="Seasonal rates"
+        description="Future bookings use the period that covers the departure date. Confirmed reservations keep their frozen price."
+        action={
+          <button
+            type="button"
+            className="button secondary"
+            disabled={periods.length >= 20}
+            onClick={() => {
+              const last = periods[periods.length - 1];
+              onPeriods([
+                ...periods,
+                {
+                  id: periodId(),
+                  startDate: last
+                    ? shiftDay(last.endDate, 1)
+                    : tenantDay(session.tenant.timezone),
+                  endDate: last
+                    ? shiftDay(last.endDate, 181)
+                    : shiftDay(tenantDay(session.tenant.timezone), 364),
+                  amounts: emptyAmounts(categories, last?.amounts, currency),
+                },
+              ]);
+            }}
+          >
+            <Plus size={16} />
+            Add rate period
+          </button>
+        }
+      />
+      <div className="mobile-table-hint">
+        Scroll table horizontally to view and edit all category rates →
+      </div>
+      <div className="price-matrix-wrap">
+        <table className="price-matrix">
+          <thead>
+            <tr>
+              <th className="date-col">Period starts</th>
+              <th className="date-col">Period ends</th>
+              {categories.map((category) => (
+                <th key={category.id} className="amount-col">
+                  {category.label || "Category"}
+                  <span className="currency-pill">{currency}</span>
+                </th>
+              ))}
+              <th className="price-matrix-remove">
+                <span className="visually-hidden">Remove period</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {periods.map((period, index) => (
+              <tr key={period.id}>
+                <td className="date-col">
+                  <TenantDateInput
+                    label="Period starts"
+                    value={period.startDate}
+                    max={period.endDate || undefined}
+                    onChange={(startDate) =>
+                      onPeriods(
+                        periods.map((item, i) =>
+                          i === index ? { ...item, startDate } : item,
+                        ),
+                      )
+                    }
+                    locale={session.tenant.config.locale}
+                    dateFormat={session.tenant.config.dateFormat}
+                  />
+                </td>
+                <td className="date-col">
+                  <TenantDateInput
+                    label="Period ends"
+                    value={period.endDate}
+                    min={period.startDate || undefined}
+                    onChange={(endDate) =>
+                      onPeriods(
+                        periods.map((item, i) =>
+                          i === index ? { ...item, endDate } : item,
+                        ),
+                      )
+                    }
+                    locale={session.tenant.config.locale}
+                    dateFormat={session.tenant.config.dateFormat}
+                  />
+                </td>
+                {categories.map((category) => (
+                  <td key={category.id} className="amount-col">
+                    <input
+                      required
+                      aria-label={`${category.label || "Category"} amount in ${currency}`}
+                      className="amount-input"
+                      inputMode="decimal"
+                      value={
+                        period.amounts[category.slug] ?? zeroAmount(currency)
+                      }
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) =>
+                        onPeriods(
+                          periods.map((item, i) =>
+                            i === index
+                              ? {
+                                  ...item,
+                                  amounts: {
+                                    ...item.amounts,
+                                    [category.slug]: e.target.value,
+                                  },
+                                }
+                              : item,
+                          ),
+                        )
+                      }
+                      onBlur={(e) =>
+                        onPeriods(
+                          periods.map((item, i) =>
+                            i === index
+                              ? {
+                                  ...item,
+                                  amounts: {
+                                    ...item.amounts,
+                                    [category.slug]: formatAmountDraft(
+                                      e.target.value,
+                                      currency,
+                                    ),
+                                  },
+                                }
+                              : item,
+                          ),
+                        )
+                      }
+                    />
+                  </td>
+                ))}
+                <td className="price-matrix-remove">
+                  {periods.length > 1 ? (
+                    <button
+                      type="button"
+                      className="icon-link danger"
+                      aria-label={`Remove rate period ${index + 1}`}
+                      onClick={() =>
+                        onPeriods(periods.filter((_, i) => i !== index))
+                      }
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+export function NewProduct({ session }: { session: Session }) {
+  const today = tenantDay(session.tenant.timezone);
+  const [name, setName] = useState(""),
+    [description, setDescription] = useState(""),
+    [productKind, setProductKind] = useState("tour"),
+    [availabilityMode, setAvailabilityMode] = useState("fixed_departure"),
+    [option, setOption] = useState("Standard"),
+    [duration, setDuration] = useState("180"),
+    [pricingModel, setPricingModel] = useState("per_person"),
+    [privateBooking, setPrivateBooking] = useState(false),
+    [confirmationMode, setConfirmationMode] = useState("instant"),
+    [error, setError] = useState(""),
+    [categories, setCategories] = useState(starterCategories),
+    [periods, setPeriods] = useState<PeriodDraft[]>([
+      {
+        id: periodId(),
+        startDate: today,
+        endDate: shiftDay(today, 364),
+        amounts: emptyAmounts(
+          starterCategories,
+          {},
+          session.tenant.config.bookingCurrency,
+        ),
+      },
+    ]);
+  const mutation = useMutation(),
+    router = useRouter();
+  const mode =
+    availabilityModes[availabilityMode as keyof typeof availabilityModes];
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     try {
       const result = await mutation.run("admin/v1/products", {
         name,
+        description,
+        productKind,
+        availabilityMode,
         optionName: option,
         durationMinutes: Number(duration),
-        categories: categories.map(({ amount, ...c }) => c),
-        rates: categories.map((c) => ({
-          category: c.slug,
-          startDate: start,
-          endDate: end,
-          amountMinor: minor(c.amount, session.tenant.config.bookingCurrency),
-        })),
+        pricingModel,
+        privateBooking,
+        confirmationMode,
+        categories: sanitizeCategories(categories),
+        rates: collectRates(
+          categories,
+          periods,
+          session.tenant.config.bookingCurrency,
+        ),
       });
-      if (result) router.push("/catalog");
+      if (result)
+        router.push(`/catalog/${(result as { productId: string }).productId}`);
     } catch (e) {
       setError((e as Error).message);
     }
   }
+  let fromAmount: number | null = null;
+  try {
+    const amounts = collectRates(
+      categories,
+      periods,
+      session.tenant.config.bookingCurrency,
+    )
+      .map((rate) => rate.amountMinor)
+      .filter((amount) => amount > 0);
+    fromAmount = amounts.length ? Math.min(...amounts) : null;
+  } catch {
+    fromAmount = null;
+  }
   return (
     <>
       <Back href="/catalog">Catalog</Back>
-      <Heading
-        title="Add a shared tour"
-        description="Define a tour option and its initial seasonal rates."
-      />
-      <form onSubmit={submit} className="panel form-panel wide-form">
-        <h2>Tour details</h2>
-        <div className="form-grid">
-          <Field label="Tour name">
-            <input
-              required
-              maxLength={120}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </Field>
-          <Field label="Option name">
-            <input
-              required
-              maxLength={120}
-              value={option}
-              onChange={(e) => setOption(e.target.value)}
-              placeholder="For example, morning departure"
-            />
-          </Field>
-          <Field label="Duration · minutes">
-            <input
-              type="number"
-              min="1"
-              max="1440"
-              required
-              value={duration}
-              onChange={(e) => setDuration(e.target.value)}
-            />
-          </Field>
+      <div className="product-header-bar">
+        <div>
+          <div className="product-header-badges">
+            <span className="kind-chip">{label(productKind)}</span>
+            <span className="badge">{mode?.label ?? "Fixed departure"}</span>
+            {fromAmount != null && (
+              <span className="price-pill-badge">
+                From{" "}
+                {money(
+                  fromAmount,
+                  session.tenant.config.bookingCurrency,
+                  session.tenant.config.locale,
+                )}
+              </span>
+            )}
+          </div>
+          <div className="product-header-title-row">
+            <h1>{name.trim() || "Add a product"}</h1>
+          </div>
+          <p className="product-header-subtitle">
+            Configure sellable options, passenger categories, and seasonal
+            rates.
+          </p>
         </div>
-        <div className="form-divider" />
-        <h2>Seasonal rate period</h2>
-        <div className="form-grid">
-          <Field label="Start date">
-            <input
-              type="date"
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-              required
-            />
-          </Field>
-          <Field label="End date">
-            <input
-              type="date"
-              min={start}
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
-              required
-            />
-          </Field>
-        </div>
-        <div className="panel-heading plain">
-          <h2>Passenger categories</h2>
-          <button
-            type="button"
-            className="text-link"
-            disabled={categories.length >= 10}
-            onClick={() =>
-              setCategories([
-                ...categories,
-                { slug: "", label: "", countsTowardCapacity: true, amount: "" },
-              ])
-            }
+        <div className="product-header-actions">
+          <Link
+            href="/catalog"
+            className="button secondary"
+            aria-label="Cancel"
           >
-            <Plus size={16} />
-            Add category
+            <X size={16} />
+            <span className="button-label">Cancel</span>
+          </Link>
+          <button
+            type="submit"
+            form="new-product-form"
+            className="button"
+            disabled={mutation.busy}
+            aria-label={mutation.busy ? "Creating" : "Create product"}
+          >
+            <span className="button-label">
+              {mutation.busy ? "Creating…" : "Create product"}
+            </span>
+            <Check size={16} />
           </button>
         </div>
-        {categories.map((c, i) => (
-          <div className="category-editor" key={i}>
-            <div className="form-grid three">
-              <Field label="Category label">
-                <input
-                  required
-                  value={c.label}
-                  onChange={(e) =>
-                    category(i, {
-                      label: e.target.value,
-                      slug: e.target.value
-                        .toLowerCase()
-                        .replace(/[^a-z0-9]+/g, "_")
-                        .replace(/^_|_$/g, ""),
-                    })
-                  }
-                />
+      </div>
+      <form
+        id="new-product-form"
+        className="product-editor-layout"
+        onSubmit={submit}
+      >
+        <div className="editor-stack">
+          <section className="editor-section">
+            <SectionHeading
+              title="Offer & settings"
+              description="Customer-facing title, operational duration, and booking rules."
+            />
+            <div className="offer-grid">
+              <div className="col-span-2">
+                <Field label="Customer-facing name">
+                  <input
+                    required
+                    maxLength={120}
+                    placeholder="e.g. Island Discovery Cruise"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </Field>
+              </div>
+              <Field label="Product type">
+                <select
+                  value={productKind}
+                  onChange={(e) => setProductKind(e.target.value)}
+                >
+                  <option value="tour">Tour</option>
+                  <option value="activity">Activity</option>
+                  <option value="experience">Experience</option>
+                  <option value="charter">Private charter</option>
+                  <option value="transport">Transport</option>
+                  <option value="rental">Rental</option>
+                  <option value="ticket">Ticket</option>
+                </select>
               </Field>
               <Field
-                label="Category code"
-                hint="Lowercase letters, numbers, underscores."
+                label="Option name"
+                hint="The first sellable variant, such as Standard or Morning."
               >
                 <input
                   required
-                  pattern="[a-z][a-z0-9_\-]{1,49}"
-                  value={c.slug}
-                  onChange={(e) => category(i, { slug: e.target.value })}
+                  maxLength={120}
+                  value={option}
+                  onChange={(e) => setOption(e.target.value)}
                 />
               </Field>
-              <Field label={"Rate · " + session.tenant.config.bookingCurrency}>
+              <Field label="Duration · minutes" hint={durationHint(duration)}>
                 <input
+                  type="number"
+                  min="1"
+                  max="10080"
                   required
-                  inputMode="decimal"
-                  value={c.amount}
-                  onChange={(e) => category(i, { amount: e.target.value })}
+                  value={duration}
+                  onChange={(e) => setDuration(e.target.value)}
                 />
               </Field>
-            </div>
-            <div className="category-footer">
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={c.countsTowardCapacity}
-                  onChange={(e) =>
-                    category(i, { countsTowardCapacity: e.target.checked })
-                  }
-                />
-                Counts toward seat capacity
-              </label>
-              {categories.length > 1 && (
-                <button
-                  type="button"
-                  className="icon-link danger"
-                  aria-label={"Remove category " + (i + 1)}
-                  onClick={() =>
-                    setCategories((v) => v.filter((_, n) => n !== i))
-                  }
+              <Field label="Availability model" hint={mode?.summary}>
+                <select
+                  value={availabilityMode}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setAvailabilityMode(next);
+                    if (next === "resource_window" || next === "on_request") {
+                      setPrivateBooking(true);
+                      setConfirmationMode("request");
+                    }
+                  }}
                 >
-                  <Trash2 size={16} />
-                </button>
-              )}
+                  {(
+                    Object.keys(availabilityModes) as Array<
+                      keyof typeof availabilityModes
+                    >
+                  ).map((item) => (
+                    <option key={item} value={item}>
+                      {availabilityModes[item].label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Pricing model">
+                <select
+                  value={pricingModel}
+                  onChange={(e) => setPricingModel(e.target.value)}
+                >
+                  <option value="per_person">Per person</option>
+                  <option value="per_group">Per group</option>
+                  <option value="per_unit">Per unit / resource</option>
+                </select>
+              </Field>
+              <Field label="Confirmation">
+                <select
+                  value={confirmationMode}
+                  onChange={(e) => setConfirmationMode(e.target.value)}
+                >
+                  <option value="instant">Instant confirmation</option>
+                  <option value="request">Operator approval required</option>
+                </select>
+              </Field>
+              <div className="col-span-full">
+                <Toggle
+                  className="toggle-card"
+                  label="Reserve for one private party"
+                  description="Whole-boat, exclusive charter, or private group booking. Blocks the departure for a single group."
+                  checked={privateBooking}
+                  onChange={setPrivateBooking}
+                />
+              </div>
+              <div className="col-span-full">
+                <Field label="Short description">
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    maxLength={2000}
+                    rows={3}
+                    placeholder="Brief highlights or requirements shown to guests and reservation staff…"
+                  />
+                </Field>
+              </div>
             </div>
+            {availabilityMode !== "fixed_departure" && (
+              <Notice>
+                {mode?.label} will not generate dated seat holds. Add the
+                product first; a dedicated availability editor comes with that
+                booking flow.
+              </Notice>
+            )}
+          </section>
+          <section className="editor-section">
+            <PricingEditor
+              session={session}
+              categories={categories}
+              periods={periods}
+              onCategories={setCategories}
+              onPeriods={setPeriods}
+            />
+          </section>
+          {(error || mutation.error) && (
+            <Notice error>{error || mutation.error}</Notice>
+          )}
+          <div className="editor-actions-bar">
+            <Link
+              href="/catalog"
+              className="button secondary"
+              aria-label="Cancel"
+            >
+              <X size={16} />
+              <span className="button-label">Cancel</span>
+            </Link>
+            <button
+              type="submit"
+              className="button"
+              disabled={mutation.busy}
+              aria-label={mutation.busy ? "Creating" : "Create product"}
+            >
+              <span className="button-label">
+                {mutation.busy ? "Creating…" : "Create product"}
+              </span>
+              <Check size={16} />
+            </button>
           </div>
-        ))}
-        {(error || mutation.error) && (
-          <Notice error>{error || mutation.error}</Notice>
-        )}
-        <div className="form-actions">
-          <Link href="/catalog" className="button secondary">
-            Cancel
-          </Link>
-          <button className="button" disabled={mutation.busy}>
-            {mutation.busy ? "Saving…" : "Create tour"}
-            <Check size={17} />
-          </button>
         </div>
+        <aside className="product-preview" aria-live="polite">
+          <div className="product-preview-card">
+            <span className="kind-chip">{label(productKind)}</span>
+            <h2>{name || "Untitled product"}</h2>
+            <p>
+              {option || "First option"} · {durationHint(duration)}
+            </p>
+            <div className="product-preview-price">
+              <span>From</span>
+              <strong>
+                {fromAmount != null
+                  ? money(
+                      fromAmount,
+                      session.tenant.config.bookingCurrency,
+                      session.tenant.config.locale,
+                    )
+                  : "Enter rates"}
+              </strong>
+            </div>
+            <ul className="product-preview-facts">
+              <li>
+                <span>Sold as</span>
+                <strong>{mode?.label ?? "Choose a model"}</strong>
+              </li>
+              <li>
+                <span>Categories</span>
+                <strong>
+                  {categories
+                    .map((category) => category.label)
+                    .filter(Boolean)
+                    .join(" · ") || "Add categories"}
+                </strong>
+              </li>
+              <li>
+                <span>Rate periods</span>
+                <strong>
+                  {periods.length} {periods.length === 1 ? "window" : "windows"}
+                </strong>
+              </li>
+            </ul>
+            <p className="muted">
+              {availabilityMode === "fixed_departure"
+                ? "After saving, add the recurring local-time rule that creates departures."
+                : mode?.summary}
+            </p>
+          </div>
+        </aside>
       </form>
     </>
   );
 }
 export function NewSchedule({ session }: { session: Session }) {
+  const today = tenantDay(session.tenant.timezone);
   const products = useResource<Product[]>("admin/v1/products"),
+    rules = useResource<AvailabilityRule[]>("admin/v1/availability-rules"),
     mutation = useMutation(),
     router = useRouter();
   const [product, setProduct] = useState(""),
-    [start, setStart] = useState(isoDay),
-    [end, setEnd] = useState(isoDay),
+    [start, setStart] = useState(today),
+    [end, setEnd] = useState(() => shiftDay(today, 89)),
     [time, setTime] = useState("09:00"),
     [capacity, setCapacity] = useState(""),
     [weekdays, setWeekdays] = useState([1, 2, 3, 4, 5, 6, 7]),
-    [blackouts, setBlackouts] = useState("");
+    [blackouts, setBlackouts] = useState<string[]>([]),
+    [blackoutDraft, setBlackoutDraft] = useState("");
+  useEffect(() => {
+    setProduct(
+      new URLSearchParams(window.location.search).get("product") ?? "",
+    );
+  }, []);
+  const scheduledProducts =
+    products.data?.filter(
+      (item) =>
+        (item.availability_mode ?? "fixed_departure") === "fixed_departure" &&
+        (item.status ?? "active") === "active",
+    ) ?? [];
+  const selected = scheduledProducts.find((item) => item.id === product);
+  const requested = Boolean(product) && !selected;
+  useEffect(() => {
+    if (!product || capacity) return;
+    const existing = rules.data?.find(
+      (rule) => rule.product_id === product && rule.capacity,
+    );
+    if (existing?.capacity) setCapacity(String(existing.capacity));
+  }, [product, rules.data, capacity]);
+  const generated = plannedDates(start, end, weekdays, blackouts);
+  const spanDays =
+    start && end && end >= start
+      ? Math.round(
+          (new Date(`${end}T12:00:00Z`).getTime() -
+            new Date(`${start}T12:00:00Z`).getTime()) /
+            86400000,
+        )
+      : 0;
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const result = await mutation.run("admin/v1/schedules", {
@@ -357,123 +1196,1135 @@ export function NewSchedule({ session }: { session: Session }) {
       localTime: time,
       capacity: Number(capacity),
       weekdays,
-      blackoutDates: blackouts
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
+      blackoutDates: blackouts,
     });
-    if (result) router.push("/departures");
+    if (result)
+      router.push(
+        (result as { ruleId?: string }).ruleId
+          ? `/catalog/availability/${(result as { ruleId: string }).ruleId}`
+          : "/catalog?tab=availability",
+      );
   }
-  useEffect(() => {
-    setProduct(
-      new URLSearchParams(window.location.search).get("product") ?? "",
-    );
-  }, []);
+  function addBlackout() {
+    if (!blackoutDraft || blackouts.includes(blackoutDraft)) return;
+    setBlackouts([...blackouts, blackoutDraft].sort());
+    setBlackoutDraft("");
+  }
   return (
     <>
-      <Back href="/departures">Departures</Back>
+      <Back href="/catalog?tab=availability">Catalog</Back>
       <Heading
-        title="Create recurring departures"
-        description={"Departure times use " + session.tenant.timezone + "."}
+        title="Add scheduled availability"
+        description="Create one recurring local-time rule. Each matching day becomes an operational departure."
       />
-      <form className="panel form-panel wide-form" onSubmit={submit}>
-        {products.error && <Notice error>{products.error}</Notice>}
-        <Field label="Tour option">
-          <select
-            required
-            value={product}
-            onChange={(e) => setProduct(e.target.value)}
-          >
-            <option value="">Choose a tour</option>
-            {products.data?.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} · {p.definition.optionName}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <div className="form-grid">
-          <Field label="Start date">
-            <input
-              type="date"
+      <form className="schedule-layout" onSubmit={submit}>
+        <div className="editor-section">
+          {products.error && <Notice error>{products.error}</Notice>}
+          {requested && (
+            <Notice>
+              That product is not sold from dated departures. Choose a scheduled
+              product, or keep it on request.
+            </Notice>
+          )}
+          <SectionHeading
+            title="Product"
+            description="Which experience gets this recurring local-time rule."
+          />
+          <Field label="Scheduled product">
+            <select
               required
+              value={selected ? product : ""}
+              onChange={(e) => {
+                setProduct(e.target.value);
+                setCapacity("");
+              }}
+            >
+              <option value="">Choose a scheduled product</option>
+              {scheduledProducts.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.customer_title ?? item.name} ·{" "}
+                  {item.definition.optionName}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {selected && (
+            <p className="muted">
+              {selected.definition.durationMinutes} minutes ·{" "}
+              {modeLabel(selected.availability_mode)}
+              {priceFromMinor(selected) != null
+                ? ` · from ${money(
+                    priceFromMinor(selected)!,
+                    session.tenant.config.bookingCurrency,
+                    session.tenant.config.locale,
+                  )}`
+                : ""}
+              . Add another rule later if you need a second start time.
+            </p>
+          )}
+          <SectionHeading
+            title="When it runs"
+            description={`Times are created in ${session.tenant.timezone}. The server rejects nonexistent or DST-ambiguous local times.`}
+          />
+          <div className="form-grid">
+            <TenantDateInput
+              label="First operating date"
               value={start}
-              onChange={(e) => setStart(e.target.value)}
+              max={end || undefined}
+              onChange={setStart}
+              locale={session.tenant.config.locale}
+              dateFormat={session.tenant.config.dateFormat}
             />
-          </Field>
-          <Field label="End date">
-            <input
-              type="date"
-              min={start}
-              required
+            <TenantDateInput
+              label="Last operating date"
               value={end}
-              onChange={(e) => setEnd(e.target.value)}
+              min={start || undefined}
+              onChange={setEnd}
+              locale={session.tenant.config.locale}
+              dateFormat={session.tenant.config.dateFormat}
             />
-          </Field>
-          <Field label="Local departure time">
-            <input
-              type="time"
-              required
-              value={time}
-              onChange={(e) => setTime(e.target.value)}
-            />
-          </Field>
-          <Field label="Seat capacity">
-            <input
-              type="number"
-              required
-              min="1"
-              max="10000"
-              value={capacity}
-              onChange={(e) => setCapacity(e.target.value)}
-            />
-          </Field>
-        </div>
-        <fieldset className="weekdays">
-          <legend>Operating days</legend>
-          {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d, i) => (
-            <label
-              key={d}
-              className={weekdays.includes(i + 1) ? "selected" : ""}
+            <Field
+              label="Local start time"
+              hint={clockLabel(
+                time,
+                session.tenant.config.locale,
+                session.tenant.config.timeFormat,
+              )}
             >
               <input
-                type="checkbox"
-                checked={weekdays.includes(i + 1)}
-                onChange={(e) =>
-                  setWeekdays((v) =>
-                    e.target.checked
-                      ? [...v, i + 1]
-                      : v.filter((n) => n !== i + 1),
-                  )
-                }
+                type="time"
+                required
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
               />
-              {d}
-            </label>
-          ))}
-        </fieldset>
-        <Field
-          label="Blackout dates"
-          hint="Optional dates separated by commas, for example 2026-12-25, 2027-01-01."
-        >
-          <input
-            value={blackouts}
-            onChange={(e) => setBlackouts(e.target.value)}
+            </Field>
+            <Field
+              label="Seat capacity"
+              hint="Copied from an existing rule when one exists. Confirm before saving."
+            >
+              <input
+                type="number"
+                required
+                min="1"
+                max="10000"
+                value={capacity}
+                onChange={(e) => setCapacity(e.target.value)}
+              />
+            </Field>
+          </div>
+          <fieldset className="weekdays">
+            <legend>Operating days</legend>
+            <div className="weekday-presets">
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setWeekdays([1, 2, 3, 4, 5, 6, 7])}
+              >
+                Every day
+              </button>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setWeekdays([1, 2, 3, 4, 5])}
+              >
+                Weekdays
+              </button>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setWeekdays([6, 7])}
+              >
+                Weekend
+              </button>
+            </div>
+            {weekdayLabels.map((d, i) => (
+              <label
+                key={d}
+                className={weekdays.includes(i + 1) ? "selected" : ""}
+              >
+                <input
+                  type="checkbox"
+                  checked={weekdays.includes(i + 1)}
+                  onChange={(e) =>
+                    setWeekdays((v) =>
+                      e.target.checked
+                        ? [...v, i + 1]
+                        : v.filter((n) => n !== i + 1),
+                    )
+                  }
+                />
+                {d}
+              </label>
+            ))}
+          </fieldset>
+          <SectionHeading
+            title="Blackout dates"
+            description="Optional closed dates inside the operating period. These days will not generate a departure."
           />
-        </Field>
-        {mutation.error && <Notice error>{mutation.error}</Notice>}
-        <div className="form-actions">
-          <Link className="button secondary" href="/departures">
-            Cancel
-          </Link>
-          <button
-            className="button"
-            disabled={mutation.busy || !weekdays.length}
-          >
-            {mutation.busy ? "Creating…" : "Create departures"}
-            <Check size={17} />
-          </button>
+          <div className="blackout-add">
+            <TenantDateInput
+              label="Add a blackout date"
+              value={blackoutDraft}
+              min={start || undefined}
+              max={end || undefined}
+              onChange={setBlackoutDraft}
+              locale={session.tenant.config.locale}
+              dateFormat={session.tenant.config.dateFormat}
+            />
+            <button
+              type="button"
+              className="button secondary"
+              disabled={!blackoutDraft}
+              onClick={addBlackout}
+            >
+              Add date
+            </button>
+          </div>
+          {blackouts.length > 0 && (
+            <ul className="blackout-list">
+              {blackouts.map((day) => (
+                <li key={day}>
+                  <span>
+                    {dateOnly(
+                      day,
+                      session.tenant.config.dateFormat,
+                      session.tenant.config.locale,
+                    )}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() =>
+                      setBlackouts((current) =>
+                        current.filter((item) => item !== day),
+                      )
+                    }
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {mutation.error && <Notice error>{mutation.error}</Notice>}
+          {spanDays > 365 && (
+            <Notice error>
+              A rule can cover at most 365 days. Shorten the operating period.
+            </Notice>
+          )}
+          {!generated.length && weekdays.length > 0 && start && end && (
+            <Notice>
+              This combination creates no departures. Change the days, dates, or
+              blackouts.
+            </Notice>
+          )}
+          <div className="form-actions">
+            <Link className="button secondary" href="/catalog?tab=availability">
+              Cancel
+            </Link>
+            <button
+              className="button"
+              disabled={
+                mutation.busy ||
+                !weekdays.length ||
+                !generated.length ||
+                spanDays > 365
+              }
+            >
+              {mutation.busy
+                ? "Creating…"
+                : `Create ${generated.length} ${generated.length === 1 ? "departure" : "departures"}`}
+              <Check size={17} />
+            </button>
+          </div>
         </div>
+        <aside className="product-preview" aria-live="polite">
+          <div className="product-preview-card schedule-preview">
+            <span className="kind-chip">Preview</span>
+            <h2>
+              {generated.length}{" "}
+              {generated.length === 1 ? "departure" : "departures"}
+            </h2>
+            <p>
+              {selected
+                ? (selected.customer_title ?? selected.name)
+                : "Choose a scheduled product"}
+            </p>
+            <dl>
+              <div>
+                <dt>Timezone</dt>
+                <dd>{session.tenant.timezone}</dd>
+              </div>
+              <div>
+                <dt>Start time</dt>
+                <dd>
+                  {clockLabel(
+                    time,
+                    session.tenant.config.locale,
+                    session.tenant.config.timeFormat,
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>Operating days</dt>
+                <dd>
+                  {weekdays.length
+                    ? weekdays
+                        .slice()
+                        .sort((a, b) => a - b)
+                        .map((day) => weekdayLabels[day - 1])
+                        .join(" · ")
+                    : "None selected"}
+                </dd>
+              </div>
+              <div>
+                <dt>Period</dt>
+                <dd>
+                  {start && end
+                    ? `${dateOnly(start, session.tenant.config.dateFormat, session.tenant.config.locale)} – ${dateOnly(end, session.tenant.config.dateFormat, session.tenant.config.locale)}`
+                    : "Set both dates"}
+                </dd>
+              </div>
+              <div>
+                <dt>Capacity</dt>
+                <dd>{capacity || "Required"}</dd>
+              </div>
+              <div>
+                <dt>Blackouts</dt>
+                <dd>
+                  {blackouts.length
+                    ? `${blackouts.length} closed ${blackouts.length === 1 ? "date" : "dates"}`
+                    : "None"}
+                </dd>
+              </div>
+            </dl>
+            {generated[0] && (
+              <p className="muted">
+                First departure{" "}
+                {dateOnly(
+                  generated[0],
+                  session.tenant.config.dateFormat,
+                  session.tenant.config.locale,
+                )}
+                {generated.length > 1
+                  ? ` · last ${dateOnly(
+                      generated[generated.length - 1]!,
+                      session.tenant.config.dateFormat,
+                      session.tenant.config.locale,
+                    )}`
+                  : ""}
+                .
+              </p>
+            )}
+          </div>
+        </aside>
       </form>
+    </>
+  );
+}
+export function ProductDetail({
+  session,
+  productId,
+}: {
+  session: Session;
+  productId: string;
+}) {
+  const product = useResource<Product>(`admin/v1/products/${productId}`);
+  const rules = useResource<AvailabilityRule[]>("admin/v1/availability-rules");
+  const mutation = useMutation();
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [status, setStatus] = useState("active");
+  const [productKind, setProductKind] = useState("tour");
+  const [option, setOption] = useState("");
+  const [duration, setDuration] = useState("120");
+  const [pricingModel, setPricingModel] = useState("per_person");
+  const [privateBooking, setPrivateBooking] = useState(false);
+  const [confirmationMode, setConfirmationMode] = useState("instant");
+  const [categories, setCategories] = useState<CategoryDraft[]>([]);
+  const [periods, setPeriods] = useState<PeriodDraft[]>([]);
+  const [saved, setSaved] = useState("");
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!product.data) return;
+    const definition = product.data.definition;
+    const nextCategories = (definition.categories ?? []).map((category) => ({
+      id: categoryId(),
+      slug: category.slug,
+      label: category.label,
+      countsTowardCapacity: category.countsTowardCapacity,
+    }));
+    setName(product.data.customer_title ?? product.data.name);
+    setDescription(product.data.description ?? definition.description ?? "");
+    setStatus(product.data.status ?? "active");
+    setProductKind(
+      product.data.product_kind ?? definition.productKind ?? "tour",
+    );
+    setOption(definition.optionName ?? "");
+    setDuration(String(definition.durationMinutes ?? 120));
+    setPricingModel(definition.pricingModel ?? "per_person");
+    setPrivateBooking(Boolean(definition.privateBooking));
+    setConfirmationMode(definition.confirmationMode ?? "instant");
+    setCategories(nextCategories);
+    setPeriods(
+      periodsFromRates(
+        nextCategories,
+        definition.rates ?? [],
+        session.tenant.config.bookingCurrency,
+        tenantDay(session.tenant.timezone),
+      ),
+    );
+  }, [
+    product.data,
+    session.tenant.config.bookingCurrency,
+    session.tenant.timezone,
+  ]);
+  const canWrite = session.permissions.includes("catalog.write");
+  const scheduled =
+    (product.data?.availability_mode ?? "fixed_departure") ===
+    "fixed_departure";
+  const linked =
+    rules.data?.filter((rule) => rule.product_id === productId) ?? [];
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    if (!product.data) return;
+    setSaved("");
+    setError("");
+    try {
+      const result = await mutation.run(
+        `admin/v1/products/${productId}`,
+        {
+          version: product.data.version,
+          name,
+          description,
+          status,
+          productKind,
+          optionName: option,
+          durationMinutes: Number(duration),
+          pricingModel,
+          privateBooking,
+          confirmationMode,
+          categories: sanitizeCategories(categories),
+          rates: collectRates(
+            categories,
+            periods,
+            session.tenant.config.bookingCurrency,
+          ),
+        },
+        "PATCH",
+      );
+      if (result) {
+        setSaved(
+          "Product saved. New bookings use these rates; confirmed prices stay frozen.",
+        );
+        product.reload();
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+  let fromAmount: number | null = null;
+  try {
+    const amounts = collectRates(
+      categories,
+      periods,
+      session.tenant.config.bookingCurrency,
+    )
+      .map((rate) => rate.amountMinor)
+      .filter((amount) => amount > 0);
+    fromAmount = amounts.length ? Math.min(...amounts) : null;
+  } catch {
+    fromAmount = null;
+  }
+  const item = product.data;
+  const effectiveFromMinor =
+    fromAmount != null ? fromAmount : item ? priceFromMinor(item) : null;
+  return (
+    <>
+      <Back href="/catalog">Catalog</Back>
+      {product.error ? (
+        <Notice error>{product.error}</Notice>
+      ) : !item ? (
+        <Loading />
+      ) : (
+        <>
+          <div className="product-header-bar">
+            <div>
+              <div className="product-header-badges">
+                <span className="kind-chip">
+                  {label(item.product_kind ?? "tour")}
+                </span>
+                <Status state={status ?? "active"} />
+                <span className="badge">
+                  {modeLabel(item.availability_mode)}
+                </span>
+                {effectiveFromMinor != null && (
+                  <span className="price-pill-badge">
+                    From{" "}
+                    {money(
+                      effectiveFromMinor,
+                      session.tenant.config.bookingCurrency,
+                      session.tenant.config.locale,
+                    )}
+                  </span>
+                )}
+              </div>
+              <div className="product-header-title-row">
+                <h1>{name.trim() || item.customer_title || item.name}</h1>
+              </div>
+              <p className="product-header-subtitle">
+                {option || item.definition.optionName} ·{" "}
+                {durationHint(
+                  duration || String(item.definition.durationMinutes),
+                )}{" "}
+                ·{" "}
+                {pricingModel === "per_person"
+                  ? "Per person"
+                  : pricingModel === "per_group"
+                    ? "Per group"
+                    : "Per unit"}
+              </p>
+            </div>
+            <div className="product-header-actions">
+              {canWrite && scheduled && (
+                <Link
+                  href={`/catalog/availability/new?product=${productId}`}
+                  className="button secondary"
+                  aria-label="Add availability"
+                >
+                  <Plus size={16} />
+                  <span className="button-label">Add availability</span>
+                </Link>
+              )}
+              {canWrite && (
+                <>
+                  <Link
+                    href="/catalog"
+                    className="button secondary"
+                    aria-label="Cancel"
+                  >
+                    <X size={16} />
+                    <span className="button-label">Cancel</span>
+                  </Link>
+                  <button
+                    type="submit"
+                    form="edit-product-form"
+                    className="button"
+                    disabled={mutation.busy}
+                    aria-label={mutation.busy ? "Saving" : "Save product"}
+                  >
+                    <span className="button-label button-label-full">
+                      {mutation.busy ? "Saving…" : "Save product"}
+                    </span>
+                    <span className="button-label button-label-short" aria-hidden="true">
+                      {mutation.busy ? "Saving…" : "Save"}
+                    </span>
+                    <Check size={16} />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+          {!scheduled && (
+            <Notice>
+              {modeLabel(item.availability_mode)} products are not sold from
+              dated seat holds. The selling model cannot be changed after
+              create.
+            </Notice>
+          )}
+          {canWrite ? (
+            <form
+              id="edit-product-form"
+              className="product-editor-layout"
+              onSubmit={save}
+            >
+              <div className="editor-stack">
+                <section className="editor-section">
+                  <SectionHeading
+                    title="Offer & settings"
+                    description="Customer-facing title, operational duration, and booking rules."
+                  />
+                  <div className="offer-grid">
+                    <div className="col-span-2">
+                      <Field label="Customer-facing name">
+                        <input
+                          required
+                          maxLength={120}
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                        />
+                      </Field>
+                    </div>
+                    <Field label="Product type">
+                      <select
+                        value={productKind}
+                        onChange={(e) => setProductKind(e.target.value)}
+                      >
+                        <option value="tour">Tour</option>
+                        <option value="activity">Activity</option>
+                        <option value="experience">Experience</option>
+                        <option value="charter">Private charter</option>
+                        <option value="transport">Transport</option>
+                        <option value="rental">Rental</option>
+                        <option value="ticket">Ticket</option>
+                      </select>
+                    </Field>
+                    <Field
+                      label="Status"
+                      hint="Archived products stay in history but leave New reservation."
+                    >
+                      <select
+                        value={status}
+                        onChange={(e) => setStatus(e.target.value)}
+                      >
+                        <option value="active">Active</option>
+                        <option value="archived">Archived</option>
+                      </select>
+                    </Field>
+                    <Field label="Option name">
+                      <input
+                        required
+                        maxLength={120}
+                        value={option}
+                        onChange={(e) => setOption(e.target.value)}
+                      />
+                    </Field>
+                    <Field
+                      label="Duration · minutes"
+                      hint={durationHint(duration)}
+                    >
+                      <input
+                        type="number"
+                        min="1"
+                        max="10080"
+                        required
+                        value={duration}
+                        onChange={(e) => setDuration(e.target.value)}
+                      />
+                    </Field>
+                    <Field label="Pricing model">
+                      <select
+                        value={pricingModel}
+                        onChange={(e) => setPricingModel(e.target.value)}
+                      >
+                        <option value="per_person">Per person</option>
+                        <option value="per_group">Per group</option>
+                        <option value="per_unit">Per unit / resource</option>
+                      </select>
+                    </Field>
+                    <Field label="Confirmation">
+                      <select
+                        value={confirmationMode}
+                        onChange={(e) => setConfirmationMode(e.target.value)}
+                      >
+                        <option value="instant">Instant confirmation</option>
+                        <option value="request">
+                          Operator approval required
+                        </option>
+                      </select>
+                    </Field>
+                    <Field
+                      label="Availability model"
+                      hint="Locked after create so existing departures keep the same inventory primitive."
+                    >
+                      <div className="locked-field-badge">
+                        <span className="lock-label">
+                          <Lock size={14} />
+                          {modeLabel(item.availability_mode)}
+                        </span>
+                        <span className="lock-tag">Locked</span>
+                      </div>
+                    </Field>
+                    <div className="col-span-full">
+                      <Toggle
+                        className="toggle-card"
+                        label="Reserve for one private party"
+                        description="Whole-boat, exclusive charter, or private group booking. Blocks the departure for a single group."
+                        checked={privateBooking}
+                        onChange={setPrivateBooking}
+                      />
+                    </div>
+                    <div className="col-span-full">
+                      <Field label="Short description">
+                        <textarea
+                          value={description}
+                          onChange={(e) => setDescription(e.target.value)}
+                          maxLength={2000}
+                          rows={3}
+                          placeholder="Brief highlights or requirements shown to guests and reservation staff…"
+                        />
+                      </Field>
+                    </div>
+                  </div>
+                </section>
+                <section className="editor-section">
+                  <PricingEditor
+                    session={session}
+                    categories={categories}
+                    periods={periods}
+                    onCategories={setCategories}
+                    onPeriods={setPeriods}
+                  />
+                </section>
+                <section className="editor-section">
+                  <SectionHeading
+                    title="Availability"
+                    description="When this product can be sold. Each rule creates operational departures."
+                    action={
+                      canWrite && scheduled ? (
+                        <Link
+                          className="button secondary"
+                          href={`/catalog/availability/new?product=${productId}`}
+                        >
+                          <Plus size={16} />
+                          Add availability
+                        </Link>
+                      ) : undefined
+                    }
+                  />
+                  {rules.error ? (
+                    <Notice error>{rules.error}</Notice>
+                  ) : !rules.data ? (
+                    <Loading />
+                  ) : linked.length ? (
+                    <div className="product-list inset">
+                      {linked.map((rule) => (
+                        <Link
+                          key={rule.id}
+                          href={`/catalog/availability/${rule.id}`}
+                          className="product-row-main availability-item"
+                        >
+                          <div className="product-row-copy">
+                            <div className="product-row-meta">
+                              <span className="kind-chip">
+                                {modeLabel(rule.mode)}
+                              </span>
+                              <Status state={rule.status} />
+                            </div>
+                            <h2>{rule.times.join(", ") || "Flexible time"}</h2>
+                            <p>
+                              {rule.start_date} — {rule.end_date}
+                            </p>
+                          </div>
+                          <div className="product-row-when">
+                            <span>Days</span>
+                            <strong>
+                              {rule.weekdays
+                                .map((day) => weekdayLabels[day - 1])
+                                .join(" · ")}
+                            </strong>
+                          </div>
+                          <div className="product-row-price">
+                            <span>Upcoming</span>
+                            <strong>{rule.upcoming_departures}</strong>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  ) : (
+                    <Empty title="No availability rules yet">
+                      {canWrite && scheduled && (
+                        <Link
+                          href={`/catalog/availability/new?product=${productId}`}
+                        >
+                          Create the first schedule
+                        </Link>
+                      )}
+                    </Empty>
+                  )}
+                </section>
+                {(error || mutation.error || saved) && (
+                  <Notice error={Boolean(error || mutation.error)}>
+                    {error || mutation.error || saved}
+                  </Notice>
+                )}
+                <div className="editor-actions-bar">
+                  <Link
+                    href="/catalog"
+                    className="button secondary"
+                    aria-label="Cancel"
+                  >
+                    <X size={16} />
+                    <span className="button-label">Cancel</span>
+                  </Link>
+                  <button
+                    type="submit"
+                    className="button"
+                    disabled={mutation.busy}
+                    aria-label={mutation.busy ? "Saving" : "Save product"}
+                  >
+                    <span className="button-label button-label-full">
+                      {mutation.busy ? "Saving…" : "Save product"}
+                    </span>
+                    <span className="button-label button-label-short" aria-hidden="true">
+                      {mutation.busy ? "Saving…" : "Save"}
+                    </span>
+                    <Check size={16} />
+                  </button>
+                </div>
+              </div>
+              <aside className="product-preview" aria-live="polite">
+                <div className="product-preview-card">
+                  <span className="kind-chip">{label(productKind)}</span>
+                  <h2>{name || item.customer_title || item.name}</h2>
+                  <p>
+                    {option || item.definition.optionName} ·{" "}
+                    {durationHint(
+                      duration || String(item.definition.durationMinutes),
+                    )}
+                  </p>
+                  <div className="product-preview-price">
+                    <span>From</span>
+                    <strong>
+                      {fromAmount != null
+                        ? money(
+                            fromAmount,
+                            session.tenant.config.bookingCurrency,
+                            session.tenant.config.locale,
+                          )
+                        : priceFromMinor(item) != null
+                          ? money(
+                              priceFromMinor(item)!,
+                              session.tenant.config.bookingCurrency,
+                              session.tenant.config.locale,
+                            )
+                          : "No rate"}
+                    </strong>
+                    <small>
+                      {item.next_departure_at
+                        ? `Next ${localWhen(
+                            item.next_departure_at,
+                            session.tenant.config.locale,
+                            session.tenant.timezone,
+                            false,
+                          )}`
+                        : scheduled
+                          ? "No upcoming departure"
+                          : "Not sold from dated departures"}
+                    </small>
+                  </div>
+                  <ul className="product-preview-facts">
+                    <li>
+                      <span>Sold as</span>
+                      <strong>{modeLabel(item.availability_mode)}</strong>
+                    </li>
+                    <li>
+                      <span>Status</span>
+                      <strong style={{ textTransform: "capitalize" }}>
+                        {status}
+                      </strong>
+                    </li>
+                    <li>
+                      <span>Categories</span>
+                      <strong>
+                        {categories
+                          .map((category) => category.label)
+                          .filter(Boolean)
+                          .join(" · ") || "None"}
+                      </strong>
+                    </li>
+                    <li>
+                      <span>Rate periods</span>
+                      <strong>
+                        {periods.length}{" "}
+                        {periods.length === 1 ? "window" : "windows"}
+                      </strong>
+                    </li>
+                    <li>
+                      <span>Availability rules</span>
+                      <strong>
+                        {linked.length} {linked.length === 1 ? "rule" : "rules"}
+                      </strong>
+                    </li>
+                  </ul>
+                  {scheduled && canWrite && (
+                    <div style={{ marginTop: 18 }}>
+                      <Link
+                        href={`/catalog/availability/new?product=${productId}`}
+                        className="button secondary"
+                        style={{ width: "100%", justifyContent: "center" }}
+                      >
+                        <Plus size={15} />
+                        Add availability
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              </aside>
+            </form>
+          ) : (
+            <div className="product-editor-layout">
+              <div className="editor-stack">
+                <section className="editor-section">
+                  <SectionHeading title="Published offer" />
+                  <p className="product-readout">
+                    {item.description || "No description yet."}
+                  </p>
+                  <div className="rate-list">
+                    {item.definition.rates.map((rate, index) => (
+                      <div key={index}>
+                        <span>
+                          <strong>
+                            {item.definition.categories.find(
+                              (category) => category.slug === rate.category,
+                            )?.label ?? label(rate.category)}
+                          </strong>
+                          <small>
+                            {rate.startDate} — {rate.endDate}
+                          </small>
+                        </span>
+                        <strong>
+                          {money(
+                            rate.amountMinor,
+                            session.tenant.config.bookingCurrency,
+                            session.tenant.config.locale,
+                          )}
+                        </strong>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+                <section className="editor-section">
+                  <SectionHeading
+                    title="Availability"
+                    description="When this product can be sold. Each rule creates operational departures."
+                  />
+                  {rules.error ? (
+                    <Notice error>{rules.error}</Notice>
+                  ) : !rules.data ? (
+                    <Loading />
+                  ) : linked.length ? (
+                    <div className="product-list inset">
+                      {linked.map((rule) => (
+                        <Link
+                          key={rule.id}
+                          href={`/catalog/availability/${rule.id}`}
+                          className="product-row-main availability-item"
+                        >
+                          <div className="product-row-copy">
+                            <div className="product-row-meta">
+                              <span className="kind-chip">
+                                {modeLabel(rule.mode)}
+                              </span>
+                              <Status state={rule.status} />
+                            </div>
+                            <h2>{rule.times.join(", ") || "Flexible time"}</h2>
+                            <p>
+                              {rule.start_date} — {rule.end_date}
+                            </p>
+                          </div>
+                          <div className="product-row-when">
+                            <span>Days</span>
+                            <strong>
+                              {rule.weekdays
+                                .map((day) => weekdayLabels[day - 1])
+                                .join(" · ")}
+                            </strong>
+                          </div>
+                          <div className="product-row-price">
+                            <span>Upcoming</span>
+                            <strong>{rule.upcoming_departures}</strong>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  ) : (
+                    <Empty title="No availability rules yet" />
+                  )}
+                </section>
+              </div>
+              <aside className="product-preview" aria-live="polite">
+                <div className="product-preview-card">
+                  <span className="kind-chip">
+                    {label(item.product_kind ?? "tour")}
+                  </span>
+                  <h2>{item.customer_title ?? item.name}</h2>
+                  <p>
+                    {item.definition.optionName} ·{" "}
+                    {durationHint(String(item.definition.durationMinutes))}
+                  </p>
+                  <div className="product-preview-price">
+                    <span>From</span>
+                    <strong>
+                      {priceFromMinor(item) != null
+                        ? money(
+                            priceFromMinor(item)!,
+                            session.tenant.config.bookingCurrency,
+                            session.tenant.config.locale,
+                          )
+                        : "No rate"}
+                    </strong>
+                  </div>
+                </div>
+              </aside>
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+export function AvailabilityDetail({
+  session,
+  ruleId,
+}: {
+  session: Session;
+  ruleId: string;
+}) {
+  const rule = useResource<AvailabilityRule>(
+    `admin/v1/availability-rules/${ruleId}`,
+  );
+  const mutation = useMutation();
+  const canWrite = session.permissions.includes("catalog.write");
+  async function setStatus(status: "active" | "paused") {
+    if (!rule.data?.version) return;
+    const result = await mutation.run(
+      `admin/v1/availability-rules/${ruleId}`,
+      { version: rule.data.version, status },
+      "PATCH",
+    );
+    if (result) rule.reload();
+  }
+  return (
+    <>
+      <Back href="/catalog?tab=availability">Catalog</Back>
+      {rule.error ? (
+        <Notice error>{rule.error}</Notice>
+      ) : !rule.data ? (
+        <Loading />
+      ) : (
+        <>
+          <Heading
+            title={rule.data.product_name}
+            description={`${rule.data.option_name} · ${modeLabel(rule.data.mode)}`}
+            action={
+              canWrite &&
+              rule.data.product_availability_mode === "fixed_departure" && (
+                <Link
+                  href={`/catalog/availability/new?product=${rule.data.product_id}`}
+                  className="button secondary"
+                >
+                  Add another rule
+                </Link>
+              )
+            }
+          />
+          <div className="catalog-metrics" aria-label="Availability summary">
+            <div>
+              <strong>
+                {rule.data.start_date} — {rule.data.end_date}
+              </strong>
+              <span>Operating period</span>
+            </div>
+            <div>
+              <strong>{rule.data.times.join(", ") || "Flexible"}</strong>
+              <span>Local start times</span>
+            </div>
+            <div>
+              <strong>{rule.data.capacity ?? "Rule based"}</strong>
+              <span>Seat capacity</span>
+            </div>
+            <div>
+              <strong>{rule.data.upcoming_departures}</strong>
+              <span>Upcoming departures</span>
+            </div>
+          </div>
+          <section className="panel form-panel">
+            <div className="panel-heading plain">
+              <h2>Rule</h2>
+              <Status state={rule.data.status} />
+            </div>
+            <p>
+              Operates{" "}
+              {rule.data.weekdays
+                .map((day) => weekdayLabels[day - 1])
+                .join(", ")}{" "}
+              in {rule.data.timezone}.
+            </p>
+            {rule.data.blackouts?.length ? (
+              <p className="muted">
+                Blackouts: {rule.data.blackouts.join(", ")}
+              </p>
+            ) : (
+              <p className="muted">No blackout dates on this rule.</p>
+            )}
+            <p className="muted">
+              Pausing stops this rule from looking current. It does not cancel
+              or rewrite generated departures that already have inventory.
+            </p>
+            {mutation.error && <Notice error>{mutation.error}</Notice>}
+            {canWrite && (
+              <div className="button-row">
+                {rule.data.status === "paused" ? (
+                  <button
+                    type="button"
+                    className="button"
+                    disabled={mutation.busy}
+                    onClick={() => void setStatus("active")}
+                  >
+                    Resume rule
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="button secondary"
+                    disabled={mutation.busy}
+                    onClick={() => void setStatus("paused")}
+                  >
+                    Pause rule
+                  </button>
+                )}
+                {rule.data.product_id && (
+                  <Link
+                    className="button secondary"
+                    href={`/catalog/${rule.data.product_id}`}
+                  >
+                    Open product
+                  </Link>
+                )}
+              </div>
+            )}
+          </section>
+          <section className="panel">
+            <div className="panel-heading plain">
+              <h2>Upcoming departures</h2>
+              <Link className="text-link" href="/departures">
+                Open departures <ArrowRight size={16} />
+              </Link>
+            </div>
+            {rule.data.departures?.length ? (
+              <div className="availability-list">
+                {rule.data.departures.map((departure) => (
+                  <Link
+                    key={departure.id}
+                    href={`/departures/${departure.id}/manifest`}
+                    className="availability-row"
+                  >
+                    <div>
+                      <strong>
+                        {dateTime(departure.starts_at, session.tenant.timezone)}
+                      </strong>
+                      <small>{label(departure.status)}</small>
+                    </div>
+                    <div>
+                      <span className="eyebrow">Booked</span>
+                      <strong>
+                        {departure.committed} / {departure.capacity}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="eyebrow">Available</span>
+                      <strong>{departure.available}</strong>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <Empty title="No upcoming departures from this rule" />
+            )}
+          </section>
+        </>
+      )}
     </>
   );
 }
@@ -484,13 +2335,24 @@ export function Settings({
   session: Session;
   refresh: () => Promise<void>;
 }) {
-  const [config, setConfig] = useState(session.tenant.config),
+  const [config, setConfig] = useState({
+      ...session.tenant.config,
+      documentStorage: session.tenant.config.documentStorage ?? {
+        hotProvider: "filesystem" as const,
+        archiveProvider: "none" as const,
+        hotRetentionDays: 7,
+      },
+    }),
     [methods, setMethods] = useState(config.manualPaymentMethods.join(", ")),
     [sources, setSources] = useState(config.bookingSources.join(", ")),
     [logoError, setLogoError] = useState(""),
     [logoBusy, setLogoBusy] = useState(false),
     [logoUnavailable, setLogoUnavailable] = useState(false),
-    [tab, setTab] = useState("general"),
+    [tab, setTab] = useState(() => {
+      if (typeof window === "undefined") return "general";
+      const value = new URLSearchParams(window.location.search).get("tab");
+      return value && SETTINGS_TABS.has(value) ? value : "general";
+    }),
     [profile, setProfile] = useState(
       session.tenant.business_profile ?? {
         displayName: session.tenant.name,
@@ -533,7 +2395,16 @@ export function Settings({
       }[]
     >("ops/v1/waiver-templates"),
     stayMutation = useMutation(),
-    stayOptions = useResource<{cruiseCalls:{id:string;vessel_name:string;call_date:string;port_name:string;all_aboard_at:string|null}[];accommodations:{id:string;name:string;address:string}[]}>("ops/v1/stays/options"),
+    stayOptions = useResource<{
+      cruiseCalls: {
+        id: string;
+        vessel_name: string;
+        call_date: string;
+        port_name: string;
+        all_aboard_at: string | null;
+      }[];
+      accommodations: { id: string; name: string; address: string }[];
+    }>("ops/v1/stays/options"),
     printMutation = useMutation(),
     printTemplates = useResource<
       {
@@ -558,6 +2429,31 @@ export function Settings({
   useEffect(() => {
     setLogoUnavailable(false);
   }, [session.tenant.logo_path]);
+  useEffect(() => {
+    const active = document.querySelector<HTMLElement>(
+      ".settings-nav button.active",
+    );
+    active?.scrollIntoView({
+      inline: "center",
+      block: "nearest",
+      behavior: "smooth",
+    });
+  }, [tab]);
+  function selectTab(next: string) {
+    if (!SETTINGS_TABS.has(next)) return;
+    if (
+      next === "resellers" &&
+      !session.permissions.includes("partner.manage")
+    )
+      return;
+    if (
+      next === "integrations" &&
+      !session.permissions.includes("integration.manage")
+    )
+      return;
+    setTab(next);
+    settingsTab(next);
+  }
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const result = await mutation.run(
@@ -639,18 +2535,38 @@ export function Settings({
     }
   }
   async function createCruiseCall() {
-    const result=await stayMutation.run("ops/v1/stays/cruise-calls",{vesselName,callDate,portName,...(allAboardAt?{allAboardAt}:{}),tenderRequired:false});
-    if(result){setVesselName("");setCallDate("");setPortName("");setAllAboardAt("");stayOptions.reload();}
+    const result = await stayMutation.run("ops/v1/stays/cruise-calls", {
+      vesselName,
+      callDate,
+      portName,
+      ...(allAboardAt ? { allAboardAt } : {}),
+      tenderRequired: false,
+    });
+    if (result) {
+      setVesselName("");
+      setCallDate("");
+      setPortName("");
+      setAllAboardAt("");
+      stayOptions.reload();
+    }
   }
   async function createAccommodation() {
-    const result=await stayMutation.run("ops/v1/stays/accommodations",{name:accommodationName,address:accommodationAddress});
-    if(result){setAccommodationName("");setAccommodationAddress("");stayOptions.reload();}
+    const result = await stayMutation.run("ops/v1/stays/accommodations", {
+      name: accommodationName,
+      address: accommodationAddress,
+    });
+    if (result) {
+      setAccommodationName("");
+      setAccommodationAddress("");
+      stayOptions.reload();
+    }
   }
   return (
     <>
       <Heading
+        eyebrow="ADMINISTRATION"
         title="Tenant settings"
-        description="Policies apply to new holds. Existing quotes and confirmed prices stay fixed."
+        description="Configure identity, commercial policy, and operational controls. Policy changes apply to new holds — existing quotes stay fixed."
       />
       <div className="settings-layout">
         <aside className="panel settings-summary">
@@ -667,793 +2583,1393 @@ export function Settings({
                 {session.tenant.name.replace("Mock ", "").slice(0, 1)}
               </span>
             )}
-            <h2>{session.tenant.name}</h2>
+            <div>
+              <h2>{session.tenant.name}</h2>
+              <p className="muted settings-tenant-meta">
+                {session.tenant.timezone} · {config.reportingCurrency} ·{" "}
+                {config.locale}
+              </p>
+            </div>
           </div>
+          <dl className="settings-facts">
+            <div>
+              <dt>Booking currency</dt>
+              <dd>{config.bookingCurrency}</dd>
+            </div>
+            <div>
+              <dt>Date format</dt>
+              <dd>{config.dateFormat}</dd>
+            </div>
+            <div>
+              <dt>Hold window</dt>
+              <dd>{Math.round(config.holdSeconds / 60)} min</dd>
+            </div>
+          </dl>
           <nav className="settings-nav" aria-label="Tenant settings sections">
             <p>PROFILE</p>
             <button
               className={tab === "general" ? "active" : ""}
               type="button"
-              onClick={() => setTab("general")}
+              onClick={() => selectTab("general")}
             >
-              <Building2 size={16} /> General & branding
+              <Building2 size={16} />
+              <span className="settings-nav-label">General & branding</span>
+              <span className="settings-nav-label-short">General</span>
             </button>
             <button
               className={tab === "localization" ? "active" : ""}
               type="button"
-              onClick={() => setTab("localization")}
+              onClick={() => selectTab("localization")}
             >
-              <Globe2 size={16} /> Localization
+              <Globe2 size={16} />
+              <span className="settings-nav-label">Localization</span>
+              <span className="settings-nav-label-short">Locale</span>
             </button>
             <p>OPERATIONS</p>
             <button
               className={tab === "commercial" ? "active" : ""}
               type="button"
-              onClick={() => setTab("commercial")}
+              onClick={() => selectTab("commercial")}
             >
-              <Landmark size={16} /> Taxes & commercial
+              <Landmark size={16} />
+              <span className="settings-nav-label">Taxes & commercial</span>
+              <span className="settings-nav-label-short">Commercial</span>
             </button>
             <button
               className={tab === "printers" ? "active" : ""}
               type="button"
-              onClick={() => setTab("printers")}
+              onClick={() => selectTab("printers")}
             >
-              <Printer size={16} /> Printers & documents
+              <Printer size={16} />
+              <span className="settings-nav-label">Printers & documents</span>
+              <span className="settings-nav-label-short">Documents</span>
             </button>
-            <button className={tab === "stays" ? "active" : ""} type="button" onClick={() => setTab("stays")}>
-              <Ship size={16} /> Guest stays & cruise calls
+            <button
+              className={tab === "stays" ? "active" : ""}
+              type="button"
+              onClick={() => selectTab("stays")}
+            >
+              <Ship size={16} />
+              <span className="settings-nav-label">Guest stays & cruise calls</span>
+              <span className="settings-nav-label-short">Stays</span>
             </button>
+            {session.permissions.includes("partner.manage") && (
+              <button
+                className={tab === "resellers" ? "active" : ""}
+                type="button"
+                onClick={() => selectTab("resellers")}
+              >
+                <Handshake size={16} />
+                <span className="settings-nav-label">Partners / Resellers</span>
+                <span className="settings-nav-label-short">Partners</span>
+              </button>
+            )}
             <p>PLATFORM</p>
             <button
               className={tab === "payments" ? "active" : ""}
               type="button"
-              onClick={() => setTab("payments")}
+              onClick={() => selectTab("payments")}
             >
-              <CreditCard size={16} /> Payments
+              <CreditCard size={16} />
+              <span className="settings-nav-label">Payments</span>
+              <span className="settings-nav-label-short">Payments</span>
             </button>
             <button
               className={tab === "waivers" ? "active" : ""}
               type="button"
-              onClick={() => setTab("waivers")}
+              onClick={() => selectTab("waivers")}
             >
-              <FileText size={16} /> Waivers
+              <FileText size={16} />
+              <span className="settings-nav-label">Waivers</span>
+              <span className="settings-nav-label-short">Waivers</span>
             </button>
-            {session.permissions.includes("integration.manage") && <button
+            {session.permissions.includes("integration.manage") && (
+              <button
                 className={tab === "integrations" ? "active" : ""}
                 type="button"
-                onClick={() => setTab("integrations")}
+                onClick={() => selectTab("integrations")}
               >
-                <Plug size={16} /> Integrations
-              </button>}
+                <Plug size={16} />
+                <span className="settings-nav-label">Integrations</span>
+                <span className="settings-nav-label-short">Integrations</span>
+              </button>
+            )}
             <button
               className={tab === "security" ? "active" : ""}
               type="button"
-              onClick={() => setTab("security")}
+              onClick={() => selectTab("security")}
             >
-              <ShieldCheck size={16} /> Security
+              <ShieldCheck size={16} />
+              <span className="settings-nav-label">Security</span>
+              <span className="settings-nav-label-short">Security</span>
             </button>
           </nav>
         </aside>
-        {tab === "integrations" ? <div className="settings-tab-content"><Integrations embedded /></div> : <form className="panel form-panel" onSubmit={submit}>
-          {tab === "general" && (
-            <section>
-              <div className="settings-card-head" id="branding">
-                <Building2 size={20} />
-                <div>
-                  <h2>Company identity</h2>
-                  <p>
-                    Logo and core business details used across the workspace and
-                    operational documents.
-                  </p>
+        {tab === "integrations" ? (
+          <div className="settings-tab-content">
+            <Integrations embedded />
+          </div>
+        ) : (
+          <form className="panel form-panel" onSubmit={submit}>
+            {tab === "general" && (
+              <section>
+                <div className="settings-card-head" id="branding">
+                  <Building2 size={20} />
+                  <div>
+                    <h2>Company identity</h2>
+                    <p>
+                      Logo and core business details used across the workspace
+                      and operational documents.
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <div className="identity-layout">
-                <div className="logo-control">
-                  <label className="logo-dropzone" htmlFor="tenant-logo">
-                    {session.tenant.logo_path && !logoUnavailable ? (
-                      <img
-                        className="uploaded-tenant-logo"
-                        src={session.tenant.logo_path}
-                        alt="Tenant logo"
-                        onError={() => setLogoUnavailable(true)}
-                      />
-                    ) : (
-                      <span className="logo-monogram">
-                        {profile.displayName.slice(0, 1).toUpperCase() || "T"}
-                      </span>
-                    )}
-                    {(!session.tenant.logo_path || logoUnavailable) && (
-                      <span>Click to upload logo</span>
-                    )}
-                  </label>
-                  <input
-                    id="tenant-logo"
-                    className="visually-hidden"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/svg+xml"
-                    disabled={logoBusy}
-                    onChange={(e) => void uploadLogo(e.target.files?.[0])}
-                  />
-                  <small>JPG, PNG, WebP or SVG · maximum 2 MB</small>
-                </div>
-                <div className="identity-fields">
-                  <Field label="Business name">
+                <div className="identity-layout">
+                  <div className="logo-control">
+                    <label className="logo-dropzone" htmlFor="tenant-logo">
+                      {session.tenant.logo_path && !logoUnavailable ? (
+                        <img
+                          className="uploaded-tenant-logo"
+                          src={session.tenant.logo_path}
+                          alt="Tenant logo"
+                          onError={() => setLogoUnavailable(true)}
+                        />
+                      ) : (
+                        <span className="logo-monogram">
+                          {profile.displayName.slice(0, 1).toUpperCase() || "T"}
+                        </span>
+                      )}
+                      {(!session.tenant.logo_path || logoUnavailable) && (
+                        <span>Click to upload logo</span>
+                      )}
+                    </label>
                     <input
-                      required
-                      value={profile.displayName}
+                      id="tenant-logo"
+                      className="visually-hidden"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/svg+xml"
+                      disabled={logoBusy}
+                      onChange={(e) => void uploadLogo(e.target.files?.[0])}
+                    />
+                    <small>JPG, PNG, WebP or SVG · maximum 2 MB</small>
+                  </div>
+                  <div className="identity-fields">
+                    <Field label="Business name">
+                      <input
+                        required
+                        value={profile.displayName}
+                        onChange={(e) =>
+                          setProfile({
+                            ...profile,
+                            displayName: e.target.value,
+                          })
+                        }
+                      />
+                    </Field>
+                    <div className="form-grid">
+                      <Field label="Business email">
+                        <input
+                          required
+                          type="email"
+                          value={profile.email}
+                          onChange={(e) =>
+                            setProfile({ ...profile, email: e.target.value })
+                          }
+                        />
+                      </Field>
+                      <Field label="Business phone">
+                        <input
+                          value={profile.phone}
+                          onChange={(e) =>
+                            setProfile({ ...profile, phone: e.target.value })
+                          }
+                        />
+                      </Field>
+                    </div>
+                  </div>
+                </div>
+                {logoError && <Notice error>{logoError}</Notice>}
+                <div className="form-divider" />
+                <div className="settings-card-head compact-card-head">
+                  <Globe2 size={20} />
+                  <div>
+                    <h2>Business address</h2>
+                    <p>Used for operational and statutory correspondence.</p>
+                  </div>
+                </div>
+                <div className="form-grid">
+                  <Field label="Street address">
+                    <input
+                      value={profile.streetAddress}
                       onChange={(e) =>
-                        setProfile({ ...profile, displayName: e.target.value })
+                        setProfile({
+                          ...profile,
+                          streetAddress: e.target.value,
+                        })
                       }
                     />
                   </Field>
-                  <div className="form-grid">
-                    <Field label="Business email">
-                      <input
-                        required
-                        type="email"
-                        value={profile.email}
-                        onChange={(e) =>
-                          setProfile({ ...profile, email: e.target.value })
-                        }
-                      />
-                    </Field>
-                    <Field label="Business phone">
-                      <input
-                        value={profile.phone}
-                        onChange={(e) =>
-                          setProfile({ ...profile, phone: e.target.value })
-                        }
-                      />
-                    </Field>
-                  </div>
-                </div>
-              </div>
-              {logoError && <Notice error>{logoError}</Notice>}
-              <div className="form-divider" />
-              <div className="settings-card-head compact-card-head">
-                <Globe2 size={20} />
-                <div>
-                  <h2>Business address</h2>
-                  <p>Used for operational and statutory correspondence.</p>
-                </div>
-              </div>
-              <div className="form-grid">
-                <Field label="Street address">
-                  <input
-                    value={profile.streetAddress}
-                    onChange={(e) =>
-                      setProfile({ ...profile, streetAddress: e.target.value })
-                    }
-                  />
-                </Field>
-                <Field label="Apt / suite">
-                  <input
-                    value={profile.suite}
-                    onChange={(e) =>
-                      setProfile({ ...profile, suite: e.target.value })
-                    }
-                  />
-                </Field>
-                <Field label="City">
-                  <input
-                    value={profile.city}
-                    onChange={(e) =>
-                      setProfile({ ...profile, city: e.target.value })
-                    }
-                  />
-                </Field>
-                <Field label="State / parish">
-                  <input
-                    value={profile.stateParish}
-                    onChange={(e) =>
-                      setProfile({ ...profile, stateParish: e.target.value })
-                    }
-                  />
-                </Field>
-                <Field label="Postal code">
-                  <input
-                    value={profile.postalCode}
-                    onChange={(e) =>
-                      setProfile({ ...profile, postalCode: e.target.value })
-                    }
-                  />
-                </Field>
-                <Field label="Country">
-                  <input
-                    required
-                    maxLength={2}
-                    value={profile.country}
-                    onChange={(e) =>
-                      setProfile({
-                        ...profile,
-                        country: e.target.value.toUpperCase(),
-                      })
-                    }
-                  />
-                </Field>
-              </div>
-              <h2>Authorized contact</h2>
-              <p className="policy-copy">
-                This contact will receive future verification requests for
-                critical account changes.
-              </p>
-              <div className="form-grid">
-                <Field label="Name">
-                  <input
-                    required
-                    value={authorizedContact.name}
-                    onChange={(e) =>
-                      setAuthorizedContact({
-                        ...authorizedContact,
-                        name: e.target.value,
-                      })
-                    }
-                  />
-                </Field>
-                <Field label="Email">
-                  <input
-                    required
-                    type="email"
-                    value={authorizedContact.email}
-                    onChange={(e) =>
-                      setAuthorizedContact({
-                        ...authorizedContact,
-                        email: e.target.value,
-                      })
-                    }
-                  />
-                </Field>
-                <Field label="Phone">
-                  <input
-                    value={authorizedContact.phone}
-                    onChange={(e) =>
-                      setAuthorizedContact({
-                        ...authorizedContact,
-                        phone: e.target.value,
-                      })
-                    }
-                  />
-                </Field>
-              </div>
-              {profileMutation.error && (
-                <Notice error>{profileMutation.error}</Notice>
-              )}
-              <div className="form-actions">
-                <button
-                  type="button"
-                  className="button"
-                  disabled={profileMutation.busy}
-                  onClick={() => void saveProfile()}
-                >
-                  {profileMutation.busy ? "Saving…" : "Save general profile"}
-                  <Check size={17} />
-                </button>
-              </div>
-              <div className="form-divider" />
-            </section>
-          )}
-          {tab === "commercial" && (
-            <section>
-              <div className="settings-card-head" id="commercial">
-                <Landmark size={20} />
-                <div>
-                  <h2>Booking, taxes & commercial policy</h2>
-                  <p>
-                    Controls for new holds and bookings. Existing snapshots
-                    remain fixed.
-                  </p>
-                </div>
-              </div>
-              <div className="form-grid">
-                <Field
-                  label="Hold duration · seconds"
-                  hint="Between 30 and 1,800 seconds."
-                >
-                  <input
-                    type="number"
-                    min="30"
-                    max="1800"
-                    required
-                    value={config.holdSeconds}
-                    onChange={(e) =>
-                      setConfig({
-                        ...config,
-                        holdSeconds: Number(e.target.value),
-                      })
-                    }
-                  />
-                </Field>
-                <Field label="Minimum payment to confirm · %">
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    required
-                    value={config.minimumPaidPercent}
-                    onChange={(e) =>
-                      setConfig({
-                        ...config,
-                        minimumPaidPercent: Number(e.target.value),
-                      })
-                    }
-                  />
-                </Field>
-                <Field
-                  label="Tax / fee rate · %"
-                  hint="Applied once to the subtotal of new holds. Finance approval is required before live use."
-                >
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="100"
-                    required
-                    value={config.taxBasisPoints / 100}
-                    onChange={(e) =>
-                      setConfig({
-                        ...config,
-                        taxBasisPoints: Math.round(
-                          Number(e.target.value) * 100,
-                        ),
-                      })
-                    }
-                  />
-                </Field>
-              </div>
-              <Toggle
-                label="Allow confirmation before pickup is arranged"
-                description="Unresolved pickup still appears on the booking."
-                checked={config.allowUnresolvedPickup}
-                onChange={(checked) =>
-                  setConfig({ ...config, allowUnresolvedPickup: checked })
-                }
-              />
-              <div className="form-divider" />
-            </section>
-          )}
-          {tab === "localization" && (
-            <section>
-              <div className="settings-card-head" id="localization">
-                <Globe2 size={20} />
-                <div>
-                  <h2>Localization</h2>
-                  <p>
-                    Regional display and data-entry defaults for this tenant.
-                  </p>
-                </div>
-              </div>
-              <div className="form-grid">
-                <Field label="Display language">
-                  <select
-                    value={config.locale}
-                    onChange={(e) =>
-                      setConfig({ ...config, locale: e.target.value })
-                    }
-                  >
-                    <option value="en">English</option>
-                    <option value="es">Spanish</option>
-                    <option value="fr">French</option>
-                  </select>
-                </Field>
-                <Field label="Date format">
-                  <select
-                    value={config.dateFormat}
-                    onChange={(e) =>
-                      setConfig({
-                        ...config,
-                        dateFormat: e.target.value as typeof config.dateFormat,
-                      })
-                    }
-                  >
-                    <option value="DD/MM/YYYY">DD/MM/YYYY</option>
-                    <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-                    <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-                  </select>
-                </Field>
-                <Field label="Time format">
-                  <select
-                    value={config.timeFormat}
-                    onChange={(e) =>
-                      setConfig({
-                        ...config,
-                        timeFormat: e.target.value as typeof config.timeFormat,
-                      })
-                    }
-                  >
-                    <option value="12h">12-hour</option>
-                    <option value="24h">24-hour</option>
-                  </select>
-                </Field>
-                <Field label="Week starts on">
-                  <select
-                    value={config.weekStartsOn}
-                    onChange={(e) =>
-                      setConfig({
-                        ...config,
-                        weekStartsOn: Number(e.target.value),
-                      })
-                    }
-                  >
-                    <option value={0}>Sunday</option>
-                    <option value={1}>Monday</option>
-                  </select>
-                </Field>
-                <Field label="Measurement system">
-                  <select
-                    value={config.measurementSystem}
-                    onChange={(e) =>
-                      setConfig({
-                        ...config,
-                        measurementSystem: e.target
-                          .value as typeof config.measurementSystem,
-                      })
-                    }
-                  >
-                    <option value="metric">Metric</option>
-                    <option value="imperial">Imperial</option>
-                  </select>
-                </Field>
-              </div>
-              <div className="form-divider" />
-              <h2>Currency & tax context</h2>
-              <div className="form-grid">
-                <Field label="Booking currency">
-                  <input value={config.bookingCurrency} disabled />
-                </Field>
-                <Field label="Collection currency">
-                  <input value={config.collectionCurrency} disabled />
-                </Field>
-                <Field label="Reporting currency">
-                  <input value={config.reportingCurrency} disabled />
-                </Field>
-              </div>
-              <p className="policy-copy">
-                Currency conversion and settlement reconciliation are not
-                enabled yet. Configure currencies through the approved finance
-                migration workflow.
-              </p>
-              <div className="form-divider" />
-            </section>
-          )}
-          {tab === "printers" && (
-            <section>
-              <div className="settings-card-head">
-                <Printer size={20} />
-                <div>
-                  <h2>Printers & documents</h2>
-                  <p>
-                    Produce paper-safe operational documents from the current
-                    departure data.
-                  </p>
-                </div>
-              </div>
-              <div className="document-access-grid">
-                <article>
-                  <FileText size={19} />
-                  <div>
-                    <h3>Departure manifest</h3>
-                    <p>
-                      Open a departure, then print its confirmed passenger
-                      manifest or save it as a PDF.
-                    </p>
-                    <Link className="text-link" href="/departures">
-                      Open departures <ArrowRight size={16} />
-                    </Link>
-                  </div>
-                </article>
-                <article>
-                  <Printer size={19} />
-                  <div>
-                    <h3>Pickup list</h3>
-                    <p>
-                      Open the operations board, save the pickup plan, then
-                      print its ordered stops and exceptions.
-                    </p>
-                    <Link className="text-link" href="/operations">
-                      Open operations <ArrowRight size={16} />
-                    </Link>
-                  </div>
-                </article>
-              </div>
-              <p className="policy-copy">
-                Browser print and Save as PDF are the current delivery method.
-                Browser jobs are recorded for audit; a printer agent and
-                physical destinations are not enabled yet.
-              </p>
-              {session.permissions.includes("print.templates.manage") && (
-                <>
-                  <div className="form-divider" />
-                  <h2>Document templates</h2>
-                  <p className="policy-copy">
-                    Publishing creates a new tenant-owned template version. The
-                    selected layout becomes the default for its document type.
-                  </p>
-                  <div className="form-grid compact">
-                    <Field label="Document type">
-                      <select
-                        value={printDocumentType}
-                        onChange={(event) =>
-                          setPrintDocumentType(
-                            event.target.value as "manifest" | "pickup_list",
-                          )
-                        }
-                      >
-                        <option value="manifest">Departure manifest</option>
-                        <option value="pickup_list">Pickup list</option>
-                      </select>
-                    </Field>
-                    <Field label="Template name">
-                      <input
-                        value={printName}
-                        maxLength={120}
-                        placeholder="Standard departure manifest"
-                        onChange={(event) => setPrintName(event.target.value)}
-                      />
-                    </Field>
-                  </div>
-                  {printMutation.error && (
-                    <Notice error>{printMutation.error}</Notice>
-                  )}
-                  <div className="form-actions">
-                    <button
-                      className="button"
-                      type="button"
-                      disabled={printMutation.busy || !printName.trim()}
-                      onClick={() => void publishPrintTemplate()}
+                  <Field label="Apt / suite">
+                    <input
+                      value={profile.suite}
+                      onChange={(e) =>
+                        setProfile({ ...profile, suite: e.target.value })
+                      }
+                    />
+                  </Field>
+                  <Field label="City">
+                    <input
+                      value={profile.city}
+                      onChange={(e) =>
+                        setProfile({ ...profile, city: e.target.value })
+                      }
+                    />
+                  </Field>
+                  <Field label="State / parish">
+                    <input
+                      value={profile.stateParish}
+                      onChange={(e) =>
+                        setProfile({ ...profile, stateParish: e.target.value })
+                      }
+                    />
+                  </Field>
+                  <Field label="Postal code">
+                    <input
+                      value={profile.postalCode}
+                      onChange={(e) =>
+                        setProfile({ ...profile, postalCode: e.target.value })
+                      }
+                    />
+                  </Field>
+                  <Field label="Country">
+                    <select
+                      required
+                      value={profile.country}
+                      onChange={(e) =>
+                        setProfile({
+                          ...profile,
+                          country: e.target.value,
+                        })
+                      }
                     >
-                      {printMutation.busy ? "Publishing…" : "Publish template"}
-                    </button>
-                  </div>
-                </>
-              )}
-              {printTemplates.error ? (
-                <Notice error>{printTemplates.error}</Notice>
-              ) : printTemplates.data?.length ? (
-                <div className="settings-list">
-                  {printTemplates.data.map((template) => (
-                    <article key={template.id}>
-                      <div>
-                        <strong>{template.name}</strong>
-                        <p>
-                          {label(template.document_type)} · version{" "}
-                          {template.version}
-                        </p>
-                      </div>
-                      {template.is_default && <Status state="confirmed" />}
-                    </article>
-                  ))}
+                      {!COUNTRIES.some((c) => c.code === profile.country) &&
+                        profile.country && (
+                          <option value={profile.country}>
+                            {profile.country} (current)
+                          </option>
+                        )}
+                      {COUNTRIES.map((country) => (
+                        <option key={country.code} value={country.code}>
+                          {country.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
                 </div>
-              ) : (
-                <p className="muted">No published document templates yet.</p>
-              )}
-              {printJobs.data?.length ? (
-                <>
-                  <div className="form-divider" />
-                  <h2>Recent document requests</h2>
+                <h2>Authorized contact</h2>
+                <p className="policy-copy">
+                  This contact will receive future verification requests for
+                  critical account changes.
+                </p>
+                <div className="form-grid">
+                  <Field label="Name">
+                    <input
+                      required
+                      value={authorizedContact.name}
+                      onChange={(e) =>
+                        setAuthorizedContact({
+                          ...authorizedContact,
+                          name: e.target.value,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field label="Email">
+                    <input
+                      required
+                      type="email"
+                      value={authorizedContact.email}
+                      onChange={(e) =>
+                        setAuthorizedContact({
+                          ...authorizedContact,
+                          email: e.target.value,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field label="Phone">
+                    <input
+                      value={authorizedContact.phone}
+                      onChange={(e) =>
+                        setAuthorizedContact({
+                          ...authorizedContact,
+                          phone: e.target.value,
+                        })
+                      }
+                    />
+                  </Field>
+                </div>
+                {profileMutation.error && (
+                  <Notice error>{profileMutation.error}</Notice>
+                )}
+                <FormActions stickyOnMobile>
+                  <button
+                    type="button"
+                    className="button"
+                    disabled={profileMutation.busy}
+                    onClick={() => void saveProfile()}
+                  >
+                    {profileMutation.busy ? "Saving…" : "Save general profile"}
+                    <Check size={17} />
+                  </button>
+                </FormActions>
+                <div className="form-divider" />
+              </section>
+            )}
+            {tab === "commercial" && (
+              <section>
+                <div className="settings-card-head" id="commercial">
+                  <Landmark size={20} />
+                  <div>
+                    <h2>Booking, taxes & commercial policy</h2>
+                    <p>
+                      Controls for new holds and bookings. Existing snapshots
+                      remain fixed.
+                    </p>
+                  </div>
+                </div>
+                <div className="form-grid">
+                  <Field
+                    label="Hold duration · seconds"
+                    hint="Between 30 and 1,800 seconds."
+                  >
+                    <input
+                      type="number"
+                      min="30"
+                      max="1800"
+                      required
+                      value={config.holdSeconds}
+                      onChange={(e) =>
+                        setConfig({
+                          ...config,
+                          holdSeconds: Number(e.target.value),
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field label="Minimum payment to confirm · %">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      required
+                      value={config.minimumPaidPercent}
+                      onChange={(e) =>
+                        setConfig({
+                          ...config,
+                          minimumPaidPercent: Number(e.target.value),
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field
+                    label="Tax / fee rate · %"
+                    hint="Added once on the party subtotal when a hold is priced (exclusive). Not a tax engine."
+                  >
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      required
+                      value={config.taxBasisPoints / 100}
+                      onChange={(e) =>
+                        setConfig({
+                          ...config,
+                          taxBasisPoints: Math.round(
+                            Number(e.target.value) * 100,
+                          ),
+                        })
+                      }
+                    />
+                  </Field>
+                </div>
+                <p className="policy-copy">
+                  Yes — this rate is used today. New holds compute tax as rate ×
+                  party subtotal and freeze it on the quote (total = subtotal +
+                  tax). Inclusive pricing, exemptions, multi-jurisdiction tax,
+                  and remittance are not modeled; treat catalogue amounts as
+                  tax-exclusive until a finance-approved tax engine ships.
+                </p>
+                <Toggle
+                  label="Allow confirmation before pickup is arranged"
+                  description="Unresolved pickup still appears on the booking."
+                  checked={config.allowUnresolvedPickup}
+                  onChange={(checked) =>
+                    setConfig({ ...config, allowUnresolvedPickup: checked })
+                  }
+                />
+                <div className="form-divider" />
+              </section>
+            )}
+            {tab === "localization" && (
+              <section>
+                <div className="settings-card-head" id="localization">
+                  <Globe2 size={20} />
+                  <div>
+                    <h2>Localization</h2>
+                    <p>
+                      Regional display and data-entry defaults for this tenant.
+                    </p>
+                  </div>
+                </div>
+                <div className="form-grid">
+                  <Field label="Display language">
+                    <select
+                      value={config.locale}
+                      onChange={(e) =>
+                        setConfig({ ...config, locale: e.target.value })
+                      }
+                    >
+                      <option value="en">English</option>
+                      <option value="es">Spanish</option>
+                      <option value="fr">French</option>
+                    </select>
+                  </Field>
+                  <Field label="Date format">
+                    <select
+                      value={config.dateFormat}
+                      onChange={(e) =>
+                        setConfig({
+                          ...config,
+                          dateFormat: e.target
+                            .value as typeof config.dateFormat,
+                        })
+                      }
+                    >
+                      <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                      <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                      <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                    </select>
+                  </Field>
+                  <Field label="Time format">
+                    <select
+                      value={config.timeFormat}
+                      onChange={(e) =>
+                        setConfig({
+                          ...config,
+                          timeFormat: e.target
+                            .value as typeof config.timeFormat,
+                        })
+                      }
+                    >
+                      <option value="12h">12-hour</option>
+                      <option value="24h">24-hour</option>
+                    </select>
+                  </Field>
+                  <Field label="Week starts on">
+                    <select
+                      value={config.weekStartsOn}
+                      onChange={(e) =>
+                        setConfig({
+                          ...config,
+                          weekStartsOn: Number(e.target.value),
+                        })
+                      }
+                    >
+                      <option value={0}>Sunday</option>
+                      <option value={1}>Monday</option>
+                    </select>
+                  </Field>
+                  <Field label="Measurement system">
+                    <select
+                      value={config.measurementSystem}
+                      onChange={(e) =>
+                        setConfig({
+                          ...config,
+                          measurementSystem: e.target
+                            .value as typeof config.measurementSystem,
+                        })
+                      }
+                    >
+                      <option value="metric">Metric</option>
+                      <option value="imperial">Imperial</option>
+                    </select>
+                  </Field>
+                </div>
+                <div className="form-divider" />
+                <h2>Currency & tax context</h2>
+                <p className="policy-copy">
+                  Track A requires booking, collection, and reporting currencies
+                  to be the same. FX conversion is out of scope, so these fields
+                  are read-only after tenant create. Change them only through an
+                  approved finance migration — not from this screen. Tax rate
+                  editing lives under Taxes & commercial.
+                </p>
+                <div className="form-grid">
+                  <Field label="Booking currency">
+                    <input value={config.bookingCurrency} disabled />
+                  </Field>
+                  <Field label="Collection currency">
+                    <input value={config.collectionCurrency} disabled />
+                  </Field>
+                  <Field label="Reporting currency">
+                    <input value={config.reportingCurrency} disabled />
+                  </Field>
+                </div>
+                <div className="form-divider" />
+              </section>
+            )}
+            {tab === "printers" && (
+              <section>
+                <div className="settings-card-head">
+                  <Printer size={20} />
+                  <div>
+                    <h2>Printers & documents</h2>
+                    <p>
+                      Produce paper-safe operational documents from the current
+                      departure data.
+                    </p>
+                  </div>
+                </div>
+                <div className="document-access-grid">
+                  <article>
+                    <FileText size={19} />
+                    <div>
+                      <h3>Departure manifest</h3>
+                      <p>
+                        Open a departure, then print its confirmed passenger
+                        manifest or save it as a PDF.
+                      </p>
+                      <Link className="text-link" href="/departures">
+                        Open departures <ArrowRight size={16} />
+                      </Link>
+                    </div>
+                  </article>
+                  <article>
+                    <Printer size={19} />
+                    <div>
+                      <h3>Pickup list</h3>
+                      <p>
+                        Open the operations board, save the pickup plan, then
+                        print its ordered stops and exceptions.
+                      </p>
+                      <Link className="text-link" href="/operations">
+                        Open operations <ArrowRight size={16} />
+                      </Link>
+                    </div>
+                  </article>
+                </div>
+                <p className="policy-copy">
+                  Browser print and Save as PDF are the current delivery method.
+                  Browser jobs are recorded for audit; a printer agent and
+                  physical destinations are not enabled yet.
+                </p>
+                <div className="form-divider" />
+                <h2>Document storage</h2>
+                <p className="policy-copy">
+                  Signed waiver PDFs are written to a short-lived hot store,
+                  then synced out to the tenant archive target so production
+                  disk can be cleared. Hot copies auto-purge within 7 days.
+                  Longer retention requires a purchased storage plan (not
+                  enabled yet). Drive adapters stay feature-flagged until OAuth
+                  credentials are approved.
+                </p>
+                <div className="form-grid">
+                  <Field label="Hot store">
+                    <select
+                      value={config.documentStorage.hotProvider}
+                      onChange={(event) =>
+                        setConfig({
+                          ...config,
+                          documentStorage: {
+                            ...config.documentStorage,
+                            hotProvider: event.target.value as
+                              | "filesystem"
+                              | "s3",
+                          },
+                        })
+                      }
+                    >
+                      <option value="filesystem">
+                        Production filesystem / volume
+                      </option>
+                      <option value="s3">S3-compatible object storage</option>
+                    </select>
+                  </Field>
+                  <Field label="Archive sync target">
+                    <select
+                      value={config.documentStorage.archiveProvider}
+                      onChange={(event) =>
+                        setConfig({
+                          ...config,
+                          documentStorage: {
+                            ...config.documentStorage,
+                            archiveProvider: event.target.value as
+                              | "none"
+                              | "google_drive"
+                              | "onedrive"
+                              | "dropbox",
+                          },
+                        })
+                      }
+                    >
+                      <option value="none">None (purge after retention)</option>
+                      <option value="google_drive">Google Drive</option>
+                      <option value="onedrive">OneDrive</option>
+                      <option value="dropbox">Dropbox</option>
+                    </select>
+                  </Field>
+                  <Field label="Hot retention (days, max 7)">
+                    <input
+                      type="number"
+                      min={1}
+                      max={7}
+                      value={config.documentStorage.hotRetentionDays}
+                      onChange={(event) =>
+                        setConfig({
+                          ...config,
+                          documentStorage: {
+                            ...config.documentStorage,
+                            hotRetentionDays: Math.min(
+                              7,
+                              Math.max(1, Number(event.target.value) || 7),
+                            ),
+                          },
+                        })
+                      }
+                    />
+                  </Field>
+                </div>
+                {config.documentStorage.archiveProvider !== "none" && (
+                  <p className="policy-copy">
+                    Archive sync runs from `npm run outbox:drain`. Adapters
+                    remain blocked until `DOCUMENT_ARCHIVE_ADAPTERS=1` and
+                    provider credentials are configured. Hot files still expire
+                    within the retention window.
+                  </p>
+                )}
+                {session.permissions.includes("config.write") && (
+                  <FormActions stickyOnMobile>
+                    <button className="button" disabled={mutation.busy}>
+                      {mutation.busy ? "Saving…" : "Save document storage"}
+                      <Check size={17} />
+                    </button>
+                  </FormActions>
+                )}
+                {session.permissions.includes("print.templates.manage") && (
+                  <>
+                    <div className="form-divider" />
+                    <h2>Document templates</h2>
+                    <p className="policy-copy">
+                      Publishing creates a new tenant-owned template version.
+                      The selected layout becomes the default for its document
+                      type.
+                    </p>
+                    <div className="form-grid compact">
+                      <Field label="Document type">
+                        <select
+                          value={printDocumentType}
+                          onChange={(event) =>
+                            setPrintDocumentType(
+                              event.target.value as "manifest" | "pickup_list",
+                            )
+                          }
+                        >
+                          <option value="manifest">Departure manifest</option>
+                          <option value="pickup_list">Pickup list</option>
+                        </select>
+                      </Field>
+                      <Field label="Template name">
+                        <input
+                          value={printName}
+                          maxLength={120}
+                          placeholder="Standard departure manifest"
+                          onChange={(event) => setPrintName(event.target.value)}
+                        />
+                      </Field>
+                    </div>
+                    {printMutation.error && (
+                      <Notice error>{printMutation.error}</Notice>
+                    )}
+                    <div className="form-actions">
+                      <button
+                        className="button"
+                        type="button"
+                        disabled={printMutation.busy || !printName.trim()}
+                        onClick={() => void publishPrintTemplate()}
+                      >
+                        {printMutation.busy
+                          ? "Publishing…"
+                          : "Publish template"}
+                      </button>
+                    </div>
+                  </>
+                )}
+                {printTemplates.error ? (
+                  <Notice error>{printTemplates.error}</Notice>
+                ) : printTemplates.data?.length ? (
                   <div className="settings-list">
-                    {printJobs.data.slice(0, 5).map((job) => (
-                      <article key={job.id}>
+                    {printTemplates.data.map((template) => (
+                      <article key={template.id}>
                         <div>
-                          <strong>{label(job.document_type)}</strong>
-                          <p>{new Date(job.requested_at).toLocaleString()}</p>
+                          <strong>{template.name}</strong>
+                          <p>
+                            {label(template.document_type)} · version{" "}
+                            {template.version}
+                          </p>
                         </div>
-                        <Status state={job.status} />
+                        {template.is_default && <Status state="confirmed" />}
                       </article>
                     ))}
                   </div>
-                </>
-              ) : null}
-            </section>
-          )}
-          {tab === "stays" && <section>
-            <div className="settings-card-head"><Ship size={20}/><div><h2>Guest stays & cruise calls</h2><p>Maintain controlled vessel calls and accommodations used by reservations and pickup operations.</p></div></div>
-            <h2>Cruise calls</h2>
-            <div className="form-grid"><Field label="Vessel name"><input required value={vesselName} onChange={e=>setVesselName(e.target.value)}/></Field><Field label="Call date"><input required type="date" value={callDate} onChange={e=>setCallDate(e.target.value)}/></Field><Field label="Port or marina"><input required value={portName} onChange={e=>setPortName(e.target.value)}/></Field><Field label="All aboard · optional ISO time" hint="Include the UTC offset, for example 2026-09-10T16:30:00-04:00"><input value={allAboardAt} onChange={e=>setAllAboardAt(e.target.value)}/></Field></div>
-            <button type="button" className="button" disabled={stayMutation.busy||!vesselName||!callDate||!portName} onClick={()=>void createCruiseCall()}>Add cruise call</button>
-            {stayOptions.data?.cruiseCalls.map(item=><div className="detail-row" key={item.id}><span><strong>{item.vessel_name}</strong><small>{item.call_date} · {item.port_name}{item.all_aboard_at?` · all aboard ${new Date(item.all_aboard_at).toLocaleString()}`:""}</small></span></div>)}
-            <div className="form-divider"/><h2>Accommodation properties</h2>
-            <div className="form-grid"><Field label="Hotel or property name"><input required value={accommodationName} onChange={e=>setAccommodationName(e.target.value)}/></Field><Field label="Address"><input value={accommodationAddress} onChange={e=>setAccommodationAddress(e.target.value)}/></Field></div>
-            <button type="button" className="button" disabled={stayMutation.busy||!accommodationName} onClick={()=>void createAccommodation()}>Add accommodation</button>
-            {stayOptions.data?.accommodations.map(item=><div className="detail-row" key={item.id}><span><strong>{item.name}</strong><small>{item.address||"No address recorded"}</small></span></div>)}
-            {(stayMutation.error||stayOptions.error)&&<Notice error>{stayMutation.error||stayOptions.error}</Notice>}
-          </section>}
-          {tab === "payments" && (
-            <section className="settings-future">
-              <CreditCard size={20} />
-              <div>
-                <h2>Payments</h2>
-                <p>
-                  Tenant collection providers, Stripe Connect, gateway selection
-                  and settlement rules will appear here after finance policy
-                  decisions are recorded.
-                </p>
-              </div>
-            </section>
-          )}
-          {tab === "waivers" && (
-            <section>
-              <div className="settings-card-head">
-                <FileText size={20} />
-                <div>
-                  <h2>Waiver templates</h2>
-                  <p>
-                    Publish an approved version for staff capture. Signed
-                    evidence always stays bound to its original version.
-                  </p>
-                </div>
-              </div>
-              {waiverTemplates.error ? (
-                <Notice error>{waiverTemplates.error}</Notice>
-              ) : !waiverTemplates.data ? (
-                <Loading />
-              ) : waiverTemplates.data.length ? (
-                <div className="waiver-current">
-                  <span>ACTIVE VERSION</span>
-                  <strong>
-                    v{waiverTemplates.data[0].version} ·{" "}
-                    {waiverTemplates.data[0].title}
-                  </strong>
-                  <p>
-                    Published{" "}
-                    {new Date(
-                      waiverTemplates.data[0].created_at,
-                    ).toLocaleDateString()}
-                  </p>
-                </div>
-              ) : (
-                <Notice>No active waiver template has been published.</Notice>
-              )}
-              {session.permissions.includes("waiver.template.publish") ? (
-                <div className="waiver-editor">
-                  <h2>
-                    {waiverTemplates.data?.length
-                      ? "Publish replacement version"
-                      : "Publish first version"}
-                  </h2>
-                  <p className="policy-copy">
-                    Confirm wording with the tenant's legal and insurance
-                    advisers before publishing. Publishing supersedes the
-                    current version for future signatures; it never changes
-                    existing evidence.
-                  </p>
-                  <Field label="Template title">
-                    <input
-                      required
-                      maxLength={160}
-                      value={waiverTitle}
-                      onChange={(e) => setWaiverTitle(e.target.value)}
-                      placeholder="For example, Tour participant waiver"
-                    />
-                  </Field>
-                  <Field label="Approved waiver wording">
-                    <textarea
-                      required
-                      maxLength={20000}
-                      value={waiverBody}
-                      onChange={(e) => setWaiverBody(e.target.value)}
-                      placeholder="Enter tenant-approved wording"
-                      rows={12}
-                    />
-                  </Field>
-                  {waiverMutation.error && (
-                    <Notice error>{waiverMutation.error}</Notice>
-                  )}
-                  <div className="form-actions">
-                    <button
-                      type="button"
-                      className="button"
-                      disabled={
-                        waiverMutation.busy ||
-                        !waiverTitle.trim() ||
-                        !waiverBody.trim()
-                      }
-                      onClick={() => void publishWaiverTemplate()}
-                    >
-                      {waiverMutation.busy
-                        ? "Publishing…"
-                        : "Publish immutable version"}
-                      <Check size={17} />
-                    </button>
+                ) : (
+                  <p className="muted">No published document templates yet.</p>
+                )}
+                {printJobs.data?.length ? (
+                  <>
+                    <div className="form-divider" />
+                    <h2>Recent document requests</h2>
+                    <div className="settings-list">
+                      {printJobs.data.slice(0, 5).map((job) => (
+                        <article key={job.id}>
+                          <div>
+                            <strong>{label(job.document_type)}</strong>
+                            <p>{new Date(job.requested_at).toLocaleString()}</p>
+                          </div>
+                          <Status state={job.status} />
+                        </article>
+                      ))}
+                    </div>
+                  </>
+                ) : null}
+              </section>
+            )}
+            {tab === "stays" && (
+              <section>
+                <div className="settings-card-head">
+                  <Ship size={20} />
+                  <div>
+                    <h2>Guest stays & cruise calls</h2>
+                    <p>
+                      Maintain controlled vessel calls and accommodations used
+                      by reservations and pickup operations.
+                    </p>
                   </div>
                 </div>
+                <h2>Cruise calls</h2>
+                <div className="form-grid">
+                  <Field label="Vessel name">
+                    <input
+                      required
+                      value={vesselName}
+                      onChange={(e) => setVesselName(e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Call date">
+                    <input
+                      required
+                      type="date"
+                      value={callDate}
+                      onChange={(e) => setCallDate(e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Port or marina">
+                    <input
+                      required
+                      value={portName}
+                      onChange={(e) => setPortName(e.target.value)}
+                    />
+                  </Field>
+                  <Field
+                    label="All aboard · optional ISO time"
+                    hint="Include the UTC offset, for example 2026-09-10T16:30:00-04:00"
+                  >
+                    <input
+                      value={allAboardAt}
+                      onChange={(e) => setAllAboardAt(e.target.value)}
+                    />
+                  </Field>
+                </div>
+                <button
+                  type="button"
+                  className="button"
+                  disabled={
+                    stayMutation.busy || !vesselName || !callDate || !portName
+                  }
+                  onClick={() => void createCruiseCall()}
+                >
+                  Add cruise call
+                </button>
+                {stayOptions.data?.cruiseCalls.map((item) => (
+                  <div className="detail-row" key={item.id}>
+                    <span>
+                      <strong>{item.vessel_name}</strong>
+                      <small>
+                        {item.call_date} · {item.port_name}
+                        {item.all_aboard_at
+                          ? ` · all aboard ${new Date(item.all_aboard_at).toLocaleString()}`
+                          : ""}
+                      </small>
+                    </span>
+                  </div>
+                ))}
+                <div className="form-divider" />
+                <h2>Accommodation properties</h2>
+                <div className="form-grid">
+                  <Field label="Hotel or property name">
+                    <input
+                      required
+                      value={accommodationName}
+                      onChange={(e) => setAccommodationName(e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Address">
+                    <input
+                      value={accommodationAddress}
+                      onChange={(e) => setAccommodationAddress(e.target.value)}
+                    />
+                  </Field>
+                </div>
+                <button
+                  type="button"
+                  className="button"
+                  disabled={stayMutation.busy || !accommodationName}
+                  onClick={() => void createAccommodation()}
+                >
+                  Add accommodation
+                </button>
+                {stayOptions.data?.accommodations.map((item) => (
+                  <div className="detail-row" key={item.id}>
+                    <span>
+                      <strong>{item.name}</strong>
+                      <small>{item.address || "No address recorded"}</small>
+                    </span>
+                  </div>
+                ))}
+                {(stayMutation.error || stayOptions.error) && (
+                  <Notice error>
+                    {stayMutation.error || stayOptions.error}
+                  </Notice>
+                )}
+              </section>
+            )}
+            {tab === "resellers" && session.permissions.includes("partner.manage") && (
+              <PartnersResellersSettings />
+            )}
+            {tab === "payments" && (
+              <section className="settings-future">
+                <CreditCard size={20} />
+                <div>
+                  <h2>Payments</h2>
+                  <p>
+                    Tenant collection providers, Stripe Connect, gateway
+                    selection and settlement rules will appear here after
+                    finance policy decisions are recorded.
+                  </p>
+                </div>
+              </section>
+            )}
+            {tab === "waivers" && (
+              <section>
+                <div className="settings-card-head">
+                  <FileText size={20} />
+                  <div>
+                    <h2>Waiver templates</h2>
+                    <p>
+                      Publish an approved version for staff capture. Signed
+                      evidence always stays bound to its original version.
+                    </p>
+                  </div>
+                </div>
+                {waiverTemplates.error ? (
+                  <Notice error>{waiverTemplates.error}</Notice>
+                ) : !waiverTemplates.data ? (
+                  <Loading />
+                ) : waiverTemplates.data.length ? (
+                  <div className="waiver-current">
+                    <span>ACTIVE VERSION</span>
+                    <strong>
+                      v{waiverTemplates.data[0].version} ·{" "}
+                      {waiverTemplates.data[0].title}
+                    </strong>
+                    <p>
+                      Published{" "}
+                      {new Date(
+                        waiverTemplates.data[0].created_at,
+                      ).toLocaleDateString()}
+                    </p>
+                  </div>
+                ) : (
+                  <Notice>No active waiver template has been published.</Notice>
+                )}
+                {session.permissions.includes("waiver.template.publish") ? (
+                  <div className="waiver-editor">
+                    <h2>
+                      {waiverTemplates.data?.length
+                        ? "Publish replacement version"
+                        : "Publish first version"}
+                    </h2>
+                    <p className="policy-copy">
+                      Confirm wording with the tenant's legal and insurance
+                      advisers before publishing. Publishing supersedes the
+                      current version for future signatures; it never changes
+                      existing evidence.
+                    </p>
+                    <Field label="Template title">
+                      <input
+                        required
+                        maxLength={160}
+                        value={waiverTitle}
+                        onChange={(e) => setWaiverTitle(e.target.value)}
+                        placeholder="For example, Tour participant waiver"
+                      />
+                    </Field>
+                    <Field label="Approved waiver wording">
+                      <textarea
+                        required
+                        maxLength={20000}
+                        value={waiverBody}
+                        onChange={(e) => setWaiverBody(e.target.value)}
+                        placeholder="Enter tenant-approved wording"
+                        rows={12}
+                      />
+                    </Field>
+                    {waiverMutation.error && (
+                      <Notice error>{waiverMutation.error}</Notice>
+                    )}
+                    <div className="form-actions">
+                      <button
+                        type="button"
+                        className="button"
+                        disabled={
+                          waiverMutation.busy ||
+                          !waiverTitle.trim() ||
+                          !waiverBody.trim()
+                        }
+                        onClick={() => void publishWaiverTemplate()}
+                      >
+                        {waiverMutation.busy
+                          ? "Publishing…"
+                          : "Publish immutable version"}
+                        <Check size={17} />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <Notice>
+                    Only the tenant owner can publish or replace waiver wording.
+                  </Notice>
+                )}
+              </section>
+            )}
+            {tab === "security" ? (
+              session.role === "owner" ? (
+                <SupportAccessSettings />
               ) : (
-                <Notice>
-                  Only the tenant owner can publish or replace waiver wording.
-                </Notice>
-              )}
-            </section>
-          )}
-          {tab === "security" ? session.role==="owner"?<SupportAccessSettings/>:<section><div className="settings-card-head"><ShieldCheck size={20}/><div><h2>Security & support access</h2><p>Only a tenant owner can review or authorize Zettaz support access.</p></div></div></section> : null}
-          {tab === "commercial" && (
-            <section>
-              <h2>Collection methods & booking sources</h2>
-              <Field
-                label="Allowed manual collection methods"
-                hint="Comma-separated codes using lowercase letters, numbers and underscores."
-              >
-                <input
-                  required
-                  value={methods}
-                  onChange={(e) => setMethods(e.target.value)}
-                />
-              </Field>
-              <Field
-                label="Booking sources"
-                hint="Use partner_reseller for staff-entered Partners/Resellers bookings."
-              >
-                <input
-                  required
-                  value={sources}
-                  onChange={(e) => setSources(e.target.value)}
-                />
-              </Field>
-              <label className="checkbox">
-                <input
-                  type="checkbox"
+                <section>
+                  <div className="settings-card-head">
+                    <ShieldCheck size={20} />
+                    <div>
+                      <h2>Security & support access</h2>
+                      <p>
+                        Only a tenant owner can review or authorize Zettaz
+                        support access.
+                      </p>
+                    </div>
+                  </div>
+                </section>
+              )
+            ) : null}
+            {tab === "commercial" && (
+              <section>
+                <h2>Collection methods & booking sources</h2>
+                <Field
+                  label="Allowed manual collection methods"
+                  hint="Comma-separated codes. Suggested: cash, card, online, bank_transfer, reseller_payment. Guest payment via reseller is a guest-to-operator ledger entry when the guest paid through a reseller channel — not a substitute for Partner collects / Partner invoice claims."
+                >
+                  <input
+                    required
+                    value={methods}
+                    onChange={(e) => setMethods(e.target.value)}
+                  />
+                </Field>
+                <Field
+                  label="Booking sources"
+                  hint="Comma-separated codes such as phone, walk_in, website, partner_reseller. Channel brands (Viator, GetYourGuide) belong under Partners / Resellers organizations, not as separate booking sources."
+                >
+                  <input
+                    required
+                    value={sources}
+                    onChange={(e) => setSources(e.target.value)}
+                  />
+                </Field>
+                <Toggle
+                  label="Allow confirmed amendments to create an additional balance due"
+                  description="When disabled, an accepted amendment must satisfy its minimum-paid rule. This is separate from the initial confirmation policy."
                   checked={config.allowAmendmentBalance ?? false}
-                  onChange={(e) =>
+                  onChange={(checked) =>
                     setConfig({
                       ...config,
-                      allowAmendmentBalance: e.target.checked,
+                      allowAmendmentBalance: checked,
                     })
                   }
                 />
-                Allow confirmed amendments to create an additional balance due
-              </label>
-              <p className="policy-copy">
-                When disabled, an accepted amendment must satisfy its
-                minimum-paid rule. This is separate from the initial
-                confirmation policy.
-              </p>
-            </section>
-          )}
-          {mutation.error && (
-            <Notice error>
-              {mutation.error}{" "}
-              <button type="button" className="text-button" onClick={refresh}>
-                Reload current settings
-              </button>
-            </Notice>
-          )}
-          {(tab === "commercial" || tab === "localization") && (
-            <div className="form-actions">
-              <button className="button" disabled={mutation.busy}>
-                {mutation.busy ? "Saving…" : "Save settings"}
-                <Check size={17} />
-              </button>
-            </div>
-          )}
-        </form>}
+              </section>
+            )}
+            {mutation.error && (
+              <Notice error>
+                {mutation.error}{" "}
+                <button type="button" className="text-button" onClick={refresh}>
+                  Reload current settings
+                </button>
+              </Notice>
+            )}
+            {(tab === "commercial" || tab === "localization") && (
+              <FormActions stickyOnMobile>
+                <button className="button" disabled={mutation.busy}>
+                  {mutation.busy ? "Saving…" : "Save settings"}
+                  <Check size={17} />
+                </button>
+              </FormActions>
+            )}
+          </form>
+        )}
       </div>
     </>
   );
 }
 
-type SupportGrant={id:string;platform_actor_id:string;platform_user:string;purpose:string;permissions:string[];status:"pending"|"approved"|"rejected"|"revoked";requested_at:string;expires_at:string|null;decision_reason:string|null};
-function SupportAccessSettings(){
-  const grants=useResource<{items:SupportGrant[]}>("admin/v1/support-access");
-  const mutation=useMutation();
-  async function decide(grant:SupportGrant,decision:"approved"|"rejected"){
-    const reason=window.prompt(decision==="approved"?"Why is this support access approved?":"Why is this request rejected?");
-    if(!reason)return;
-    const result=await mutation.run(`admin/v1/support-access/${grant.id}/decision`,{decision,...(decision==="approved"?{expiresInHours:8}:{}),reason});
-    if(result)grants.reload();
+type SupportGrant = {
+  id: string;
+  platform_actor_id: string;
+  platform_user: string;
+  purpose: string;
+  permissions: string[];
+  status: "pending" | "approved" | "rejected" | "revoked";
+  requested_at: string;
+  expires_at: string | null;
+  decision_reason: string | null;
+};
+function PartnersResellersSettings() {
+  const partners = useResource<Partner[]>("finance/v1/partners");
+  const create = useMutation();
+  const statusMutation = useMutation();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [notes, setNotes] = useState("");
+  async function addPartner() {
+    const result = await create.run("finance/v1/partners", {
+      name,
+      ...(email.trim() ? { email: email.trim() } : {}),
+      ...(phone.trim() ? { phone: phone.trim() } : {}),
+      notes,
+    });
+    if (result) {
+      setName("");
+      setEmail("");
+      setPhone("");
+      setNotes("");
+      partners.reload();
+    }
   }
-  async function revoke(grant:SupportGrant){
-    const reason=window.prompt("Why is this support access being revoked?");
-    if(!reason)return;
-    const result=await mutation.run(`admin/v1/support-access/${grant.id}/revoke`,{reason});
-    if(result)grants.reload();
+  async function setStatus(partner: Partner, status: "active" | "inactive") {
+    const result = await statusMutation.run(
+      `finance/v1/partners/${partner.id}/status`,
+      { status },
+    );
+    if (result) partners.reload();
   }
-  return <section>
-    <div className="settings-card-head"><ShieldCheck size={20}/><div><h2>Security & support access</h2><p>Review time-limited, read-only access requested by an identified Zettaz support user.</p></div></div>
-    <Notice>Support has no standing tenant access. Approval lasts at most eight hours, remains visibly marked in the workspace, and can be revoked immediately.</Notice>
-    {(grants.error||mutation.error)&&<Notice error>{grants.error||mutation.error}</Notice>}
-    {!grants.data?<Loading/>:!grants.data.items.length?<Empty title="No support requests"><p>No Zettaz support user has requested access to this tenant.</p></Empty>:<div className="stack-list support-grants">{grants.data.items.map(grant=><div className="detail-row" key={grant.id}>
-      <span><strong>{grant.platform_user}</strong><small>{grant.purpose}</small><small>{grant.permissions.map(label).join(" · ")}</small>{grant.expires_at&&<small>Expires {new Date(grant.expires_at).toLocaleString()}</small>}</span>
-      <span><Status state={grant.status}/>{grant.status==="pending"&&<><button type="button" className="button secondary" disabled={mutation.busy} onClick={()=>void decide(grant,"rejected")}>Reject</button><button type="button" className="button" disabled={mutation.busy} onClick={()=>void decide(grant,"approved")}>Approve 8 hours</button></>}{grant.status==="approved"&&<button type="button" className="text-link danger" disabled={mutation.busy} onClick={()=>void revoke(grant)}>Revoke</button>}</span>
-    </div>)}</div>}
-  </section>;
+  return (
+    <section>
+      <div className="settings-card-head" id="resellers">
+        <Handshake size={20} />
+        <div>
+          <h2>Partners / Resellers</h2>
+          <p>
+            External hotels and resellers used across reservations and finance.
+            Staff attribute bookings here; settlement agreements stay in Finance.
+          </p>
+        </div>
+      </div>
+      <div className="form-grid">
+        <Field label="Organization name">
+          <input
+            required
+            maxLength={160}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+        </Field>
+        <Field label="Email · optional">
+          <input
+            type="email"
+            maxLength={254}
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+        </Field>
+        <Field label="Phone · optional">
+          <input
+            type="tel"
+            maxLength={40}
+            value={phone}
+            onChange={(event) => setPhone(event.target.value)}
+          />
+        </Field>
+        <Field label="Notes · optional">
+          <input
+            maxLength={2000}
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+          />
+        </Field>
+      </div>
+      <div className="form-actions">
+        <button
+          type="button"
+          className="button"
+          disabled={create.busy || !name.trim()}
+          onClick={() => void addPartner()}
+        >
+          {create.busy ? "Saving…" : "Add partner"}
+        </button>
+      </div>
+      {(create.error || statusMutation.error || partners.error) && (
+        <Notice error>
+          {create.error || statusMutation.error || partners.error}
+        </Notice>
+      )}
+      <div className="stack-list">
+        {(partners.data ?? []).map((partner) => (
+          <div className="detail-row" key={partner.id}>
+            <span>
+              <strong>{partner.name}</strong>
+              <small>
+                {label(partner.status ?? "active")}
+                {partner.email ? ` · ${partner.email}` : ""}
+                {partner.phone ? ` · ${partner.phone}` : ""}
+              </small>
+            </span>
+            <button
+              type="button"
+              className="button secondary"
+              disabled={statusMutation.busy}
+              onClick={() =>
+                void setStatus(
+                  partner,
+                  partner.status === "inactive" ? "active" : "inactive",
+                )
+              }
+            >
+              {partner.status === "inactive" ? "Reactivate" : "Deactivate"}
+            </button>
+          </div>
+        ))}
+        {!partners.data?.length && (
+          <Empty title="No partners yet" />
+        )}
+      </div>
+    </section>
+  );
+}
+function SupportAccessSettings() {
+  const grants = useResource<{ items: SupportGrant[] }>(
+    "admin/v1/support-access",
+  );
+  const mutation = useMutation();
+  const [pending, setPending] = useState<{
+    grant: SupportGrant;
+    action: "approved" | "rejected" | "revoked";
+  } | null>(null);
+
+  async function confirmPending(reason: string) {
+    if (!pending) return;
+    const { grant, action } = pending;
+    const result =
+      action === "revoked"
+        ? await mutation.run(`admin/v1/support-access/${grant.id}/revoke`, {
+            reason,
+          })
+        : await mutation.run(`admin/v1/support-access/${grant.id}/decision`, {
+            decision: action,
+            ...(action === "approved" ? { expiresInHours: 8 } : {}),
+            reason,
+          });
+    if (result) {
+      setPending(null);
+      grants.reload();
+    }
+  }
+
+  return (
+    <section>
+      <div className="settings-card-head">
+        <ShieldCheck size={20} />
+        <div>
+          <h2>Security & support access</h2>
+          <p>
+            Review time-limited, read-only access requested by an identified
+            Zettaz support user.
+          </p>
+        </div>
+      </div>
+      <Notice>
+        Support has no standing tenant access. Approval lasts at most eight
+        hours, remains visibly marked in the workspace, and can be revoked
+        immediately.
+      </Notice>
+      {(grants.error || mutation.error) && (
+        <Notice error>{grants.error || mutation.error}</Notice>
+      )}
+      {!grants.data ? (
+        <Loading />
+      ) : !grants.data.items.length ? (
+        <Empty title="No support requests">
+          <p>No Zettaz support user has requested access to this tenant.</p>
+        </Empty>
+      ) : (
+        <>
+          <div className="stack-list support-grants resource-table">
+            {grants.data.items.map((grant) => (
+              <div className="detail-row" key={grant.id}>
+                <span>
+                  <strong>{grant.platform_user}</strong>
+                  <small>{grant.purpose}</small>
+                  <small>{grant.permissions.map(label).join(" · ")}</small>
+                  {grant.expires_at && (
+                    <small>
+                      Expires {new Date(grant.expires_at).toLocaleString()}
+                    </small>
+                  )}
+                </span>
+                <span className="support-grant-actions">
+                  <Status state={grant.status} />
+                  {grant.status === "pending" && (
+                    <>
+                      <button
+                        type="button"
+                        className="button secondary"
+                        disabled={mutation.busy}
+                        onClick={() =>
+                          setPending({ grant, action: "rejected" })
+                        }
+                      >
+                        Reject
+                      </button>
+                      <button
+                        type="button"
+                        className="button"
+                        disabled={mutation.busy}
+                        onClick={() =>
+                          setPending({ grant, action: "approved" })
+                        }
+                      >
+                        Approve 8 hours
+                      </button>
+                    </>
+                  )}
+                  {grant.status === "approved" && (
+                    <button
+                      type="button"
+                      className="text-link danger-text"
+                      disabled={mutation.busy}
+                      onClick={() => setPending({ grant, action: "revoked" })}
+                    >
+                      Revoke
+                    </button>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="resource-cards support-grant-cards">
+            {grants.data.items.map((grant) => (
+              <article key={grant.id} className="resource-card">
+                <div className="resource-card-head">
+                  <strong>{grant.platform_user}</strong>
+                  <Status state={grant.status} />
+                </div>
+                <small>{grant.purpose}</small>
+                <small>{grant.permissions.map(label).join(" · ")}</small>
+                {grant.expires_at && (
+                  <small>
+                    Expires {new Date(grant.expires_at).toLocaleString()}
+                  </small>
+                )}
+                <div className="row-actions support-grant-actions">
+                  {grant.status === "pending" && (
+                    <>
+                      <button
+                        type="button"
+                        className="button secondary"
+                        disabled={mutation.busy}
+                        onClick={() =>
+                          setPending({ grant, action: "rejected" })
+                        }
+                      >
+                        Reject
+                      </button>
+                      <button
+                        type="button"
+                        className="button"
+                        disabled={mutation.busy}
+                        onClick={() =>
+                          setPending({ grant, action: "approved" })
+                        }
+                      >
+                        Approve 8 hours
+                      </button>
+                    </>
+                  )}
+                  {grant.status === "approved" && (
+                    <button
+                      type="button"
+                      className="text-link danger-text"
+                      disabled={mutation.busy}
+                      onClick={() => setPending({ grant, action: "revoked" })}
+                    >
+                      Revoke
+                    </button>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        </>
+      )}
+      <ConfirmDialog
+        open={Boolean(pending)}
+        title={
+          pending?.action === "approved"
+            ? "Approve support access?"
+            : pending?.action === "rejected"
+              ? "Reject support request?"
+              : "Revoke support access?"
+        }
+        description={
+          pending
+            ? `${pending.grant.platform_user} · ${pending.grant.purpose}`
+            : undefined
+        }
+        confirmLabel={
+          pending?.action === "approved"
+            ? "Approve 8 hours"
+            : pending?.action === "rejected"
+              ? "Reject request"
+              : "Revoke access"
+        }
+        danger={pending?.action !== "approved"}
+        reasonRequired
+        reasonLabel="Reason"
+        reasonPlaceholder="Record why this decision is being made."
+        busy={mutation.busy}
+        error={mutation.error}
+        onClose={() => setPending(null)}
+        onConfirm={confirmPending}
+      />
+    </section>
+  );
 }
 export function Team({ session }: { session: Session }) {
   const members = usePaged<Member>("staff/v1/workspace/members"),
@@ -1463,13 +3979,16 @@ export function Team({ session }: { session: Session }) {
   const [name, setName] = useState(""),
     [email, setEmail] = useState(""),
     [role, setRole] = useState("reservations"),
-    [adding, setAdding] = useState(false),
-    [invitationToken, setInvitationToken] = useState("");
+    [inviteOpen, setInviteOpen] = useState(false),
+    [invitationToken, setInvitationToken] = useState(""),
+    [pendingRevoke, setPendingRevoke] = useState<Member | null>(null);
   const roles = (roleData.data?.roles ?? []).filter(
     (item) => item.code !== "owner",
   );
-  async function create(e: React.FormEvent) {
-    e.preventDefault();
+  const activeCount = members.items.filter((item) => item.active).length;
+  const revokedCount = members.items.filter((item) => !item.active).length;
+
+  async function createInvite() {
     const result = await add.run<{ token: string }>("admin/v1/invitations", {
       name,
       email,
@@ -1478,167 +3997,342 @@ export function Team({ session }: { session: Session }) {
     if (result) {
       setName("");
       setEmail("");
-      setAdding(false);
+      setInviteOpen(false);
       setInvitationToken(result.token);
     }
   }
+
   async function update(m: Member, r: string, active: boolean) {
-    if (
-      m.active &&
-      !active &&
-      !window.confirm(`Revoke ${m.name}'s tenant access?`)
-    )
-      return;
     const result = await mutation.run(
       "admin/v1/members/" + m.id,
       { role: r, active },
       "PATCH",
     );
-    if (result) members.reload();
+    if (result) {
+      setPendingRevoke(null);
+      members.reload();
+    }
   }
+
   return (
     <>
       <Heading
-        title="Team & access"
-        description="Tenant staff only. External Partners/Resellers use a separate access model."
-        action={
-          <div className="button-row">
-            <Link className="button secondary" href="/roles">
-              <ShieldCheck size={17} />
-              Roles & permissions
-            </Link>
-            <button className="button" onClick={() => setAdding(!adding)}>
-              <Plus size={17} />
-              Invite staff member
-            </button>
-          </div>
-        }
+        eyebrow="ADMINISTRATION"
+        title="Staff & access"
+        description="Invite tenant staff and manage roles. External partners and resellers use a separate access model."
       />
-      {adding && (
-        <form className="panel form-panel" onSubmit={create}>
-          <h2>Invite a staff member</h2>
-          <p className="muted">
-            Creates a one-time activation token that expires in seven days.
-            Send it only through an approved channel.
-          </p>
-          <div className="form-grid three">
-            <Field label="Name">
-              <input
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </Field>
-            <Field label="Email">
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </Field>
-            <Field label="Role">
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                disabled={!roles.length}
-              >
-                {roles.map((r) => (
-                  <option key={r.id} value={r.code}>
-                    {r.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-          {add.error && <Notice error>{add.error}</Notice>}
-          <button className="button" disabled={add.busy || !roles.length}>
-            {add.busy ? "Creating…" : "Create invitation"}
-          </button>
-        </form>
-      )}
+
+      <div className="resource-metrics staff-metrics">
+        <div>
+          <strong>
+            {members.busy && !members.items.length ? "—" : activeCount}
+          </strong>
+          <span>Active staff</span>
+        </div>
+        <div className={revokedCount ? "attention" : ""}>
+          <strong>
+            {members.busy && !members.items.length ? "—" : revokedCount}
+          </strong>
+          <span>Revoked</span>
+        </div>
+        <div>
+          <strong>{roleData.data ? roles.length : "—"}</strong>
+          <span>Assignable roles</span>
+        </div>
+      </div>
+
+      <div className="view-action-bar resource-view-bar">
+        <div
+          className="view-tabs compact"
+          role="tablist"
+          aria-label="Staff and roles"
+        >
+          <Link
+            href="/team"
+            className="view-tab-link"
+            role="tab"
+            aria-selected="true"
+          >
+            Staff
+          </Link>
+          <Link
+            href="/roles"
+            className="view-tab-link"
+            role="tab"
+            aria-selected="false"
+          >
+            Roles & permissions
+          </Link>
+        </div>
+        <button
+          type="button"
+          className="button catalog-add-btn"
+          aria-label="Invite staff member"
+          onClick={() => setInviteOpen(true)}
+        >
+          <Plus size={17} />
+          <span className="button-label">Invite staff</span>
+        </button>
+      </div>
+
       {invitationToken && (
-        <section className="panel form-panel">
+        <section className="panel form-panel staff-invite-token">
           <h2>Activation token</h2>
           <p className="muted">
-            Copy this token now. It is shown once and cannot be recovered. The recipient can use it at <strong>/activate</strong>.
+            Copy this token now. It is shown once and cannot be recovered. The
+            recipient activates at <strong>/activate</strong>.
           </p>
           <Field label="One-time token">
-            <input readOnly value={invitationToken} onFocus={(e) => e.currentTarget.select()} />
+            <input
+              readOnly
+              value={invitationToken}
+              onFocus={(e) => e.currentTarget.select()}
+            />
           </Field>
-          <button className="button secondary" onClick={() => setInvitationToken("")}>Done</button>
+          <div className="button-row">
+            <button
+              type="button"
+              className="button secondary"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(invitationToken);
+                } catch {
+                  /* ignore */
+                }
+              }}
+            >
+              Copy token
+            </button>
+            <button
+              type="button"
+              className="button"
+              onClick={() => setInvitationToken("")}
+            >
+              Done
+            </button>
+          </div>
         </section>
       )}
+
       {(members.error || mutation.error) && (
         <Notice error>{members.error || mutation.error}</Notice>
       )}
-      <section className="panel">
+
+      <section className="panel" aria-label="Staff members">
+        <div className="panel-heading plain resource-tab-intro">
+          <div>
+            <h2>Staff members</h2>
+            <p className="muted">
+              Role changes apply immediately. Revoking access blocks sign-in for
+              this tenant without deleting the person record.
+            </p>
+          </div>
+        </div>
         {members.busy && !members.items.length ? (
           <Loading />
-        ) : (
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Staff member</th>
-                  <th>Role</th>
-                  <th>Access</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {members.items.map((m) => (
-                  <tr key={m.id}>
-                    <td>
-                      <strong>
-                        {m.name}
-                        {m.id === session.actorId ? " (you)" : ""}
-                      </strong>
-                      <small>{m.email}</small>
-                    </td>
-                    <td>
-                      {m.role === "owner" ? (
-                        <span className="owner-role">
-                          <ShieldCheck size={15} />
-                          Owner
-                        </span>
-                      ) : (
-                        <select
-                          aria-label={"Role for " + m.name}
-                          value={m.role}
-                          disabled={mutation.busy}
-                          onChange={(e) => update(m, e.target.value, m.active)}
-                        >
-                          {roles.map((r) => (
-                            <option key={r.id} value={r.code}>
-                              {r.name}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </td>
-                    <td>
-                      <Status state={m.active ? "active" : "revoked"} />
-                    </td>
-                    <td>
-                      {m.role !== "owner" && (
+        ) : members.items.length ? (
+          <>
+            <div className="table-scroll resource-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Staff member</th>
+                    <th>Role</th>
+                    <th>Access</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {members.items.map((m) => (
+                    <tr key={m.id}>
+                      <td>
+                        <strong>
+                          {m.name}
+                          {m.id === session.actorId ? " (you)" : ""}
+                        </strong>
+                        <small>{m.email}</small>
+                      </td>
+                      <td>
+                        {m.role === "owner" ? (
+                          <span className="owner-role">
+                            <ShieldCheck size={15} />
+                            Owner
+                          </span>
+                        ) : (
+                          <select
+                            aria-label={"Role for " + m.name}
+                            value={m.role}
+                            disabled={mutation.busy}
+                            onChange={(e) =>
+                              update(m, e.target.value, m.active)
+                            }
+                          >
+                            {roles.map((r) => (
+                              <option key={r.id} value={r.code}>
+                                {r.name}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </td>
+                      <td>
+                        <Status state={m.active ? "active" : "revoked"} />
+                      </td>
+                      <td>
+                        {m.role !== "owner" && (
+                          <div className="row-actions">
+                            {m.active ? (
+                              <button
+                                type="button"
+                                className="text-link danger-text"
+                                disabled={mutation.busy}
+                                onClick={() => setPendingRevoke(m)}
+                              >
+                                Revoke access
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="text-link"
+                                disabled={mutation.busy}
+                                onClick={() => update(m, m.role, true)}
+                              >
+                                Restore access
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="resource-cards">
+              {members.items.map((m) => (
+                <article key={m.id} className="resource-card">
+                  <div className="resource-card-head">
+                    <strong>
+                      {m.name}
+                      {m.id === session.actorId ? " (you)" : ""}
+                    </strong>
+                    <Status state={m.active ? "active" : "revoked"} />
+                  </div>
+                  <small>{m.email}</small>
+                  {m.role === "owner" ? (
+                    <span className="owner-role">
+                      <ShieldCheck size={15} />
+                      Owner
+                    </span>
+                  ) : (
+                    <Field label="Role">
+                      <select
+                        aria-label={"Role for " + m.name}
+                        value={m.role}
+                        disabled={mutation.busy}
+                        onChange={(e) => update(m, e.target.value, m.active)}
+                      >
+                        {roles.map((r) => (
+                          <option key={r.id} value={r.code}>
+                            {r.name}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  )}
+                  {m.role !== "owner" && (
+                    <div className="row-actions">
+                      {m.active ? (
                         <button
-                          className="text-button"
+                          type="button"
+                          className="text-link danger-text"
                           disabled={mutation.busy}
-                          onClick={() => update(m, m.role, !m.active)}
+                          onClick={() => setPendingRevoke(m)}
                         >
-                          {m.active ? "Revoke access" : "Restore access"}
+                          Revoke access
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="text-link"
+                          disabled={mutation.busy}
+                          onClick={() => update(m, m.role, true)}
+                        >
+                          Restore access
                         </button>
                       )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          </>
+        ) : (
+          <Empty title="No staff members yet">
+            Invite the first team member to share tenant access.
+          </Empty>
         )}
         <More {...members} count={members.items.length} />
       </section>
+
+      <FormDialog
+        open={inviteOpen}
+        title="Invite staff member"
+        description="Creates a one-time activation token that expires in seven days. Send it only through an approved channel."
+        busy={add.busy}
+        error={add.error}
+        submitLabel="Create invitation"
+        onClose={() => setInviteOpen(false)}
+        onSubmit={createInvite}
+      >
+        <Field label="Name" required>
+          <input
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </Field>
+        <Field label="Email" required>
+          <input
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+        </Field>
+        <Field label="Role" required>
+          <select
+            required
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            disabled={!roles.length}
+          >
+            {roles.map((r) => (
+              <option key={r.id} value={r.code}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </FormDialog>
+
+      <ConfirmDialog
+        open={Boolean(pendingRevoke)}
+        title="Revoke access?"
+        description={
+          pendingRevoke
+            ? `${pendingRevoke.name} will no longer be able to sign in to this tenant. You can restore access later.`
+            : undefined
+        }
+        confirmLabel="Revoke access"
+        danger
+        busy={mutation.busy}
+        error={mutation.error}
+        onClose={() => setPendingRevoke(null)}
+        onConfirm={() => {
+          if (pendingRevoke) return update(pendingRevoke, pendingRevoke.role, false);
+        }}
+      />
     </>
   );
 }
@@ -1664,7 +4358,7 @@ export function RolesPermissions() {
     create = useMutation();
   const [name, setName] = useState(""),
     [selected, setSelected] = useState<string[]>([]),
-    [adding, setAdding] = useState(false);
+    [createOpen, setCreateOpen] = useState(false);
   if (data.error) return <Notice error>{data.error}</Notice>;
   if (!data.data) return <Loading />;
   const grouped = Object.entries(
@@ -1673,8 +4367,10 @@ export function RolesPermissions() {
       (permission) => permission.module_name,
     ),
   );
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
+  const systemCount = data.data.roles.filter((role) => role.is_system).length;
+  const customCount = data.data.roles.filter((role) => !role.is_system).length;
+
+  async function submit() {
     const result = await create.run("admin/v1/roles", {
       name,
       permissions: selected,
@@ -1682,95 +4378,190 @@ export function RolesPermissions() {
     if (result) {
       setName("");
       setSelected([]);
-      setAdding(false);
+      setCreateOpen(false);
       data.reload();
     }
   }
+
   return (
     <>
       <Heading
+        eyebrow="ADMINISTRATION"
         title="Roles & permissions"
         description="System roles are protected. Create tenant roles by selecting the capabilities staff require."
-        action={
-          <Link className="button secondary" href="/team">
-            Back to team
-          </Link>
-        }
       />
-      {adding ? (
-        <form className="panel form-panel" onSubmit={submit}>
-          <h2>Create tenant role</h2>
-          <Field label="Role name">
-            <input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              required
-            />
-          </Field>
-          <div className="permission-grid">
-            {grouped.map(([module, permissions]) => (
-              <fieldset key={module}>
-                <legend>{module}</legend>
-                {permissions!.map((permission) => (
-                  <label key={permission.code}>
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(permission.code)}
-                      onChange={() =>
-                        setSelected((current) =>
-                          current.includes(permission.code)
-                            ? current.filter((code) => code !== permission.code)
-                            : [...current, permission.code],
-                        )
-                      }
-                    />{" "}
-                    <span>
-                      <strong>{permission.name}</strong>
-                      <small>{permission.description}</small>
-                    </span>
-                  </label>
-                ))}
-              </fieldset>
-            ))}
-          </div>
-          {create.error && <Notice error>{create.error}</Notice>}
-          <button className="button" disabled={create.busy || !selected.length}>
-            {create.busy ? "Creating…" : "Create role"}
-          </button>
-        </form>
-      ) : (
-        <button className="button" onClick={() => setAdding(true)}>
+
+      <div className="resource-metrics staff-metrics">
+        <div>
+          <strong>{systemCount}</strong>
+          <span>System roles</span>
+        </div>
+        <div>
+          <strong>{customCount}</strong>
+          <span>Custom roles</span>
+        </div>
+        <div>
+          <strong>{data.data.permissions.length}</strong>
+          <span>Permissions</span>
+        </div>
+      </div>
+
+      <div className="view-action-bar resource-view-bar">
+        <div
+          className="view-tabs compact"
+          role="tablist"
+          aria-label="Staff and roles"
+        >
+          <Link
+            href="/team"
+            className="view-tab-link"
+            role="tab"
+            aria-selected="false"
+          >
+            Staff
+          </Link>
+          <Link
+            href="/roles"
+            className="view-tab-link"
+            role="tab"
+            aria-selected="true"
+          >
+            Roles & permissions
+          </Link>
+        </div>
+        <button
+          type="button"
+          className="button catalog-add-btn"
+          aria-label="Create role"
+          onClick={() => setCreateOpen(true)}
+        >
           <Plus size={17} />
-          Create role
+          <span className="button-label">Create role</span>
         </button>
-      )}
-      <section className="panel roles-table">
-        <table>
-          <thead>
-            <tr>
-              <th>Role</th>
-              <th>Permissions</th>
-              <th>Type</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.data.roles.map((role) => (
-              <tr key={role.id}>
-                <td>
-                  <strong>{role.name}</strong>
+      </div>
+
+      <section className="panel roles-table" aria-label="Roles">
+        <div className="panel-heading plain resource-tab-intro">
+          <div>
+            <h2>Roles</h2>
+            <p className="muted">
+              Assignable capabilities for staff invitations and member updates.
+            </p>
+          </div>
+        </div>
+        {data.data.roles.length ? (
+          <>
+            <div className="table-scroll resource-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Role</th>
+                    <th>Permissions</th>
+                    <th>Type</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.data.roles.map((role) => (
+                    <tr key={role.id}>
+                      <td>
+                        <strong>{role.name}</strong>
+                        <small>{role.code}</small>
+                      </td>
+                      <td>
+                        <span className="role-permission-summary">
+                          {role.permissions.length
+                            ? `${role.permissions.length} permissions`
+                            : "No permissions"}
+                        </span>
+                        <small>
+                          {role.permissions.map(label).join(", ") || "—"}
+                        </small>
+                      </td>
+                      <td>
+                        <Status
+                          state={role.is_system ? "system" : "custom"}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="resource-cards">
+              {data.data.roles.map((role) => (
+                <article key={role.id} className="resource-card">
+                  <div className="resource-card-head">
+                    <strong>{role.name}</strong>
+                    <Status state={role.is_system ? "system" : "custom"} />
+                  </div>
                   <small>{role.code}</small>
-                </td>
-                <td>
-                  {role.permissions.map(label).join(", ") || "No permissions"}
-                </td>
-                <td>
-                  <Status state={role.is_system ? "system" : "custom"} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  <small>
+                    {role.permissions.map(label).join(", ") ||
+                      "No permissions"}
+                  </small>
+                </article>
+              ))}
+            </div>
+          </>
+        ) : (
+          <Empty title="No roles configured">
+            Create a tenant role with the permissions your staff need.
+          </Empty>
+        )}
       </section>
+
+      <FormDialog
+        open={createOpen}
+        title="Create tenant role"
+        description="Choose only the capabilities this role should grant."
+        busy={create.busy}
+        error={
+          create.error ||
+          (createOpen && !selected.length
+            ? "Select at least one permission to continue."
+            : null)
+        }
+        submitLabel="Create role"
+        onClose={() => setCreateOpen(false)}
+        onSubmit={async () => {
+          if (!selected.length) return;
+          await submit();
+        }}
+      >
+        <Field label="Role name" required>
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            required
+          />
+        </Field>
+        <div className="permission-grid permission-grid-modal">
+          {grouped.map(([module, permissions]) => (
+            <fieldset key={module}>
+              <legend>{module}</legend>
+              {permissions!.map((permission) => (
+                <label key={permission.code}>
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(permission.code)}
+                    onChange={() =>
+                      setSelected((current) =>
+                        current.includes(permission.code)
+                          ? current.filter((code) => code !== permission.code)
+                          : [...current, permission.code],
+                      )
+                    }
+                  />{" "}
+                  <span>
+                    <strong>{permission.name}</strong>
+                    <small>{permission.description}</small>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+          ))}
+        </div>
+      </FormDialog>
     </>
   );
 }

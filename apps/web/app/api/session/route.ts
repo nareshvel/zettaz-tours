@@ -43,6 +43,16 @@ export async function POST(request: Request) {
   try {
     const input = await request.json();
     const existing = (await cookies()).get(sessionCookie)?.value;
+    // _rawToken: set directly after self-registration (no additional auth call needed)
+    if (input._rawToken) {
+      const res = await upstream("/staff/v1/workspace/session", {}, input._rawToken);
+      if (!res.ok) return Response.json({ message: "Registration session could not be established." }, { status: 401 });
+      (await cookies()).set(sessionCookie, input._rawToken, { httpOnly: true, sameSite: "strict", secure: false, path: "/", maxAge: 8 * 60 * 60 });
+      const tenants = input.tenantId
+        ? [{ tenantId: input.tenantId, name: "", email: "" }]
+        : [];
+      return Response.json({ session: await res.json(), tenants }, { headers: { "Cache-Control": "no-store" } });
+    }
     const auth =
       input.activationToken
         ? await upstream("/auth/v1/invitations/accept", {

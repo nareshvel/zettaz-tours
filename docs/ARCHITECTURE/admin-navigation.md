@@ -20,14 +20,17 @@ Proposed tenant lifecycle: setup → active → restricted → archived, with re
 
 Visible groups are derived from permissions, release availability and tenant features. Denied screens are not discoverable through search, badges or counts. A configured but temporarily unavailable gateway shows actionable status to authorized administrators. Track B products are omitted until enabled; no empty placeholder menus.
 
+The tenant web aside uses four task-oriented groups: **Workspace** for the overview, **Operations** for day board / departures / reservations / catalog, **Insights** for reports and customers (read-oriented), and **Administration** for finance/resources/staff/settings/audit. A group is omitted when none of its destinations are permitted. Finance accepts its scoped finance permission families, Team & resources accepts resource management or assignment authority, and every authenticated staff user can reach their own profile. **Zettaz subscription** lives under **My profile → Subscription** and is shown only to the tenant owner (not in the main aside). On phone/tablet (≤1366px) the profile shell stacks identity + horizontal section chips above content with no gap between strip and panel; desktop keeps a sticky side rail. Route authorization remains server-enforced.
+
 | Group / screens | Primary users | Main work and required states | Release |
 | --- | --- | --- | --- |
 | Home | Owner/admin; role-specific defaults | Setup checklist or today's exceptions; tenant/timezone context | Track A, after first slice |
+| Day Board (menu label; route `/operations`) | Dispatcher | One-day pickup readiness, weather/closure, path to board guests (manifest) | Track A |
+| Departures / calendar, detail | Reservations, dispatcher | Capacity vs sellable instances across dates; Book; open manifest | Track A |
 | Reservations / list, new, detail, change review | Reservations; authorized read roles | Search by reference/name/date/source; draft/hold/confirm; party, pickup, money, timeline; expiry/conflict recovery | Track A |
-| Departures / calendar, detail | Reservations, dispatcher | Capacity vs readiness, bookings and manifest; weather/blackout indicators | Track A |
-| Operations / today, assignments, pickups, weather review | Dispatcher | Assign crew/resources, readiness, cruise warnings, affected-booking review, print/PDF | Track A |
-| Customers / search, detail | Reservations; scoped roles | Contact, passengers, accommodation, booking history, duplicate review; protected sensitive data | Track A |
 | Catalog / products, options, rates, schedules, policies | Owner/admin | Effective dates, rate gaps/overlaps, categories, one add-on, publish/archive | Track A |
+| Customers / search, detail | Reservations; scoped roles | Contact and history (Insights); protected sensitive data. Create/edit remains later. | Track A |
+| Operations pickup/plan/list/rebook (under Day Board) | Dispatcher | Plan pickups (edit sequence), Print pickup list, recovery after closure; weather hold/close/reopen via in-app reason dialog | Track A |
 | Partners / organizations, contacts, contracts, booking history | Owner/admin; scoped reservations/finance | External hotels/resellers, attribution, collector terms; finance-only money views | Track A staff-managed |
 | Finance / overview, booking payments, refunds, partner statements, remittances | Finance/owner | Guest dues, partner dues, evidence review, receipt matching, unallocated amounts, corrections | Track A slim |
 | Team & resources / staff, assets, expiry documents | Admin, dispatcher, resource manager | Qualification/expiry status and conflict detail; security roles managed in Settings | Track A minimum |
@@ -35,9 +38,9 @@ Visible groups are derived from permissions, release availability and tenant fea
 | Integrations / connections, mappings, inbox, reconciliation | Authorized admin/staff | WP, imports, retries/quarantine and mapping fixes; payment secrets restricted | Track A |
 | Reports / operations, collections, partner dues | Scoped owner/finance/auditor | Explicit date basis, population, currency and permitted export | Track A basic |
 | Settings / business, currencies/policies, members/roles, notifications, payment providers, audit | Owner/admin by permission | Setup and change audit; finance/provider actions not implied by general settings access | Track A |
-| Settings / Zettaz subscription | Tenant owner or delegated billing contact | Software plan, invoices, renewal, payment method, cancellation policy | Track B self-service |
+| Settings / Zettaz subscription | Tenant owner only (under My profile) | Software plan, invoices, renewal, payment method, cancellation policy | Track A read + Stripe portal when ready |
 
-Manifest detail is reachable from Reservations and Operations but is one consistent view with field-level access. Partner statements are linked from a partner record but remain finance-owned. Provider configuration is a Settings permission; daily receipt reconciliation is a Finance permission.
+Manifest detail is one consistent boarding view (arrive → pay if needed → waiver → board), reachable from Day Board (Board guests) and Departures. Partner statements are linked from a partner record but remain finance-owned. Provider configuration is a Settings permission; daily receipt reconciliation is a Finance permission.
 
 Crew mobile uses **Today → Assigned trip → Guests/check-in → Trip events**, plus Sync status and Profile. It does not inherit the whole admin menu. Guest waiver/payment links open one bounded task with expiry and recovery messaging, not tenant navigation. The reseller portal has its own future navigation and identity partition.
 

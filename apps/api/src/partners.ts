@@ -92,6 +92,37 @@ export class PartnerService {
       return result;
     });
   }
+  setStatus(actor: Actor, partnerId: string, key: string, raw: unknown) {
+    const input = parse(
+      z.object({ status: z.enum(["active", "inactive"]) }).strict(),
+      raw,
+    );
+    return this.db.command(
+      actor,
+      `partner.status:${partnerId}`,
+      key,
+      input,
+      async (tx) => {
+        const {
+          rows: [before],
+        } = await tx.query(
+          "SELECT id,name,email,phone,status,notes,created_at FROM partner_organizations WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
+          [actor.tenantId, partnerId],
+        );
+        if (!before) throw new NotFoundException("Partner not found");
+        const {
+          rows: [after],
+        } = await tx.query(
+          `UPDATE partner_organizations SET status=$3
+           WHERE tenant_id=$1 AND id=$2
+           RETURNING id,name,email,phone,status,notes,created_at`,
+          [actor.tenantId, partnerId, input.status],
+        );
+        await record(tx, actor, "partner.status_changed", partnerId, before, after);
+        return after;
+      },
+    );
+  }
   claim(actor: Actor, key: string, raw: unknown) {
     const input = parse(claimSchema, raw);
     return this.db.command(actor, "partner.claim.create", key, input, async (tx) => {
@@ -251,6 +282,19 @@ export class PartnerController {
     @Body() body: unknown,
   ) {
     return this.service.create(actor, parse(keySchema, key), body);
+  }
+  @Post("partners/:id/status") @Access("partner.manage") setStatus(
+    @CurrentActor() actor: Actor,
+    @Param("id") partnerId: string,
+    @Headers("idempotency-key") key: string,
+    @Body() body: unknown,
+  ) {
+    return this.service.setStatus(
+      actor,
+      parse(z.string().uuid(), partnerId),
+      parse(keySchema, key),
+      body,
+    );
   }
   @Post("partner-claims") @Access("partner.collection.record") claim(
     @CurrentActor() actor: Actor, @Headers("idempotency-key") key: string, @Body() body: unknown,

@@ -9,11 +9,15 @@ async function main() {
   const apiPort = String(process.env.PORT ?? 3190);
   const webPort = String(process.env.WEB_PORT ?? 3191);
   const shared = { ...process.env, APP_MODE: "demo" };
-  const api = spawn(process.execPath, [resolve("dist/apps/api/src/main.js")], {
-    cwd: resolve("."),
-    env: shared,
-    stdio: "inherit",
-  });
+  const api = spawn(
+    process.execPath,
+    ["--watch", resolve("dist/apps/api/src/main.js")],
+    {
+      cwd: resolve("."),
+      env: shared,
+      stdio: "inherit",
+    },
+  );
   const web = spawn(
     process.execPath,
     [

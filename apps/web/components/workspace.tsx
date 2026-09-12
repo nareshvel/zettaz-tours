@@ -21,6 +21,8 @@ import {
   CreditCard,
   Landmark,
   BarChart3,
+  Route,
+  CheckCircle2,
 } from "lucide-react";
 import type { DemoTenant, Session } from "@/lib/types";
 import { errorText, label, setTenantContext } from "@/lib/client";
@@ -41,43 +43,60 @@ import {
 } from "./dispatch";
 import { NewReservation, BookingDetail } from "./booking";
 import {
+  AvailabilityDetail,
   Catalog,
   NewProduct,
   NewSchedule,
+  ProductDetail,
   Settings,
   Team,
   RolesPermissions,
 } from "./administration";
 import { Profile } from "./profile";
-import { Subscription } from "./subscription";
-import { Entry } from "./auth";
+import { Entry, Signup } from "./auth";
 import { Resources } from "./resources";
 import { Finance } from "./finance";
 import { Integrations } from "./integrations";
 import { Reports } from "./reports";
 import { CustomerDetailPage, Customers } from "./customers";
+import { CrewWorkspace } from "./crew";
 
 let retainedSession: Session | null = null;
 let retainedTenants: DemoTenant[] = [];
 
+function normalizeBootstrap(value: Session | null): Session | null {
+  if (!value) return null;
+  return {
+    ...value,
+    actorName:
+      value.actorName ||
+      value.tenant.authorized_contact?.name ||
+      "Tenant owner",
+    actorEmail:
+      value.actorEmail ||
+      value.tenant.authorized_contact?.email ||
+      "No email address on file",
+  };
+}
+
 const navigation = [
+  {
+    href: "/crew",
+    name: "My trips",
+    icon: Route,
+    permission: "crew.trip.read",
+  },
   {
     href: "/",
     name: "Overview",
     icon: LayoutDashboard,
-    permission: "bookings.read",
+    permission: "authenticated",
   },
   {
-    href: "/reservations",
-    name: "Reservations",
-    icon: Tickets,
-    permission: "bookings.read",
-  },
-  {
-    href: "/customers",
-    name: "Customers",
-    icon: UserRound,
-    permission: "bookings.read",
+    href: "/operations",
+    name: "Day Board",
+    icon: ClipboardList,
+    permission: "manifest.read",
   },
   {
     href: "/departures",
@@ -86,16 +105,22 @@ const navigation = [
     permission: "catalog.read",
   },
   {
-    href: "/operations",
-    name: "Operations",
-    icon: ClipboardList,
-    permission: "manifest.read",
+    href: "/reservations",
+    name: "Reservations",
+    icon: Tickets,
+    permission: "bookings.read",
   },
   {
     href: "/catalog",
     name: "Catalog",
     icon: BookOpen,
     permission: "catalog.read",
+  },
+  {
+    href: "/customers",
+    name: "Customers",
+    icon: UserRound,
+    permission: "bookings.read",
   },
   {
     href: "/reports",
@@ -128,22 +153,30 @@ const navigation = [
     permission: "config.write",
   },
   {
-    href: "/subscription",
-    name: "Subscription",
-    icon: CreditCard,
-    permission: "config.write",
-  },
-  {
     href: "/audit",
     name: "Audit trail",
     icon: ShieldCheck,
     permission: "audit.read",
   },
 ];
-export function Workspace() {
-  const [session, setSessionState] = useState<Session | null>(retainedSession),
-    [tenants, setTenantsState] = useState<DemoTenant[]>(retainedTenants),
-    [loading, setLoading] = useState(!retainedSession),
+export function Workspace({
+  initialSession = null,
+  initialTenants = [],
+}: {
+  initialSession?: Session | null;
+  initialTenants?: DemoTenant[];
+} = {}) {
+  const [session, setSessionState] = useState<Session | null>(() => {
+    const seed = retainedSession ?? normalizeBootstrap(initialSession);
+    retainedSession = seed;
+    return seed;
+  }),
+    [tenants, setTenantsState] = useState<DemoTenant[]>(() => {
+      const seed = retainedTenants.length ? retainedTenants : initialTenants;
+      retainedTenants = seed;
+      return seed;
+    }),
+    [loading, setLoading] = useState(() => !Boolean(retainedSession ?? initialSession)),
     [error, setError] = useState(""),
     [menu, setMenu] = useState(false),
     [accountMenu, setAccountMenu] = useState(false);
@@ -157,38 +190,58 @@ export function Workspace() {
     retainedTenants = value;
     setTenantsState(value);
   };
-  const normalizeSession = (value: Session | null): Session | null => {
-    if (!value) return null;
-    return {
-      ...value,
-      actorName:
-        value.actorName ||
-        value.tenant.authorized_contact?.name ||
-        "Tenant owner",
-      actorEmail:
-        value.actorEmail ||
-        value.tenant.authorized_contact?.email ||
-        "No email address on file",
-    };
-  };
-  const load = async () => {
-    setLoading(true);
+  const normalizeSession = (value: Session | null): Session | null =>
+    normalizeBootstrap(value);
+  const load = async (opts?: { silent?: boolean }) => {
+    const silent = Boolean(opts?.silent);
+    if (!silent) setLoading(true);
     setError("");
     try {
       const res = await fetch("/api/session", { cache: "no-store" });
       const data = await res.json();
-      if (!res.ok) throw new Error(errorText(data));
+      if (!res.ok) {
+        if (res.status === 401) setSession(null);
+        throw new Error(errorText(data));
+      }
       setTenants(data.tenants);
       setSession(normalizeSession(data.session ?? null));
     } catch (e) {
       setError((e as Error).message);
+      if (!silent) setSession(null);
     } finally {
       setLoading(false);
     }
   };
   useEffect(() => {
-    void load();
+    void load({ silent: Boolean(retainedSession ?? initialSession) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  useEffect(() => {
+    if (
+      session &&
+      path === "/" &&
+      session.permissions.includes("crew.trip.read") &&
+      !session.permissions.includes("bookings.read")
+    )
+      router.replace("/crew");
+  }, [path, router, session]);
+  useEffect(() => {
+    if (!menu && !accountMenu) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenu(false);
+        setAccountMenu(false);
+      }
+    };
+    document.addEventListener("keydown", close);
+    const lockPage = menu && window.matchMedia("(max-width: 850px)").matches;
+    const previousOverflow = document.body.style.overflow;
+    if (lockPage) document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", close);
+      if (lockPage) document.body.style.overflow = previousOverflow;
+    };
+  }, [accountMenu, menu]);
   async function select(tenantId?: string, email?: string, password?: string) {
     if (session && tenantId === session.tenant.id) return;
     if (
@@ -200,7 +253,6 @@ export function Workspace() {
     )
       return;
     setLoading(true);
-    setSession(null);
     setError("");
     try {
       const res = await fetch("/api/session", {
@@ -216,7 +268,12 @@ export function Workspace() {
       if (!res.ok) throw new Error(errorText(data));
       setSession(normalizeSession(data.session ?? null));
       if (data.tenants) setTenants(data.tenants);
-      router.replace("/");
+      router.replace(
+        data.session?.permissions?.includes("crew.trip.read") &&
+          !data.session?.permissions?.includes("bookings.read")
+          ? "/crew"
+          : "/",
+      );
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -237,27 +294,66 @@ export function Workspace() {
     }
   }
   setTenantContext(session?.tenant.id ?? null);
+  if (loading && !session) {
+    return (
+      <main className="workspace-boot" aria-busy="true">
+        <Loading />
+      </main>
+    );
+  }
+  // Signup page — accessible without a session
+  if (path === "/signup") return <Signup />;
+
   if (!session)
     return (
       <Entry
         login={path === "/login"}
         activation={path === "/activate"}
-        recovery={path === "/forgot-password"||path === "/reset-password"}
+        recovery={path === "/forgot-password" || path === "/reset-password"}
+        signup={path === "/signup"}
         tenants={tenants}
         busy={loading}
         error={error}
         signIn={select}
       />
     );
-  const can = (permission: string) => session.permissions.includes(permission);
-  const administrationLinks = new Set([
-    "/resources",
-    "/team",
-    "/settings",
-    "/subscription",
-    "/audit",
-    "/finance",
-  ]);
+  const can = (permission: string) =>
+    permission === "authenticated" || session.permissions.includes(permission);
+  const canOpen = (href: string, permission: string) => {
+    const alternatives: Record<string, string[]> = {
+      "/finance": [
+        "payment.write",
+        "payment.correct",
+        "partner.statement.read",
+        "partner.collection.verify",
+      ],
+      "/resources": ["resources.write", "assignments.write"],
+    };
+    return (alternatives[href] ?? [permission]).some(can);
+  };
+  const navigationGroups = [
+    { label: "WORKSPACE", links: ["/", "/crew"] },
+    {
+      label: "OPERATIONS",
+      links: [
+        "/operations",
+        "/departures",
+        "/reservations",
+        "/catalog",
+      ],
+    },
+    { label: "INSIGHTS", links: ["/reports", "/customers"] },
+    {
+      label: "ADMINISTRATION",
+      links: [
+        "/finance",
+        "/resources",
+        "/team",
+        "/settings",
+        "/audit",
+      ],
+    },
+  ];
   const accountTenants = tenants.filter(
     (tenant, index, list) =>
       tenant.email.toLowerCase() === session.actorEmail.toLowerCase() &&
@@ -271,8 +367,16 @@ export function Workspace() {
     area = segments[0] ?? "overview";
   let content: React.ReactNode;
   let permission = "bookings.read";
-  if (area === "overview") content = <Overview session={session} />;
-  else if (area === "reservations" && segments[1] === "new") {
+  if (
+    area === "crew" ||
+    (area === "overview" && can("crew.trip.read") && !can("bookings.read"))
+  ) {
+    permission = "crew.trip.read";
+    content = <CrewWorkspace session={session} />;
+  } else if (area === "overview") {
+    permission = "authenticated";
+    content = <Overview session={session} />;
+  } else if (area === "reservations" && segments[1] === "new") {
     permission = "bookings.write";
     content = <NewReservation session={session} />;
   } else if (
@@ -318,26 +422,47 @@ export function Workspace() {
   } else if (area === "operations") {
     permission = "manifest.read";
     content = <OperationsBoard session={session} />;
+  } else if (area === "catalog" && segments[1] === "availability" && segments[2] === "new") {
+    permission = "catalog.write";
+    content = <NewSchedule session={session} />;
+  } else if (area === "catalog" && segments[1] === "availability" && segments[2]) {
+    permission = "catalog.read";
+    content = (
+      <AvailabilityDetail session={session} ruleId={segments[2]} />
+    );
   } else if (area === "catalog" && segments[1] === "new") {
     permission = "catalog.write";
     content = <NewProduct session={session} />;
+  } else if (area === "catalog" && segments[1]) {
+    permission = "catalog.read";
+    content = <ProductDetail session={session} productId={segments[1]} />;
   } else if (area === "catalog") {
     permission = "catalog.read";
     content = <Catalog session={session} />;
   } else if (area === "resources") {
-    permission = "resources.write";
-    content = <Resources />;
+    permission = can("resources.write")
+      ? "resources.write"
+      : "assignments.write";
+    content = <Resources session={session} />;
   } else if (area === "settings") {
     permission = "config.write";
     content = <Settings session={session} refresh={load} />;
   } else if (area === "profile") {
-    permission = "catalog.read";
-    content = <Profile session={session} />;
+    permission = "authenticated";
+    content = (
+      <Profile session={session} section={segments[1] ?? "profile"} />
+    );
   } else if (area === "subscription") {
-    permission = "config.write";
-    content = <Subscription session={session} />;
+    permission = "authenticated";
+    content = <Profile session={session} section="subscription" />;
   } else if (area === "finance") {
-    permission = "partner.collection.verify";
+    permission =
+      [
+        "payment.write",
+        "payment.correct",
+        "partner.statement.read",
+        "partner.collection.verify",
+      ].find(can) ?? "partner.collection.verify";
     content = <Finance session={session} />;
   } else if (area === "integrations") {
     permission = "integration.manage";
@@ -365,7 +490,11 @@ export function Workspace() {
       <a className="skip-link" href="#main">
         Skip to content
       </a>
-      <aside className={"sidebar " + (menu ? "open" : "")}>
+      <aside
+        aria-label="Workspace navigation"
+        className={"sidebar " + (menu ? "open" : "")}
+        id="workspace-navigation"
+      >
         <Link href="/" className="brand">
           <img
             className="brand-logo sidebar-logo"
@@ -373,48 +502,43 @@ export function Workspace() {
             alt="Zettaz Tours and Charters"
           />
         </Link>
-        <p className="nav-label">WORKSPACE</p>
-        <nav aria-label="Main navigation">
-          {navigation
-            .filter(
-              (n) => can(n.permission) && !administrationLinks.has(n.href),
-            )
-            .map(({ href, name, icon: Icon }) => (
-              <Link
-                key={href}
-                href={href}
-                onClick={() => setMenu(false)}
-                className={
-                  (href === "/" ? path === "/" : path.startsWith(href))
-                    ? "active"
-                    : ""
-                }
-              >
-                <Icon size={19} />
-                {name}
-              </Link>
-            ))}
-        </nav>
-        <p className="nav-label">ADMINISTRATION</p>
-        <nav aria-label="Administration navigation">
-          {navigation
-            .filter((n) => can(n.permission) && administrationLinks.has(n.href))
-            .map(({ href, name, icon: Icon }) => (
-              <Link
-                key={href}
-                href={href}
-                onClick={() => setMenu(false)}
-                className={
-                  (href === "/" ? path === "/" : path.startsWith(href))
-                    ? "active"
-                    : ""
-                }
-              >
-                <Icon size={19} />
-                {name}
-              </Link>
-            ))}
-        </nav>
+        <div className="sidebar-nav-scroll">
+          {navigationGroups.map((group) => {
+            const items = navigation.filter(
+              (item) =>
+                group.links.includes(item.href) &&
+                canOpen(item.href, item.permission),
+            );
+            if (!items.length) return null;
+            return (
+              <div className="nav-group" key={group.label}>
+                <p className="nav-label">{group.label}</p>
+                <nav aria-label={`${group.label.toLowerCase()} navigation`}>
+                  {items.map(({ href, name, icon: Icon }) => (
+                    <Link
+                      aria-current={
+                        (href === "/" ? path === "/" : path.startsWith(href))
+                          ? "page"
+                          : undefined
+                      }
+                      key={href}
+                      href={href}
+                      onClick={() => setMenu(false)}
+                      className={
+                        (href === "/" ? path === "/" : path.startsWith(href))
+                          ? "active"
+                          : ""
+                      }
+                    >
+                      <Icon size={19} />
+                      {name}
+                    </Link>
+                  ))}
+                </nav>
+              </div>
+            );
+          })}
+        </div>
         <div className="sidebar-bottom">
           {accountMenu && (
             <div
@@ -460,9 +584,9 @@ export function Workspace() {
                 <Link href="/profile" onClick={() => setAccountMenu(false)}>
                   <UserRound size={17} /> My profile
                 </Link>
-                {can("config.write") && (
+                {session.role === "owner" && (
                   <Link
-                    href="/subscription"
+                    href="/profile/subscription"
                     onClick={() => setAccountMenu(false)}
                   >
                     <CreditCard size={17} /> My subscription
@@ -513,6 +637,8 @@ export function Workspace() {
         <header className="topbar">
           <div className="breadcrumb">
             <button
+              aria-controls="workspace-navigation"
+              aria-expanded={menu}
               className="mobile-menu"
               aria-label="Open navigation"
               onClick={() => setMenu(true)}
@@ -552,6 +678,13 @@ export function Workspace() {
           </div>
         )}
         <main id="main" className="page" key={session.tenant.id + path}>
+          {typeof window !== "undefined" && new URLSearchParams(window.location.search).get("welcome") === "1" && (
+            <div className="checkout-success-banner" role="status">
+              <CheckCircle2 size={18} />
+              <span>Welcome to Zettaz! Your workspace is ready. <button className="text-link" style={{background:"none",border:"none",cursor:"pointer",color:"inherit",textDecoration:"underline"}} onClick={()=>{const u=new URL(window.location.href);u.searchParams.delete("welcome");window.history.replaceState({},"",u.toString());}}>Dismiss</button></span>
+              {(() => {const perms = session.permissions; if(perms.includes("config.write")) return <a href="/profile/subscription" style={{marginLeft:"auto",fontWeight:600,color:"#176c63",textDecoration:"none"}}>Start free trial →</a>; return null;})()}
+            </div>
+          )}
           {error && <Notice error>{error}</Notice>}
           {loading ? (
             <Loading />

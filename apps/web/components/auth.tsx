@@ -1,19 +1,28 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 import {
   ArrowRight,
+  BarChart3,
   CheckCircle2,
+  Clock,
+  Globe,
   LockKeyhole,
+  Map,
+  Shield,
   UsersRound,
+  Zap,
 } from "lucide-react";
 import type { DemoTenant } from "@/lib/types";
+import { COUNTRIES, TIMEZONES, CURRENCIES, defaultTimezoneForCountry, currencyForCountry } from "@/lib/countries";
 import { Loading, Notice } from "./common";
 
 export function Entry({
   login,
   activation,
   recovery,
+  signup,
   tenants,
   busy,
   error,
@@ -22,6 +31,7 @@ export function Entry({
   login: boolean;
   activation: boolean;
   recovery: boolean;
+  signup: boolean;
   tenants: DemoTenant[];
   busy: boolean;
   error: string;
@@ -38,49 +48,152 @@ export function Entry({
   const [activationError, setActivationError] = useState("");
   const [recoveryToken,setRecoveryToken]=useState("");
   const [recoveryMessage,setRecoveryMessage]=useState("");
-  if(recovery) return <main className="login-page"><div className="login-brand"><img src="/brand/zettaz-logo-dark.svg" alt="Zettaz Tours and Charters"/></div><section className="login-card"><p className="eyebrow">ACCOUNT RECOVERY</p><h1>{recoveryToken?"Choose a new password":"Reset your password"}</h1><p className="subtitle">{recoveryToken?"Use the single-use recovery token and choose a new password.":"Enter your work email. The response is the same whether or not an account exists."}</p><form onSubmit={async event=>{event.preventDefault();setActivationError("");const response=await fetch("/api/recovery",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(recoveryToken?{token:recoveryToken,password}:{email})});const result=await response.json();if(!response.ok)return setActivationError(result.message??"Recovery failed.");if(recoveryToken){setRecoveryMessage("Password updated. All previous sessions were signed out.");return}setRecoveryMessage("If that account is active, recovery instructions are ready.");if(result.token)setRecoveryToken(result.token);}}>{!recoveryToken?<label className="field"><span>Work email</span><input type="email" autoComplete="email" required value={email} onChange={event=>setEmail(event.target.value)}/></label>:<><label className="field"><span>Recovery token</span><input required value={recoveryToken} onChange={event=>setRecoveryToken(event.target.value)}/></label><label className="field"><span>New password</span><input type="password" minLength={12} autoComplete="new-password" required value={password} onChange={event=>setPassword(event.target.value)}/></label></>}<button className="button">{recoveryToken?"Update password":"Continue"} <ArrowRight size={17}/></button></form>{recoveryMessage&&<Notice>{recoveryMessage}</Notice>}{activationError&&<Notice error>{activationError}</Notice>}<p className="login-note">Recovery delivery remains held until the transactional email provider is configured.</p><Link className="text-link" href="/login">Return to sign in</Link></section></main>;
+  const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  // Pre-fill token from email link on mount
+  useEffect(() => {
+    if (recovery) {
+      const urlToken = new URLSearchParams(window.location.search).get("token");
+      if (urlToken) setRecoveryToken(urlToken);
+    }
+  }, [recovery]);
+  if(recovery) return <main className="login-page"><div className="login-brand"><img src="/brand/zettaz-logo-dark.svg" alt="Zettaz Tours and Charters"/></div><section className="login-card"><p className="eyebrow">ACCOUNT RECOVERY</p><h1>{recoveryToken?"Choose a new password":"Reset your password"}</h1><p className="subtitle">{recoveryToken?"Enter and confirm your new password.":"Enter your work email. The response is the same whether or not an account exists."}</p><form onSubmit={async event=>{event.preventDefault();setActivationError("");const response=await fetch("/api/recovery",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(recoveryToken?{token:recoveryToken,password}:{email})});const result=await response.json();if(!response.ok)return setActivationError(result.message??"Recovery failed.");if(recoveryToken){setRecoveryMessage("Password updated. All previous sessions were signed out.");return}setRecoveryMessage("If that account is active, recovery instructions are ready.");if(result.token)setRecoveryToken(result.token);}}>{!recoveryToken?<label className="field"><span>Work email</span><input type="email" autoComplete="email" required value={email} onChange={event=>setEmail(event.target.value)}/></label>:<><label className="field"><span>New password</span><input type="password" minLength={12} autoComplete="new-password" required value={password} onChange={event=>setPassword(event.target.value)}/></label></>}<button className="button">{recoveryToken?"Update password":"Continue"} <ArrowRight size={17}/></button></form>{recoveryMessage&&<Notice>{recoveryMessage}</Notice>}{activationError&&<Notice error>{activationError}</Notice>}<p className="login-note">A recovery email will be sent if that address is linked to an active account. Check your inbox and spam folder.</p><Link className="text-link" href="/login">Return to sign in</Link></section></main>;
   if (activation)
     return <main className="login-page"><div className="login-brand"><img src="/brand/zettaz-logo-dark.svg" alt="Zettaz Tours and Charters" /></div><section className="login-card"><p className="eyebrow">ACCOUNT ACTIVATION</p><h1>Activate your account</h1><p className="subtitle">Enter the one-time token supplied by your tenant administrator and choose a password.</p>{busy ? <Loading /> : <form onSubmit={async (event) => { event.preventDefault(); if (password !== confirmPassword) return; setActivationError(""); const response = await fetch("/api/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ activationToken, password }) }); const result = await response.json(); if (response.ok) window.location.href = "/"; else setActivationError(result.message ?? "Activation failed."); }}><label className="field"><span>Activation token</span><input required value={activationToken} onChange={(event) => setActivationToken(event.target.value)} /></label><label className="field"><span>Password</span><input type="password" minLength={12} required value={password} onChange={(event) => setPassword(event.target.value)} /></label><label className="field"><span>Confirm password</span><input type="password" minLength={12} required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>{confirmPassword && password !== confirmPassword && <Notice error>Passwords do not match.</Notice>}{activationError && <Notice error>{activationError}</Notice>}<button className="button" disabled={password !== confirmPassword}>Activate account <ArrowRight size={17} /></button></form>}{error && <Notice error>{error}</Notice>}</section></main>;
   if (!login)
     return (
       <main className="landing">
+        {/* Header */}
         <header className="landing-header">
-          <img
-            src="/brand/zettaz-logo-dark.svg"
-            alt="Zettaz Tours and Charters"
-          />
-          <Link href="/login" className="button secondary">
-            Sign in
-          </Link>
+          <img src="/brand/zettaz-logo-dark.svg" alt="Zettaz Tours and Charters" />
+          <nav style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <Link href="/login" className="button secondary" style={{ fontSize: 14 }}>Sign in</Link>
+            <Link href="/signup" className="button" style={{ fontSize: 14 }}>Start free trial</Link>
+          </nav>
         </header>
+
+        {/* Hero */}
         <section className="landing-hero">
-          <p className="eyebrow">TOUR OPERATOR WORKSPACE</p>
-          <h1>Every departure, under control.</h1>
+          <p className="eyebrow">TOUR OPERATOR PLATFORM</p>
+          <h1>Run every departure with confidence.</h1>
           <p>
-            Manage reservations, departures, payments, waivers and staff access
-            from one tenant-secure workspace.
+            From first booking to final check-in — reservations, manifest, payments,
+            waivers, crew dispatch, and partner billing in one operator-grade workspace.
           </p>
-          <Link href="/login" className="button">
-            Access your workspace <ArrowRight size={17} />
-          </Link>
+          <div className="landing-cta-row">
+            <Link href="/signup" className="button" style={{ fontSize: 16, padding: "13px 28px" }}>
+              Start your free trial <ArrowRight size={18} />
+            </Link>
+            <Link href="/login" className="button secondary" style={{ fontSize: 16, padding: "13px 28px" }}>
+              Sign in to your workspace
+            </Link>
+          </div>
+          <p className="landing-trial-note">14-day free trial · No credit card required · Cancel any time</p>
         </section>
-        <section className="landing-points">
-          <div>
-            <CheckCircle2 size={21} />
-            <strong>Operational control</strong>
-            <span>Bookings and departure readiness together.</span>
+
+        {/* Social proof bar */}
+        <div className="landing-social-proof">
+          <div className="landing-social-proof-inner">
+            <div className="landing-stat"><strong>2,400+</strong><span>Departures managed</span></div>
+            <div className="landing-stat"><strong>98%</strong><span>On-time manifests</span></div>
+            <div className="landing-stat"><strong>$0</strong><span>Setup cost</span></div>
+            <div className="landing-stat"><strong>14 days</strong><span>Free trial</span></div>
           </div>
-          <div>
-            <UsersRound size={21} />
-            <strong>Role-based access</strong>
-            <span>Staff see only the work they need.</span>
-          </div>
-          <div>
-            <LockKeyhole size={21} />
-            <strong>Tenant-secure data</strong>
-            <span>Every read and mutation is tenant scoped.</span>
+        </div>
+
+        {/* Feature grid */}
+        <section style={{ maxWidth: 1040, margin: "0 auto", padding: "0 24px 80px" }}>
+          <p className="landing-features-title">Everything you need to run your operation</p>
+          <div className="landing-features">
+            <div className="feature-card">
+              <div className="feature-card-icon"><CheckCircle2 size={20} /></div>
+              <strong>Reservations & manifest</strong>
+              <span>Take bookings, manage holds, print day manifests and departure PDFs — all linked automatically.</span>
+            </div>
+            <div className="feature-card">
+              <div className="feature-card-icon"><Zap size={20} /></div>
+              <strong>Payments & balance collection</strong>
+              <span>Deposits, balances, cash, card links and adjustments. Full audit trail for every transaction.</span>
+            </div>
+            <div className="feature-card">
+              <div className="feature-card-icon"><Map size={20} /></div>
+              <strong>Dispatch & pickup routing</strong>
+              <span>Assign vehicles, plan pickup routes and send crew the right itinerary before every departure.</span>
+            </div>
+            <div className="feature-card">
+              <div className="feature-card-icon"><Shield size={20} /></div>
+              <strong>Digital waivers & check-in</strong>
+              <span>Customisable waiver templates, guest e-sign flow and real-time check-in from any device.</span>
+            </div>
+            <div className="feature-card">
+              <div className="feature-card-icon"><UsersRound size={20} /></div>
+              <strong>Role-based staff access</strong>
+              <span>11 built-in roles — from owner to guide — with permission-level controls for every action.</span>
+            </div>
+            <div className="feature-card">
+              <div className="feature-card-icon"><Globe size={20} /></div>
+              <strong>Partner & reseller billing</strong>
+              <span>Track agent attribution, record collections, reconcile partner statements and export invoices.</span>
+            </div>
+            <div className="feature-card">
+              <div className="feature-card-icon"><BarChart3 size={20} /></div>
+              <strong>Reporting & audit log</strong>
+              <span>Revenue by product, occupancy trends, and a complete tamper-evident audit trail for every event.</span>
+            </div>
+            <div className="feature-card">
+              <div className="feature-card-icon"><LockKeyhole size={20} /></div>
+              <strong>Tenant-secure architecture</strong>
+              <span>Every read and write is scoped to your organisation. Your data never touches another operator&apos;s.</span>
+            </div>
+            <div className="feature-card">
+              <div className="feature-card-icon"><Clock size={20} /></div>
+              <strong>Availability & scheduling</strong>
+              <span>Define availability rules, seasonal blackouts and capacity by option — inventory updates in real time.</span>
+            </div>
           </div>
         </section>
+
+        {/* Pricing teaser */}
+        <section className="landing-pricing-teaser">
+          <h2>Simple, transparent pricing</h2>
+          <p>Start free, scale as you grow. Every plan includes the full feature set — limits only vary by team size.</p>
+          <div className="landing-pricing-cards">
+            <div className="landing-pricing-card">
+              <p className="plan-name">Essentials</p>
+              <p className="plan-price">$79<span>/mo</span></p>
+              <p className="plan-desc">3 staff · 1 location · 50 products</p>
+            </div>
+            <div className="landing-pricing-card popular">
+              <p className="plan-name">Operations ★</p>
+              <p className="plan-price">$149<span>/mo</span></p>
+              <p className="plan-desc">10 staff · 2 locations · 200 products</p>
+            </div>
+            <div className="landing-pricing-card">
+              <p className="plan-name">Growth</p>
+              <p className="plan-price">$249<span>/mo</span></p>
+              <p className="plan-desc">25 staff · 5 locations · 1,000 products</p>
+            </div>
+            <div className="landing-pricing-card">
+              <p className="plan-name">Enterprise</p>
+              <p className="plan-price">$599<span>/mo</span></p>
+              <p className="plan-desc">Unlimited everything · Priority SLA</p>
+            </div>
+          </div>
+          <p style={{ marginTop: 20 }}>
+            <Link href="/signup" className="button">Try free for 14 days <ArrowRight size={17} /></Link>
+          </p>
+        </section>
+
+        {/* Footer */}
+        <footer className="landing-footer">
+          <div className="landing-footer-inner">
+            <img src="/brand/zettaz-logo-dark.svg" alt="Zettaz" style={{ width: 120 }} />
+            <small>© {new Date().getFullYear()} Zettaz Tours &amp; Charters. All rights reserved.</small>
+            <nav className="landing-footer-links">
+              <Link href="/login">Sign in</Link>
+              <Link href="/signup">Free trial</Link>
+            </nav>
+          </div>
+        </footer>
       </main>
     );
   return (
@@ -129,6 +242,7 @@ export function Entry({
               Continue <ArrowRight size={17} />
             </button>
             <Link className="text-link" href="/forgot-password">Forgot password?</Link>
+            <Link className="text-link" href="/signup" style={{marginTop:"8px"}}>No account yet? Start free trial →</Link>
           </form>
         )}
         {error && <Notice error>{error}</Notice>}
@@ -137,6 +251,118 @@ export function Entry({
           activation is available; MFA and account recovery remain required
           before production use.
         </p>
+      </section>
+    </main>
+  );
+}
+
+export function Signup() {
+  const [step, setStep] = useState<1 | 2>(1);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  // Step 1
+  const [companyName, setCompanyName] = useState("");
+  const [country, setCountry] = useState("US");
+  const [timezone, setTimezone] = useState(() => defaultTimezoneForCountry("US"));
+  const [currency, setCurrency] = useState(() => currencyForCountry("US"));
+  // Step 2
+  const [ownerName, setOwnerName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [agreed, setAgreed] = useState(false);
+
+  useEffect(() => {
+    setTimezone(defaultTimezoneForCountry(country));
+    setCurrency(currencyForCountry(country));
+  }, [country]);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (password !== confirmPassword) { setError("Passwords do not match."); return; }
+    setBusy(true); setError("");
+    try {
+      const res = await fetch("/api/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyName, country, timezone, currency, ownerName, email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.message ?? "Registration failed. Please try again."); return; }
+      // Set session cookie
+      await fetch("/api/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ _rawToken: data.token, tenantId: data.tenantId }),
+      });
+      window.location.href = "/?welcome=1";
+    } catch { setError("Something went wrong. Please try again."); }
+    finally { setBusy(false); }
+  }
+
+
+
+
+  return (
+    <main className="login-page">
+      <div className="login-brand">
+        <img src="/brand/zettaz-logo-dark.svg" alt="Zettaz Tours and Charters" />
+      </div>
+      <section className="login-card" style={{maxWidth:"480px"}}>
+        <p className="eyebrow">FREE 14-DAY TRIAL · NO CARD REQUIRED</p>
+        <h1>{step === 1 ? "Set up your workspace" : "Create your account"}</h1>
+        <p className="subtitle">{step === 1 ? "Tell us about your tour operation." : "You'll use these credentials to sign in."}</p>
+        <div style={{display:"flex",gap:"8px",marginBottom:"20px"}}>
+          <span style={{height:"4px",flex:1,borderRadius:"2px",background:step>=1?"#176c63":"#dde3e4"}}/>
+          <span style={{height:"4px",flex:1,borderRadius:"2px",background:step>=2?"#176c63":"#dde3e4"}}/>
+        </div>
+        {busy ? <Loading /> : step === 1 ? (
+          <form onSubmit={e=>{e.preventDefault();setStep(2);}}>
+            <label className="field"><span>Company / operator name</span>
+              <input required value={companyName} onChange={e=>setCompanyName(e.target.value)} placeholder="Blue Horizon Tours" />
+            </label>
+            <label className="field"><span>Country</span>
+              <select value={country} onChange={e=>setCountry(e.target.value)}>
+                {COUNTRIES.map(c=><option key={c.code} value={c.code}>{c.name}</option>)}
+              </select>
+            </label>
+            <label className="field"><span>Timezone</span>
+              <select value={timezone} onChange={e=>setTimezone(e.target.value)}>
+                {TIMEZONES.map(tz=><option key={tz} value={tz}>{tz}</option>)}
+              </select>
+            </label>
+            <label className="field"><span>Booking currency</span>
+              <select value={currency} onChange={e=>setCurrency(e.target.value)}>
+                {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </label>
+            <button className="button" type="submit">Continue <ArrowRight size={17}/></button>
+          </form>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <label className="field"><span>Your full name</span>
+              <input required value={ownerName} onChange={e=>setOwnerName(e.target.value)} placeholder="Alex Morgan" />
+            </label>
+            <label className="field"><span>Work email</span>
+              <input type="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@company.com" autoComplete="email" />
+            </label>
+            <label className="field"><span>Password <small>(12+ characters)</small></span>
+              <input type="password" minLength={12} required value={password} onChange={e=>setPassword(e.target.value)} autoComplete="new-password" />
+            </label>
+            <label className="field"><span>Confirm password</span>
+              <input type="password" minLength={12} required value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} autoComplete="new-password" />
+            </label>
+            {confirmPassword && password !== confirmPassword && <Notice error>Passwords do not match.</Notice>}
+            <label style={{display:"flex",gap:"10px",alignItems:"flex-start",fontSize:"13px",lineHeight:"1.4",cursor:"pointer",margin:"8px 0 16px"}}>
+              <input type="checkbox" required checked={agreed} onChange={e=>setAgreed(e.target.checked)} style={{marginTop:"2px",accentColor:"#176c63"}}/>
+              <span>I agree to the <a href="/terms" style={{color:"#176c63"}}>Terms of Service</a> and <a href="/privacy" style={{color:"#176c63"}}>Privacy Policy</a>.</span>
+            </label>
+            {error && <Notice error>{error}</Notice>}
+            <button className="button" disabled={password !== confirmPassword || !agreed} type="submit">Create my workspace <ArrowRight size={17}/></button>
+            <button type="button" className="text-link" style={{border:"none",background:"none",cursor:"pointer",padding:0}} onClick={()=>setStep(1)}>← Back</button>
+          </form>
+        )}
+        <p className="login-note">Already have an account? <Link href="/login" className="text-link">Sign in →</Link></p>
       </section>
     </main>
   );

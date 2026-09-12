@@ -15,7 +15,7 @@ import {
 
 const API =
   process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ??
-  "http://127.0.0.1:3180";
+  "http://127.0.0.1:3190";
 const SESSION_KEY = "zettaz-crew-session";
 const requestKey = () =>
   `mobile_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
@@ -24,16 +24,26 @@ type Passenger = {
   name: string;
   category: string;
   is_minor: boolean;
+  identity_pending: boolean;
   checkin_state: string | null;
+  waiver_signed: boolean;
 };
 type Guest = {
   booking_id: string;
   lead_name: string;
   party_size: number;
   pickup: { kind?: string };
+  stay: Record<string, string>;
   checkin_state: string;
   passengers: Passenger[];
 };
+type WaiverTemplate = {
+  id: string;
+  version: number;
+  title: string;
+  body: string;
+};
+type Signing = { guest: Guest; passenger: Passenger };
 type Trip = {
   id: string;
   starts_at: string;
@@ -102,6 +112,21 @@ export default function App() {
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState<ScannedPassenger | null>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [waiverTemplate, setWaiverTemplate] = useState<WaiverTemplate | null>(
+    null,
+  );
+  const [signing, setSigning] = useState<Signing | null>(null);
+  const [stayKind, setStayKind] = useState("none");
+  const [stayName, setStayName] = useState("");
+  const [stayUnit, setStayUnit] = useState("");
+  const [stayAddress, setStayAddress] = useState("");
+  const [signerName, setSignerName] = useState("");
+  const [passengerName, setPassengerName] = useState("");
+  const [guardianId, setGuardianId] = useState("");
+  const [signaturePoints, setSignaturePoints] = useState<
+    { x: number; y: number }[]
+  >([]);
+  const [padSize, setPadSize] = useState({ width: 1, height: 1 });
 
   useEffect(() => {
     SecureStore.getItemAsync(SESSION_KEY)
@@ -113,8 +138,12 @@ export default function App() {
     setBusy(true);
     setError("");
     try {
-      const result = await call<{ trips: Trip[] }>("/crew/v1/today", session);
+      const result = await call<{
+        trips: Trip[];
+        waiverTemplate: WaiverTemplate | null;
+      }>("/crew/v1/today", session);
       setTrips(result.trips);
+      setWaiverTemplate(result.waiverTemplate);
       if (active)
         setActive(result.trips.find((trip) => trip.id === active.id) ?? null);
     } catch (reason) {
@@ -168,6 +197,66 @@ export default function App() {
     setToken(null);
     setTrips([]);
     setActive(null);
+  }
+  function openWaiver(guest: Guest, passenger: Passenger) {
+    setSigning({ guest, passenger });
+    setStayKind(guest.stay?.kind ?? "none");
+    setStayName(
+      guest.stay?.vesselName ??
+        guest.stay?.hotelName ??
+        guest.stay?.propertyName ??
+        "",
+    );
+    setStayUnit(guest.stay?.cabinNumber ?? guest.stay?.roomNumber ?? "");
+    setStayAddress(guest.stay?.address ?? "");
+    setPassengerName(passenger.identity_pending ? "" : passenger.name);
+    setSignerName(
+      passenger.is_minor || passenger.identity_pending ? "" : passenger.name,
+    );
+    setGuardianId("");
+    setSignaturePoints([]);
+  }
+  async function submitWaiver() {
+    if (!token || !signing || !waiverTemplate) return;
+    const stay =
+      stayKind === "cruise"
+        ? { kind: "cruise", vesselName: stayName, cabinNumber: stayUnit }
+        : stayKind === "hotel"
+          ? { kind: "hotel", hotelName: stayName, roomNumber: stayUnit }
+          : stayKind === "private_accommodation"
+            ? {
+                kind: "private_accommodation",
+                propertyName: stayName,
+                address: stayAddress,
+              }
+            : stayKind === "local"
+              ? { kind: "local", address: stayAddress }
+              : { kind: "none" };
+    setBusy(true);
+    setError("");
+    try {
+      await call(`/ops/v1/passengers/${signing.passenger.id}/waiver`, token, {
+        method: "POST",
+        headers: { "Idempotency-Key": requestKey() },
+        body: JSON.stringify({
+          passengerName: signing.passenger.identity_pending
+            ? passengerName
+            : undefined,
+          signerName,
+          guardianPassengerId: guardianId || undefined,
+          consentAccepted: true,
+          signatureStrokes: signaturePoints,
+          capturedAt: new Date().toISOString(),
+          deviceCommandId: requestKey(),
+          stay,
+        }),
+      });
+      setSigning(null);
+      await load(token);
+    } catch (reason) {
+      setError((reason as Error).message);
+      setBusy(false);
+    }
   }
   async function scanToken(value: string) {
     if (!token || busy) return;
@@ -267,6 +356,253 @@ export default function App() {
         </View>
       </SafeAreaView>
     );
+  if (signing) {
+    const adults = signing.guest.passengers.filter(
+      (person) => !person.is_minor,
+    );
+    const needsName = !signerName.trim();
+    const needsPassengerName =
+      signing.passenger.identity_pending && !passengerName.trim();
+    const needsStayName =
+      ["cruise", "hotel", "private_accommodation"].includes(stayKind) &&
+      !stayName.trim();
+    const needsAddress =
+      stayKind === "private_accommodation" && !stayAddress.trim();
+    return (
+      <SafeAreaView style={styles.screen}>
+        <StatusBar style="dark" />
+        <View style={styles.header}>
+          <View style={styles.grow}>
+            <Text style={styles.eyebrow}>PASSENGER WAIVER</Text>
+            <Text style={styles.cardTitle}>
+              {signing.passenger.identity_pending
+                ? "Guest name required"
+                : signing.passenger.name}
+            </Text>
+          </View>
+          <Button quiet onPress={() => setSigning(null)}>
+            Close
+          </Button>
+        </View>
+        {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
+        <ScrollView contentContainerStyle={styles.content}>
+          {signing.passenger.identity_pending ? (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Guest identity</Text>
+              <Text style={styles.muted}>
+                Enter the guest’s full name before collecting this waiver.
+              </Text>
+              <TextInput
+                style={styles.input}
+                autoCapitalize="words"
+                placeholder="Guest full name"
+                value={passengerName}
+                onChangeText={(value) => {
+                  setPassengerName(value);
+                  if (!signing.passenger.is_minor) setSignerName(value);
+                }}
+              />
+            </View>
+          ) : null}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Stay and pickup details</Text>
+            <Text style={styles.muted}>
+              Select where this guest is staying. Unit numbers are optional.
+            </Text>
+            <View style={styles.actions}>
+              {(
+                [
+                  ["none", "None"],
+                  ["cruise", "Vessel"],
+                  ["hotel", "Hotel"],
+                  ["private_accommodation", "Airbnb / private"],
+                  ["local", "Local"],
+                ] as const
+              ).map(([value, label]) => (
+                <Pressable
+                  key={value}
+                  onPress={() => setStayKind(value)}
+                  style={[
+                    styles.choice,
+                    stayKind === value && styles.choiceSelected,
+                  ]}
+                >
+                  <Text
+                    style={
+                      stayKind === value
+                        ? styles.choiceTextSelected
+                        : styles.choiceText
+                    }
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            {["cruise", "hotel", "private_accommodation"].includes(stayKind) ? (
+              <TextInput
+                style={styles.input}
+                placeholder={
+                  stayKind === "cruise"
+                    ? "Vessel name"
+                    : stayKind === "hotel"
+                      ? "Hotel name"
+                      : "Property name"
+                }
+                value={stayName}
+                onChangeText={setStayName}
+              />
+            ) : null}
+            {["cruise", "hotel"].includes(stayKind) ? (
+              <TextInput
+                style={styles.input}
+                placeholder={
+                  stayKind === "cruise"
+                    ? "Cabin number (optional)"
+                    : "Room number (optional)"
+                }
+                value={stayUnit}
+                onChangeText={setStayUnit}
+              />
+            ) : null}
+            {["private_accommodation", "local"].includes(stayKind) ? (
+              <TextInput
+                style={styles.input}
+                placeholder={
+                  stayKind === "local"
+                    ? "Local address (optional)"
+                    : "Property address"
+                }
+                value={stayAddress}
+                onChangeText={setStayAddress}
+              />
+            ) : null}
+          </View>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>
+              {waiverTemplate?.title ?? "Waiver unavailable"}
+            </Text>
+            <Text style={styles.waiverBody}>
+              {waiverTemplate?.body ??
+                "An active waiver template must be published before signing."}
+            </Text>
+          </View>
+          {signing.passenger.is_minor ? (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Adult guardian</Text>
+              {adults.map((person) => (
+                <Pressable
+                  key={person.id}
+                  onPress={() => {
+                    setGuardianId(person.id);
+                    setSignerName(person.name);
+                  }}
+                  style={[
+                    styles.choice,
+                    guardianId === person.id && styles.choiceSelected,
+                  ]}
+                >
+                  <Text
+                    style={
+                      guardianId === person.id
+                        ? styles.choiceTextSelected
+                        : styles.choiceText
+                    }
+                  >
+                    {person.name}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Signer</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Full legal name"
+              value={signerName}
+              onChangeText={setSignerName}
+            />
+            <Text style={styles.muted}>
+              I have read and agree to the waiver shown above.
+            </Text>
+            <View
+              style={styles.signaturePad}
+              onLayout={(event) => setPadSize(event.nativeEvent.layout)}
+              onStartShouldSetResponder={() => true}
+              onMoveShouldSetResponder={() => true}
+              onResponderGrant={(event) => {
+                const { locationX, locationY } = event.nativeEvent;
+                setSignaturePoints([
+                  {
+                    x: locationX / padSize.width,
+                    y: locationY / padSize.height,
+                  },
+                ]);
+              }}
+              onResponderMove={(event) => {
+                const { locationX, locationY } = event.nativeEvent;
+                setSignaturePoints((current) =>
+                  current.length >= 5000
+                    ? current
+                    : [
+                        ...current,
+                        {
+                          x: Math.max(
+                            0,
+                            Math.min(1, locationX / padSize.width),
+                          ),
+                          y: Math.max(
+                            0,
+                            Math.min(1, locationY / padSize.height),
+                          ),
+                        },
+                      ],
+                );
+              }}
+            >
+              {!signaturePoints.length ? (
+                <Text style={styles.signatureHint}>
+                  Sign here with your finger
+                </Text>
+              ) : (
+                signaturePoints.map((point, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.signaturePoint,
+                      {
+                        left: point.x * padSize.width - 2,
+                        top: point.y * padSize.height - 2,
+                      },
+                    ]}
+                  />
+                ))
+              )}
+            </View>
+            <Button quiet onPress={() => setSignaturePoints([])}>
+              Clear signature
+            </Button>
+            <Button
+              disabled={
+                busy ||
+                !waiverTemplate ||
+                needsName ||
+                needsPassengerName ||
+                needsStayName ||
+                needsAddress ||
+                (signing.passenger.is_minor && !guardianId) ||
+                signaturePoints.length < 8
+              }
+              onPress={() => void submitWaiver()}
+            >
+              {busy ? "Saving…" : "Accept and save waiver"}
+            </Button>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
   return (
     <SafeAreaView style={styles.screen}>
       <StatusBar style="dark" />
@@ -357,13 +693,20 @@ export default function App() {
                   {guest.pickup.kind ?? "none"}
                 </Text>
                 {guest.passengers.map((passenger) => (
-                  <View style={styles.person} key={passenger.id}>
+                  <Pressable
+                    style={styles.person}
+                    key={passenger.id}
+                    onPress={() => openWaiver(guest, passenger)}
+                  >
                     <View style={styles.grow}>
                       <Text style={styles.personName}>{passenger.name}</Text>
                       <Text style={styles.muted}>
                         {passenger.category}
                         {passenger.is_minor ? " · minor" : ""} ·{" "}
-                        {passenger.checkin_state ?? "not arrived"}
+                        {passenger.checkin_state ?? "not arrived"} ·{" "}
+                        {passenger.waiver_signed
+                          ? "waiver signed"
+                          : "waiver required"}
                       </Text>
                     </View>
                     {!["boarded", "no_show"].includes(
@@ -393,7 +736,7 @@ export default function App() {
                             : "Arrived"}
                       </Button>
                     ) : null}
-                  </View>
+                  </Pressable>
                 ))}
               </View>
             ))}
@@ -544,5 +887,37 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     padding: 14,
+  },
+  choice: {
+    borderColor: "#cbdad7",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+  },
+  choiceSelected: { backgroundColor: "#087b72", borderColor: "#087b72" },
+  choiceText: { color: "#17353a", fontWeight: "600" },
+  choiceTextSelected: { color: "white", fontWeight: "700" },
+  waiverBody: { color: "#17353a", fontSize: 16, lineHeight: 25 },
+  signaturePad: {
+    alignItems: "center",
+    backgroundColor: "#fbfdfc",
+    borderColor: "#9fb7b3",
+    borderRadius: 12,
+    borderStyle: "dashed",
+    borderWidth: 1,
+    height: 180,
+    justifyContent: "center",
+    overflow: "hidden",
+    position: "relative",
+    width: "100%",
+  },
+  signatureHint: { color: "#7a8d90" },
+  signaturePoint: {
+    backgroundColor: "#17353a",
+    borderRadius: 2,
+    height: 4,
+    position: "absolute",
+    width: 4,
   },
 });

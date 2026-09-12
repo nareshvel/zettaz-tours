@@ -117,8 +117,17 @@ const routes: [string, string, z.ZodType | null, string][] = [
   ],
   ["/ops/v1/resources", "get", null, "List tenant operational resources"],
   ["/ops/v1/resources", "post", null, "Create an operational resource"],
+  ["/ops/v1/resources/{id}", "patch", null, "Update an operational resource"],
+  [
+    "/ops/v1/resources/{id}",
+    "delete",
+    null,
+    "Deactivate an operational resource",
+  ],
   ["/ops/v1/crew", "get", null, "List active crew profiles"],
   ["/ops/v1/crew", "post", null, "Create a crew profile"],
+  ["/ops/v1/crew/{actorId}", "patch", null, "Update a crew profile"],
+  ["/ops/v1/crew/{actorId}", "delete", null, "Deactivate a crew profile"],
   [
     "/ops/v1/compliance-documents",
     "get",
@@ -132,10 +141,40 @@ const routes: [string, string, z.ZodType | null, string][] = [
     "Record a compliance document and expiry date",
   ],
   [
+    "/ops/v1/compliance-documents/{id}",
+    "patch",
+    null,
+    "Update a compliance document",
+  ],
+  [
+    "/ops/v1/compliance-documents/{id}",
+    "delete",
+    null,
+    "Delete a compliance document",
+  ],
+  [
     "/ops/v1/assignments",
     "post",
     null,
     "Assign a resource or crew member to a departure",
+  ],
+  [
+    "/ops/v1/assignments",
+    "get",
+    null,
+    "List active departure assignments",
+  ],
+  [
+    "/ops/v1/assignments/{id}",
+    "patch",
+    null,
+    "Update an active departure assignment role",
+  ],
+  [
+    "/ops/v1/assignments/{id}",
+    "delete",
+    null,
+    "Cancel an active departure assignment",
   ],
   [
     "/ops/v1/departures/{id}/assignments",

@@ -96,9 +96,30 @@ const sampleProducts: ProductInput[] = [
       },
     ],
   },
+  {
+    name: "Custom experience inquiry",
+    optionName: "On-request quote",
+    durationMinutes: 240,
+    productKind: "charter",
+    availabilityMode: "on_request",
+    pricingModel: "per_group",
+    privateBooking: true,
+    confirmationMode: "request",
+    categories: [
+      { slug: "adult", label: "Adult", countsTowardCapacity: true },
+    ],
+    rates: [
+      {
+        category: "adult",
+        startDate: "2026-01-01",
+        endDate: "2099-12-31",
+        amountMinor: 0,
+      },
+    ],
+  },
 ];
 
-const rockProducts: ProductInput[] = [
+const rockScheduled: ProductInput[] = [
   [
     "Clear Boat & Offshore Islands Experience",
     "Shared coastal departure",
@@ -150,7 +171,31 @@ const rockProducts: ProductInput[] = [
       amountMinor: 0,
     },
   ],
-}));
+})) as ProductInput[];
+const rockProducts: ProductInput[] = [
+  ...rockScheduled,
+  {
+    name: "Private charter inquiry (Demo)",
+    optionName: "On-request quote",
+    durationMinutes: 240,
+    productKind: "charter",
+    availabilityMode: "on_request",
+    pricingModel: "per_group",
+    privateBooking: true,
+    confirmationMode: "request",
+    categories: [
+      { slug: "adult", label: "Adult", countsTowardCapacity: true },
+    ],
+    rates: [
+      {
+        category: "adult",
+        startDate: "2026-01-01",
+        endDate: "2099-12-31",
+        amountMinor: 0,
+      },
+    ],
+  },
+];
 
 type SeedTenant = {
   slug: string;
@@ -192,8 +237,19 @@ function config(currency: string) {
     taxBasisPoints: 1500,
     allowUnresolvedPickup: false,
     allowAmendmentBalance: true,
-    manualPaymentMethods: ["cash", "bank_transfer"],
-    bookingSources: ["phone", "walk_in", "partner_reseller"],
+    manualPaymentMethods: [
+      "cash",
+      "card",
+      "online",
+      "bank_transfer",
+      "reseller_payment",
+    ],
+    bookingSources: ["phone", "walk_in", "website", "partner_reseller"],
+    documentStorage: {
+      hotProvider: "filesystem",
+      archiveProvider: "none",
+      hotRetentionDays: 7,
+    },
   };
 }
 
@@ -215,19 +271,34 @@ async function main() {
       "DELETE FROM tenant_subscriptions WHERE tenant_id IN (SELECT id FROM tenants WHERE slug = ANY($1))",
       [tenants.map((tenant) => tenant.slug)],
     );
+    // Zettaz Tours & Charters subscription plans (T&C edition — replaces the old Cloud POS seed rows).
+    // stripe_price_id_* values are filled in by migration 057 after running
+    // apps/api/scripts/setup-stripe-plans.ts with a live Stripe key.
     await admin.query(`INSERT INTO subscription_plans(
       id,name,description,monthly_minor,yearly_minor,currency,features,limits,
-      stripe_price_id_monthly,stripe_price_id_yearly
+      stripe_price_id_monthly,stripe_price_id_yearly,active
     ) VALUES
-      ('2487711b-a560-11f1-97e5-525400d69130','Starter','Core booking operations for small tour and charter businesses.',7900,79900,'USD','["Reservations and departures","Customer and guest management","Core reporting"]','{"users":1,"locations":1,"storage":"500 MB","products":200}','price_1UAcocDiMTz5HnMK1hRypeIU','price_1UAcoeDiMTz5HnMK3wDzL3W7'),
-      ('6baf0d04-4c50-11f0-8dfa-525400d69130','Growth','Essential operational capability for growing tour businesses.',12999,129990,'USD','["Everything in Starter","Multi-user access","Operational reporting"]','{"users":3,"locations":1,"storage":"1 GB","products":500}','price_1UAcogDiMTz5HnMKMFb6GIyD','price_1UAcohDiMTz5HnMKckJhxx6i'),
-      ('6baf1082-4c50-11f0-8dfa-525400d69130','Professional','Advanced capabilities for multi-location tour operators.',19999,199990,'USD','["Everything in Growth","Multiple locations","Advanced reporting and partner tools"]','{"users":10,"locations":3,"storage":"5 GB","products":2000}','price_1UAcojDiMTz5HnMKY5QYYiBT','price_1UAcolDiMTz5HnMKOzTB0yZJ'),
-      ('6baf11e2-4c50-11f0-8dfa-525400d69130','Enterprise','Customisable capability and support for larger operators.',59900,599990,'USD','["Everything in Professional","Custom branding","API and priority support"]','{"users":30,"locations":10,"storage":"20 GB","products":10000}','price_1UAconDiMTz5HnMKgBFszTay','price_1UAcooDiMTz5HnMKvosyY5Sr')
+      ('4e0e6cc1-89b1-4dcb-a627-bfccb14f0af9','Essentials','Core booking and operations for small tour and charter businesses.',7900,79900,'USD',
+       '["Reservations & manual booking","Departure calendar & availability","Day manifest & print / PDF","Payments — deposits, balances, cash & links","Basic reporting","Email booking confirmations"]',
+       '{"Staff users":3,"Locations":1,"Tour products":50,"Storage":"500 MB"}',
+       'price_REPLACE_ESSENTIALS_MONTHLY','price_REPLACE_ESSENTIALS_YEARLY',true),
+      ('f7317df1-086a-4ad9-a9c9-c229a5995dcd','Operations','Full operational capability for tour businesses with crews, vehicles, and waivers.',14900,149000,'USD',
+       '["Everything in Essentials","Dispatch board & pickup routes","Crew mobile app (iOS & Android)","Digital waivers & guest check-in","Resource & fleet basics","Weather & closure controls"]',
+       '{"Staff users":10,"Locations":2,"Tour products":200,"Storage":"2 GB"}',
+       'price_REPLACE_OPERATIONS_MONTHLY','price_REPLACE_OPERATIONS_YEARLY',true),
+      ('3e595412-81e5-4c76-8216-25321d7ba56a','Growth','Multi-channel and partner capability for growing tour operators.',24900,249000,'USD',
+       '["Everything in Operations","Partner & reseller attribution","Channel integrations (WP, OTA import)","Customer notifications (SMTP)","Partner statements & invoicing","Advanced reporting"]',
+       '{"Staff users":25,"Locations":5,"Tour products":"1,000","Storage":"10 GB"}',
+       'price_REPLACE_GROWTH_MONTHLY','price_REPLACE_GROWTH_YEARLY',true),
+      ('70a106d7-1977-48a4-aa6d-d816470e477f','Enterprise','Customisable platform and priority support for larger operators.',59900,599000,'USD',
+       '["Everything in Growth","Unlimited staff & locations","Priority support & SLA","Custom branding & white-label","API access","Dedicated onboarding"]',
+       '{"Staff users":"Unlimited","Locations":"Unlimited","Tour products":"Unlimited","Storage":"50 GB"}',
+       'price_REPLACE_ENTERPRISE_MONTHLY','price_REPLACE_ENTERPRISE_YEARLY',true)
       ON CONFLICT (id) DO UPDATE SET
         name=EXCLUDED.name,description=EXCLUDED.description,monthly_minor=EXCLUDED.monthly_minor,
         yearly_minor=EXCLUDED.yearly_minor,currency=EXCLUDED.currency,features=EXCLUDED.features,
         limits=EXCLUDED.limits,stripe_price_id_monthly=EXCLUDED.stripe_price_id_monthly,
-        stripe_price_id_yearly=EXCLUDED.stripe_price_id_yearly`);
+        stripe_price_id_yearly=EXCLUDED.stripe_price_id_yearly,active=EXCLUDED.active`);
     await admin.query(
       "DELETE FROM subscription_plans p WHERE p.id = ANY($1) AND NOT EXISTS (SELECT 1 FROM tenant_subscriptions s WHERE s.plan_id=p.id)",
       [["starter", "operations", "growth"]],
@@ -272,7 +343,8 @@ async function main() {
         `UPDATE tenants SET name=$2, timezone='America/Antigua',
            config=config || jsonb_build_object(
              'bookingCurrency',$3::text,'collectionCurrency',$3::text,'reportingCurrency',$3::text,
-             'bookingSources',ARRAY['phone','walk_in','website','viator','get_your_guide','partner_reseller']
+             'bookingSources',ARRAY['phone','walk_in','website','partner_reseller'],
+             'manualPaymentMethods',ARRAY['cash','card','online','bank_transfer','reseller_payment']
            ),
            business_profile=CASE WHEN $4::boolean THEN business_profile || $5::jsonb ELSE business_profile END,
            version=version+1
@@ -299,6 +371,18 @@ async function main() {
         "INSERT INTO tenant_subscriptions(tenant_id,plan_id,status,billing_cycle,period_ends_at,trial_ends_at) VALUES($1,'6baf0d04-4c50-11f0-8dfa-525400d69130','trial','monthly',clock_timestamp()+interval '14 days',clock_timestamp()+interval '14 days') ON CONFLICT (tenant_id) DO NOTHING",
         [tenantId],
       );
+      if (seed.rockDemo) {
+        // Earlier local demo runs used XCD before Rock's approved online USD
+        // policy was recorded. These are synthetic records, so correct their
+        // monetary unit at the source instead of misleadingly relabeling it in UI.
+        await admin.query(
+          "UPDATE holds SET quote=jsonb_set(quote,'{currency}',to_jsonb('USD'::text)) WHERE tenant_id=$1 AND quote->>'currency'<>'USD'",
+          [tenantId],
+        );
+        // Confirmed price/payment history is append-only and remains untouched.
+        // New sample records are created in USD; the local list read model uses
+        // the corrected hold quote for the pre-existing synthetic fixtures.
+      }
       const owner = (
         await admin.query(
           "SELECT m.actor_id,s.email FROM memberships m JOIN staff_users s ON s.id=m.actor_id WHERE m.tenant_id=$1 AND m.role='owner' ORDER BY m.actor_id LIMIT 1",
@@ -308,23 +392,8 @@ async function main() {
       if (!owner) throw new Error(`Sample tenant ${seed.slug} has no owner`);
       if (seed.rockDemo) {
         await admin.query(
-          "UPDATE staff_users SET name='Rock Adventures Demo Owner' WHERE id=$1",
+          "UPDATE staff_users SET name='Rock Adventures Demo Owner',email='cloudadmin@zettaz.com' WHERE id=$1",
           [owner.actor_id],
-        );
-        await admin.query(
-          `UPDATE staff_users s SET name=CASE
-             WHEN s.email=$2 THEN 'Rock Reservations Lead'
-             WHEN s.email=$3 THEN 'Rock Dispatcher'
-             WHEN s.email=$4 THEN 'Rock Finance Reviewer'
-             WHEN s.email=$5 THEN 'Rock Auditor'
-             ELSE s.name END
-           FROM memberships m WHERE m.actor_id=s.id AND m.tenant_id=$1`,
-          [
-            tenantId,
-            ...["reservations", "dispatch", "finance", "audit"].map(
-              (prefix) => `${prefix}+${seed.slug}@example.invalid`,
-            ),
-          ],
         );
       }
       const actor: Actor = {
@@ -337,25 +406,75 @@ async function main() {
 
       const memberInputs = [
         {
-          name: "Sample Reservations Lead",
-          email: `reservations+${seed.slug}@example.invalid`,
+          name: seed.rockDemo
+            ? "Rock Operations Administrator"
+            : "Sample Administrator",
+          email: seed.rockDemo
+            ? "rockadmin@zettaz.com"
+            : `admin+${seed.slug}@example.invalid`,
+          role: "admin",
+        },
+        {
+          name: seed.rockDemo
+            ? "Rock Reservations Lead"
+            : "Sample Reservations Lead",
+          email: seed.rockDemo
+            ? "rockreservations@zettaz.com"
+            : `reservations+${seed.slug}@example.invalid`,
           role: "reservations",
         },
         {
-          name: "Sample Dispatcher",
-          email: `dispatch+${seed.slug}@example.invalid`,
+          name: seed.rockDemo ? "Rock Dispatcher" : "Sample Dispatcher",
+          email: seed.rockDemo
+            ? "rockdispatch@zettaz.com"
+            : `dispatch+${seed.slug}@example.invalid`,
           role: "dispatcher",
         },
         {
-          name: "Sample Finance Reviewer",
-          email: `finance+${seed.slug}@example.invalid`,
+          name: seed.rockDemo
+            ? "Rock Finance Reviewer"
+            : "Sample Finance Reviewer",
+          email: seed.rockDemo
+            ? "rockfinance@zettaz.com"
+            : `finance+${seed.slug}@example.invalid`,
           role: "finance",
         },
         {
-          name: "Sample Auditor",
-          email: `audit+${seed.slug}@example.invalid`,
+          name: seed.rockDemo ? "Rock Auditor" : "Sample Auditor",
+          email: seed.rockDemo
+            ? "rockauditor@zettaz.com"
+            : `audit+${seed.slug}@example.invalid`,
           role: "auditor",
         },
+        ...(seed.rockDemo
+          ? [
+              {
+                name: "Rock Operations Manager",
+                email: "rockoperations@zettaz.com",
+                role: "operations_manager",
+              },
+              {
+                name: "Rock Guide",
+                email: "rockguide@zettaz.com",
+                role: "guide",
+              },
+              {
+                name: "Rock Driver / Skipper",
+                email: "rockdriver@zettaz.com",
+                role: "driver",
+              },
+              {
+                name: "Rock Resource Manager",
+                email: "rockresources@zettaz.com",
+                role: "resource_manager",
+              },
+              {
+                name: "Rock Partner Manager",
+                email: "rockpartners@zettaz.com",
+                role: "partner_manager",
+              },
+            ]
+          : []),
       ];
       for (const member of memberInputs) {
         const exists = await admin.query(
@@ -405,7 +524,10 @@ async function main() {
           "SELECT 1 FROM schedules WHERE tenant_id=$1 AND product_id=$2 LIMIT 1",
           [tenantId, product.id],
         );
-        if (!schedules.rowCount)
+        if (
+          !schedules.rowCount &&
+          (input.availabilityMode ?? "fixed_departure") === "fixed_departure"
+        )
           await catalog.schedule(actor, key(), {
             productId: product.id,
             startDate: day.toISODate(),
@@ -917,7 +1039,9 @@ async function main() {
         tenantId,
       ]);
       await admin.query(
-        "UPDATE user_credentials SET password_hash=$2 WHERE user_id IN (SELECT actor_id FROM memberships WHERE tenant_id=$1)",
+        `INSERT INTO user_credentials(user_id,password_hash)
+         SELECT actor_id,$2 FROM memberships WHERE tenant_id=$1
+         ON CONFLICT(user_id) DO UPDATE SET password_hash=EXCLUDED.password_hash`,
         [tenantId, passwordHash],
       );
       const summary = (

@@ -25,6 +25,7 @@ import { WaiverController, WaiverService } from "./waivers";
 import { AuthController } from "./auth";
 import { ResourceController, ResourceService } from "./resources";
 import { PrintController, PrintService } from "./printing";
+import { DocumentStorageService } from "./document-storage";
 import { CrewController, CrewService } from "./crew";
 import { PartnerController, PartnerService } from "./partners";
 import { IntegrationController, IntegrationService } from "./integrations";
@@ -33,6 +34,9 @@ import { NotificationController, NotificationService } from "./notifications";
 import { StayController, StayService } from "./stays";
 import { CustomerController, CustomerService } from "./customers";
 import { ReportController, ReportService } from "./reports";
+import { LimitsService } from "./limits";
+import { StripeBillingModule, StripeWebhookController, BillingPortalController, StripeBillingService } from "./stripe-billing";
+import { startSubscriptionJobs } from "./subscription-jobs";
 import {
   PlatformSupportController,
   SupportService,
@@ -43,11 +47,13 @@ import {
 @Module({ providers: [Database], exports: [Database] })
 class DatabaseModule {}
 @Module({
-  providers: [TenantService],
+  providers: [TenantService, LimitsService],
   controllers: [PlatformController, TenantController],
+  exports: [TenantService, LimitsService],
 })
 class TenantModule {}
 @Module({
+  imports: [TenantModule],
   providers: [CatalogService],
   controllers: [CatalogController],
   exports: [CatalogService],
@@ -92,6 +98,7 @@ class SystemController {
     FinanceModule,
     ReservationModule,
     OperationsModule,
+    StripeBillingModule,
   ],
   controllers: [
     SystemController,
@@ -111,12 +118,15 @@ class SystemController {
     PlatformSupportController,
     TenantSupportController,
     ReportController,
+    StripeWebhookController,
+    BillingPortalController,
   ],
   providers: [
     DispatchService,
     WaiverService,
     ResourceService,
     PrintService,
+    DocumentStorageService,
     CrewService,
     PartnerService,
     IntegrationService,
@@ -126,6 +136,7 @@ class SystemController {
     CustomerService,
     SupportService,
     ReportService,
+    StripeBillingService,
     { provide: APP_GUARD, useClass: AuthGuard },
   ],
 })
@@ -133,21 +144,32 @@ export class AppModule {}
 
 export async function createApp() {
   if (
-    !["demo", "test"].includes(process.env.APP_MODE ?? "") ||
-    process.env.NODE_ENV === "production"
+    !["demo", "test", "production"].includes(process.env.APP_MODE ?? "")
   )
     throw new Error(
-      "First slice supports explicit APP_MODE=demo/test only. Production identity and launch checks are not complete.",
+      "APP_MODE must be demo, test, or production. Set APP_MODE=production for live deployments.",
     );
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
+  const verboseNestLog =
+    process.env.NEST_LOG === "verbose" || process.env.NEST_LOG === "log";
   const app = await NestFactory.create(AppModule, {
-    logger: process.env.APP_MODE === "test" ? false : ["error", "warn", "log"],
+    logger:
+      process.env.APP_MODE === "test"
+        ? false
+        : verboseNestLog
+          ? ["error", "warn", "log"]
+          : ["error", "warn"],
     bodyParser: false,
   });
   app.use(helmet());
   app.use(
     "/integrations/v1/inbound",
     raw({ type: "application/json", limit: "64kb" }),
+  );
+  // Stripe webhook endpoint needs the raw body for signature verification.
+  app.use(
+    "/webhooks/stripe",
+    raw({ type: "application/json", limit: "1mb" }),
   );
   app.use(json({ limit: "64kb" }));
   app.use(
@@ -168,6 +190,8 @@ export async function createApp() {
   try {
     await app.get(Database).assertRuntimeRole();
     await app.init();
+    // Start subscription background jobs (trial reminders, grace period)
+    startSubscriptionJobs(app.get(Database).pool);
     return app;
   } catch (error) {
     await app.close();

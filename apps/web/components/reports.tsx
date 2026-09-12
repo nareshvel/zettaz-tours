@@ -1,9 +1,22 @@
 "use client";
-import { useState } from "react";
-import { AlertTriangle, BarChart3, CalendarDays, Landmark } from "lucide-react";
+
+import { useEffect, useRef, useState } from "react";
+import {
+  AlertTriangle,
+  BarChart3,
+  CalendarDays,
+  Landmark,
+  ListFilter,
+} from "lucide-react";
 import type { Session } from "@/lib/types";
 import { money, useResource } from "@/lib/client";
-import { Empty, Heading, Loading, Notice } from "./common";
+import {
+  Empty,
+  Heading,
+  Loading,
+  Notice,
+  TenantDateInput,
+} from "./common";
 
 type Report = {
   range: { from: string; to: string };
@@ -31,67 +44,274 @@ type Report = {
     guests: number;
   }[];
 };
-const day = (date: Date) => date.toISOString().slice(0, 10);
-function initialRange() {
-  const now = new Date();
-  return {
-    from: day(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))),
-    to: day(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0))),
-  };
+
+type ReportRange = "today" | "week" | "month" | "last_month" | "custom";
+
+function tenantDay(timezone: string, date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function shiftDay(day: string, days: number) {
+  const date = new Date(`${day}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function mondayOf(day: string) {
+  const date = new Date(`${day}T12:00:00Z`);
+  const weekday = date.getUTCDay();
+  const offset = weekday === 0 ? -6 : 1 - weekday;
+  return shiftDay(day, offset);
+}
+
+function sundayOf(day: string) {
+  return shiftDay(mondayOf(day), 6);
+}
+
+function monthBounds(day: string): [string, string] {
+  const [year, month] = day.split("-").map(Number);
+  const from = `${year}-${String(month).padStart(2, "0")}-01`;
+  const to = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+  return [from, to];
+}
+
+function previousMonthBounds(day: string): [string, string] {
+  const [year, month] = day.split("-").map(Number);
+  const prev = month === 1 ? [year - 1, 12] : [year, month - 1];
+  return monthBounds(
+    `${prev[0]}-${String(prev[1]).padStart(2, "0")}-01`,
+  );
+}
+
+function rangeBounds(
+  range: ReportRange,
+  today: string,
+  customFrom: string,
+  customTo: string,
+): [string, string] {
+  if (range === "today") return [today, today];
+  if (range === "week") return [mondayOf(today), sundayOf(today)];
+  if (range === "month") return monthBounds(today);
+  if (range === "last_month") return previousMonthBounds(today);
+  return [customFrom, customTo];
 }
 
 export function Reports({ session }: { session: Session }) {
-  const [range, setRange] = useState(initialRange);
-  const [applied, setApplied] = useState(initialRange);
+  const today = tenantDay(session.tenant.timezone);
+  const weekStart = mondayOf(today);
+  const weekEnd = sundayOf(today);
+  const [preset, setPreset] = useState<ReportRange>("week");
+  const [customFrom, setCustomFrom] = useState(weekStart);
+  const [customTo, setCustomTo] = useState(weekEnd);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
+
+  const [from, to] = rangeBounds(preset, today, customFrom, customTo);
   const report = useResource<Report>(
-    `reports/v1/overview?${new URLSearchParams(applied).toString()}`,
+    `reports/v1/overview?${new URLSearchParams({ from, to }).toString()}`,
   );
+
+  useEffect(() => {
+    if (!filtersOpen) return;
+    function onPointer(event: MouseEvent) {
+      if (
+        filterRef.current &&
+        !filterRef.current.contains(event.target as Node)
+      ) {
+        setFiltersOpen(false);
+      }
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setFiltersOpen(false);
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [filtersOpen]);
+
+  function selectPreset(next: ReportRange) {
+    setPreset(next);
+    if (next === "custom") {
+      setCustomFrom(from);
+      setCustomTo(to);
+    }
+  }
+
+  function resetView() {
+    setPreset("week");
+    setCustomFrom(weekStart);
+    setCustomTo(weekEnd);
+    setFiltersOpen(false);
+  }
+
+  const rangeLabel =
+    preset === "today"
+      ? "Today"
+      : preset === "week"
+        ? "This week"
+        : preset === "month"
+          ? "This month"
+          : preset === "last_month"
+            ? "Last month"
+            : "Custom range";
+  const filterCount = preset === "week" ? 0 : 1;
+  const rangeHint =
+    preset === "today"
+      ? today
+      : preset === "week"
+        ? `${weekStart} – ${weekEnd}`
+        : preset === "month"
+          ? `${monthBounds(today)[0]} – ${monthBounds(today)[1]}`
+          : preset === "last_month"
+            ? `${previousMonthBounds(today)[0]} – ${previousMonthBounds(today)[1]}`
+            : `${customFrom} – ${customTo}`;
+
   return (
     <>
       <Heading
         eyebrow="REPORTING"
         title="Reports"
-        description="Operational and commercial facts for the selected departure dates."
+        description={`Departure-date facts in ${session.tenant.timezone}. Commercial totals use the tenant reporting currency only — no FX conversion.`}
+        action={
+          <div className="filter-menu report-filter-menu" ref={filterRef}>
+            <button
+              type="button"
+              className={
+                "button secondary catalog-add-btn" +
+                (filtersOpen || filterCount ? " active-filter" : "")
+              }
+              aria-label="Filter reports"
+              aria-expanded={filtersOpen}
+              aria-haspopup="dialog"
+              onClick={() => setFiltersOpen((open) => !open)}
+            >
+              <ListFilter size={17} />
+              <span className="button-label">{rangeLabel}</span>
+              {filterCount > 0 && (
+                <span className="filter-count">{filterCount}</span>
+              )}
+            </button>
+            {filtersOpen && (
+              <div
+                className="filter-popover"
+                role="dialog"
+                aria-label="Report date filters"
+              >
+                <div className="filter-popover-head">
+                  <strong>Date range</strong>
+                  <span>{rangeHint}</span>
+                </div>
+                <div className="compact-control">
+                  <span>Departure dates</span>
+                  <div
+                    className="filter-range-options"
+                    role="radiogroup"
+                    aria-label="Date range"
+                  >
+                    {(
+                      [
+                        ["today", "Today"],
+                        ["week", "This week"],
+                        ["month", "This month"],
+                        ["last_month", "Last month"],
+                        ["custom", "Custom range"],
+                      ] as const
+                    ).map(([value, caption]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        role="radio"
+                        aria-checked={preset === value}
+                        className={
+                          "filter-range-option" +
+                          (preset === value ? " selected" : "")
+                        }
+                        onClick={() => selectPreset(value)}
+                      >
+                        {caption}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {preset === "custom" && (
+                  <div className="filter-custom-range">
+                    <TenantDateInput
+                      label="From"
+                      value={customFrom}
+                      max={customTo || undefined}
+                      onChange={setCustomFrom}
+                      locale={session.tenant.config.locale}
+                      dateFormat={session.tenant.config.dateFormat}
+                      compact
+                    />
+                    <TenantDateInput
+                      label="To"
+                      value={customTo}
+                      min={customFrom || undefined}
+                      onChange={setCustomTo}
+                      locale={session.tenant.config.locale}
+                      dateFormat={session.tenant.config.dateFormat}
+                      compact
+                    />
+                  </div>
+                )}
+                {preset !== "custom" && (
+                  <p className="filter-range-hint muted">{rangeHint}</p>
+                )}
+                <p className="filter-range-hint muted">
+                  Population is departures whose local start date falls in
+                  range
+                  {report.data ? ` · ${report.data.currency}` : ""}.
+                </p>
+                <div className="filter-popover-actions">
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={resetView}
+                  >
+                    Reset
+                  </button>
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={() => setFiltersOpen(false)}
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        }
       />
-      <section className="panel report-filter">
-        <label className="field">
-          <span>From</span>
-          <input
-            type="date"
-            value={range.from}
-            onChange={(event) =>
-              setRange({ ...range, from: event.target.value })
-            }
-          />
-        </label>
-        <label className="field">
-          <span>To</span>
-          <input
-            type="date"
-            value={range.to}
-            onChange={(event) => setRange({ ...range, to: event.target.value })}
-          />
-        </label>
-        <button
-          className="button"
-          disabled={!range.from || !range.to || range.from > range.to}
-          onClick={() => setApplied(range)}
-        >
-          Apply dates
-        </button>
-      </section>
+
       {report.error ? (
         <Notice error>{report.error}</Notice>
       ) : !report.data ? (
         <Loading />
       ) : (
         <>
+          <p className="muted report-range-note">
+            Showing <strong>{rangeHint}</strong>
+            {report.data ? ` · ${report.data.currency}` : ""}.
+          </p>
           <section className="metric-grid report-metrics">
             <div className="metric-card">
               <BarChart3 size={20} />
               <span>Confirmed bookings</span>
               <strong>{report.data.commercial.confirmed}</strong>
-              <small>{report.data.commercial.cancelled} cancelled</small>
+              <small>
+                {report.data.commercial.bookings} total ·{" "}
+                {report.data.commercial.cancelled} cancelled
+              </small>
             </div>
             <div className="metric-card">
               <Landmark size={20} />
@@ -107,7 +327,7 @@ export function Reports({ session }: { session: Session }) {
                   report.data.commercial.receivedMinor,
                   report.data.currency,
                 )}{" "}
-                received
+                settled guest receipts
               </small>
             </div>
             <div className="metric-card">
@@ -124,7 +344,7 @@ export function Reports({ session }: { session: Session }) {
                   report.data.commercial.partnerDueMinor,
                   report.data.currency,
                 )}{" "}
-                partner due
+                partner obligations
               </small>
             </div>
             <div className="metric-card">
@@ -136,33 +356,43 @@ export function Reports({ session }: { session: Session }) {
               </small>
             </div>
           </section>
-          <section className="panel">
+
+          <section className="panel report-exceptions">
             <div className="panel-heading">
               <div>
                 <p className="eyebrow">OPERATING EXCEPTIONS</p>
-                <h2>Action requiring review</h2>
+                <h2>Needs review</h2>
               </div>
             </div>
-            <div className="detail-grid">
-              <div>
-                <span>Weather holds</span>
-                <strong>{report.data.operations.weatherHolds}</strong>
-              </div>
-              <div>
-                <span>Closed departures</span>
-                <strong>{report.data.operations.closed}</strong>
-              </div>
-              <div>
-                <span>Unassigned departures</span>
-                <strong>{report.data.operations.unassigned}</strong>
-              </div>
-              <div>
-                <span>Unresolved pickups</span>
-                <strong>{report.data.operations.unresolvedPickups}</strong>
-              </div>
+            <div className="report-exception-grid">
+              {(
+                [
+                  ["Weather holds", report.data.operations.weatherHolds],
+                  ["Closed departures", report.data.operations.closed],
+                  [
+                    "Unassigned departures",
+                    report.data.operations.unassigned,
+                  ],
+                  [
+                    "Unresolved pickups",
+                    report.data.operations.unresolvedPickups,
+                  ],
+                ] as const
+              ).map(([label, value]) => (
+                <div
+                  key={label}
+                  className={
+                    "report-exception" + (value > 0 ? " attention" : "")
+                  }
+                >
+                  <span>{label}</span>
+                  <strong>{value}</strong>
+                </div>
+              ))}
             </div>
           </section>
-          <section className="panel">
+
+          <section className="panel report-daily">
             <div className="panel-heading">
               <div>
                 <p className="eyebrow">DAILY ACTIVITY</p>
@@ -175,34 +405,56 @@ export function Reports({ session }: { session: Session }) {
                 <p>Choose another period to review scheduled activity.</p>
               </Empty>
             ) : (
-              <div className="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>Departures</th>
-                      <th>Confirmed bookings</th>
-                      <th>Guests</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.data.days.map((row) => (
-                      <tr key={row.date}>
-                        <td>{row.date}</td>
-                        <td>{row.departures}</td>
-                        <td>{row.confirmed_bookings}</td>
-                        <td>{row.guests}</td>
+              <>
+                <div className="table-scroll report-daily-table">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Departures</th>
+                        <th>Confirmed bookings</th>
+                        <th>Guests</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {report.data.days.map((row) => (
+                        <tr key={row.date}>
+                          <td>{row.date}</td>
+                          <td>{row.departures}</td>
+                          <td>{row.confirmed_bookings}</td>
+                          <td>{row.guests}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="report-daily-cards">
+                  {report.data.days.map((row) => (
+                    <article key={row.date} className="report-day-card">
+                      <strong>{row.date}</strong>
+                      <div className="report-day-stats">
+                        <span>
+                          <strong>{row.departures}</strong> departures
+                        </span>
+                        <span>
+                          <strong>{row.confirmed_bookings}</strong> bookings
+                        </span>
+                        <span>
+                          <strong>{row.guests}</strong> guests
+                        </span>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </>
             )}
           </section>
+
           <Notice>
-            Amounts use {report.data.currency}, the tenant reporting currency.
-            Cross-currency conversion remains disabled until an approved FX
-            policy exists.
+            Amounts use <strong>{report.data.currency}</strong>, the tenant
+            reporting currency. Guest balances are after accepted partner
+            credit. Cross-currency conversion stays disabled until an approved
+            FX policy exists. Exports remain Track B.
           </Notice>
         </>
       )}

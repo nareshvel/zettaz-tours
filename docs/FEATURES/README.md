@@ -8,8 +8,14 @@ Current operations specification: [operations/resources-and-assignments.md](oper
 
 Crew connected-mobile boundary: [operations/crew-mobile-facade.md](operations/crew-mobile-facade.md).
 
+Short-lived document hot store and archive sync-out: [operations/document-storage.md](operations/document-storage.md).
+
+Boarding guest-balance collection and partner clearance policy: [operations/boarding-balance-collection.md](operations/boarding-balance-collection.md).
+
 Customer communication boundary: [customer-notifications.md](customer-notifications.md).
 
 Customer identity, booking snapshots and history: [reservations/customer-records.md](reservations/customer-records.md).
+
+Mode-aware New reservation discovery: [reservations/mode-aware-discovery.md](reservations/mode-aware-discovery.md).
 
 Track A operational and commercial read model: [reporting-minimum.md](reporting-minimum.md).

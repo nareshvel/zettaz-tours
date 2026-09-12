@@ -12,6 +12,7 @@ import {
 import { randomUUID } from "node:crypto";
 import {
   Actor,
+  bookingConcessionSchema,
   bookingSchema,
   confirmSchema,
   id,
@@ -68,6 +69,44 @@ export class ReservationService {
         if (!rows[0]) throw new NotFoundException("Accommodation not found");
         accommodationId = rows[0].id;
         stay = { ...data.stay, hotelName: rows[0].name };
+      }
+      let quote = current.quote as Quote;
+      if (data.concession) {
+        const ceiling = quote.subtotalMinor + quote.taxMinor;
+        if (data.concession.discountMinor > ceiling)
+          throw new ConflictException("Discount cannot exceed the quote total");
+        const before = quote;
+        quote = {
+          ...quote,
+          discountMinor: data.concession.discountMinor,
+          discountReason: data.concession.reason,
+          ...(data.concession.promoCode
+            ? { promoCode: data.concession.promoCode }
+            : {}),
+          totalMinor: ceiling - data.concession.discountMinor,
+        };
+        if (!Number.isSafeInteger(quote.totalMinor) || quote.totalMinor < 0)
+          throw new ConflictException("Discount produces an invalid total");
+        const {
+          rows: [updated],
+        } = await tx.query(
+          `UPDATE holds SET quote=$3
+           WHERE tenant_id=$1 AND id=$2 AND NOT consumed AND expires_at>clock_timestamp()
+           RETURNING id`,
+          [actor.tenantId, data.holdId, quote],
+        );
+        if (!updated) throw new ConflictException("Hold expired or consumed");
+        await record(
+          tx,
+          actor,
+          "booking.concession_staged",
+          data.holdId,
+          before,
+          {
+            ...data.concession,
+            totalMinor: quote.totalMinor,
+          },
+        );
       }
       const purchaser = data.purchaser ?? {
         name: data.leadName,
@@ -126,7 +165,7 @@ export class ReservationService {
         );
       }
       await record(tx, actor, "booking.created", bookingId, null, data);
-      return { bookingId, state: "held", version: 1, quote: hold.quote };
+      return { bookingId, state: "held", version: 1, quote };
     });
   }
   payment(actor: Actor, bookingId: string, key: string, input: unknown) {
@@ -192,10 +231,18 @@ export class ReservationService {
           throw new ConflictException(
             "Pickup must be resolved before confirmation",
           );
+        const { rows: attribution } = await tx.query(
+          "SELECT partner_id,external_reference,collection_mode,invoice_required FROM booking_partner_attributions WHERE tenant_id=$1 AND booking_id=$2",
+          [actor.tenantId, bookingId],
+        );
+        const partnerSettlement =
+          attribution[0]?.collection_mode === "partner_invoice" ||
+          attribution[0]?.collection_mode === "partner_collects_for_tenant";
         const paid = await this.finance.paid(tx, actor, bookingId);
         if (
+          !partnerSettlement &&
           BigInt(paid) * 100n <
-          BigInt(quote.totalMinor) * BigInt(quote.minimumPaidPercent)
+            BigInt(quote.totalMinor) * BigInt(quote.minimumPaidPercent)
         )
           throw new ConflictException("Required payment has not settled");
         await this.inventory.consume(tx, actor, booking.hold_id);
@@ -209,10 +256,6 @@ export class ReservationService {
           booking.version + 1,
           quote,
         ]);
-        const { rows: attribution } = await tx.query(
-          "SELECT partner_id,external_reference,collection_mode,invoice_required FROM booking_partner_attributions WHERE tenant_id=$1 AND booking_id=$2",
-          [actor.tenantId, bookingId],
-        );
         if (attribution[0]) {
           const partner = attribution[0];
           await tx.query(
@@ -281,6 +324,143 @@ export class ReservationService {
       },
     );
   }
+  reviveHold(actor: Actor, bookingId: string, key: string) {
+    return this.db.command(
+      actor,
+      `booking.revive_hold:${bookingId}`,
+      key,
+      {},
+      async (tx) => {
+        const booking = await this.booking(tx, actor, bookingId, true);
+        if (booking.state !== "held")
+          throw new ConflictException(
+            "Only held reservations can restore an expired hold",
+          );
+        await this.inventory.departure(tx, actor, booking.departure_id, true);
+        const hold = await this.inventory.hold(tx, actor, booking.hold_id);
+        if (hold.consumed)
+          throw new ConflictException("Hold was already consumed");
+        if (hold.live)
+          return {
+            bookingId,
+            expiresAt: new Date(hold.expires_at).toISOString(),
+            revived: false,
+          };
+        const {
+          rows: [future],
+        } = await tx.query(
+          "SELECT starts_at > clock_timestamp() AS future, operational_status FROM departures WHERE tenant_id=$1 AND id=$2",
+          [actor.tenantId, hold.departure_id],
+        );
+        if (!future?.future)
+          throw new ConflictException("Departure has already started");
+        if (future.operational_status !== "open")
+          throw new ConflictException("Departure is not available for sale");
+        const free = await this.inventory.availability(
+          tx,
+          actor,
+          hold.departure_id,
+        );
+        if (hold.seats > free.available)
+          throw new ConflictException(
+            "Not enough seats remain to restore this hold",
+          );
+        const settings = await tenant(tx, actor);
+        const {
+          rows: [updated],
+        } = await tx.query(
+          `UPDATE holds
+           SET expires_at = clock_timestamp() + $3 * interval '1 second'
+           WHERE tenant_id=$1 AND id=$2 AND NOT consumed AND expires_at <= clock_timestamp()
+           RETURNING expires_at`,
+          [actor.tenantId, hold.id, settings.config.holdSeconds],
+        );
+        if (!updated)
+          throw new ConflictException("Hold could not be restored");
+        await record(
+          tx,
+          actor,
+          "booking.hold_revived",
+          bookingId,
+          { expiresAt: hold.expires_at, seats: hold.seats },
+          {
+            expiresAt: updated.expires_at,
+            seats: hold.seats,
+            departureId: hold.departure_id,
+          },
+        );
+        return {
+          bookingId,
+          expiresAt: new Date(updated.expires_at).toISOString(),
+          revived: true,
+        };
+      },
+    );
+  }
+  applyConcession(actor: Actor, bookingId: string, key: string, raw: unknown) {
+    const data = parse(bookingConcessionSchema, raw);
+    return this.db.command(
+      actor,
+      `booking.concession:${bookingId}`,
+      key,
+      data,
+      async (tx) => {
+        const booking = await this.booking(tx, actor, bookingId, true);
+        if (booking.state !== "held")
+          throw new ConflictException(
+            "Discounts can only be applied while the reservation is held",
+          );
+        const hold = await this.inventory.hold(tx, actor, booking.hold_id);
+        if (!hold.live)
+          throw new ConflictException(
+            "Restore the hold before applying a discount",
+          );
+        if (hold.consumed)
+          throw new ConflictException("Hold was already consumed");
+        const before = hold.quote as Quote;
+        if (before.discountMinor)
+          throw new ConflictException(
+            "A discount is already applied to this reservation",
+          );
+        const paid = await this.finance.paid(tx, actor, bookingId);
+        const partnerCredit = await this.finance.partnerCredit(
+          tx,
+          actor,
+          bookingId,
+        );
+        const ceiling = before.subtotalMinor + before.taxMinor;
+        if (data.discountMinor > ceiling)
+          throw new ConflictException("Discount cannot exceed the quote total");
+        const quote: Quote = {
+          ...before,
+          discountMinor: data.discountMinor,
+          discountReason: data.reason,
+          ...(data.promoCode ? { promoCode: data.promoCode } : {}),
+          totalMinor: ceiling - data.discountMinor,
+        };
+        if (!Number.isSafeInteger(quote.totalMinor) || quote.totalMinor < 0)
+          throw new ConflictException("Discount produces an invalid total");
+        if (paid + partnerCredit > quote.totalMinor)
+          throw new ConflictException(
+            "Discount would leave recorded payments above the new total",
+          );
+        const {
+          rows: [updated],
+        } = await tx.query(
+          `UPDATE holds SET quote=$3
+           WHERE tenant_id=$1 AND id=$2 AND NOT consumed AND expires_at>clock_timestamp()
+           RETURNING id`,
+          [actor.tenantId, hold.id, quote],
+        );
+        if (!updated) throw new ConflictException("Hold expired or consumed");
+        await record(tx, actor, "booking.concession_applied", bookingId, before, {
+          ...data,
+          totalMinor: quote.totalMinor,
+        });
+        return { bookingId, quote };
+      },
+    );
+  }
   read(actor: Actor, bookingId: string) {
     return this.db.transaction(actor, async (tx) => {
       const booking = await this.booking(tx, actor, bookingId);
@@ -301,9 +481,19 @@ export class ReservationService {
       );
       // Expiry is derived from database time so the worker is not a correctness dependency.
       const { rows: partnerFacts } = await tx.query(
-        `SELECT EXISTS(SELECT 1 FROM booking_partner_snapshots WHERE tenant_id=$1 AND booking_id=$2)
+        `SELECT EXISTS(SELECT 1 FROM booking_partner_snapshots WHERE tenant_id=$1 AND booking_id=$2) AS has_partner_snapshot,
+          EXISTS(SELECT 1 FROM booking_partner_snapshots WHERE tenant_id=$1 AND booking_id=$2)
           OR EXISTS(SELECT 1 FROM partner_collection_claims WHERE tenant_id=$1 AND booking_id=$2)
           OR EXISTS(SELECT 1 FROM partner_obligations WHERE tenant_id=$1 AND booking_id=$2) AS has_partner_facts`,
+        [actor.tenantId, bookingId],
+      );
+      const {
+        rows: [partnerAttribution],
+      } = await tx.query(
+        `SELECT a.partner_id,p.name AS partner_name,a.external_reference,a.collection_mode,a.invoice_required
+         FROM booking_partner_attributions a
+         JOIN partner_organizations p ON p.tenant_id=a.tenant_id AND p.id=a.partner_id
+         WHERE a.tenant_id=$1 AND a.booking_id=$2`,
         [actor.tenantId, bookingId],
       );
       return {
@@ -316,6 +506,16 @@ export class ReservationService {
         paidMinor,
         partnerCreditMinor,
         payments,
+        hasPartnerSnapshot: Boolean(partnerFacts[0]?.has_partner_snapshot),
+        partner: partnerAttribution
+          ? {
+              partnerId: partnerAttribution.partner_id,
+              partnerName: partnerAttribution.partner_name,
+              externalReference: partnerAttribution.external_reference,
+              collectionMode: partnerAttribution.collection_mode,
+              invoiceRequired: partnerAttribution.invoice_required,
+            }
+          : null,
         balanceMinor:
           booking.state === "cancelled"
             ? 0
@@ -332,11 +532,20 @@ export class ReservationService {
             ).rowCount! > 0) ||
           (booking.state === "cancelled" && partnerFacts[0].has_partner_facts) ||
           paidMinor > hold.quote.totalMinor,
-        departure: await this.inventory.departure(
-          tx,
-          actor,
-          booking.departure_id,
-        ),
+        departure: await (async () => {
+          const {
+            rows: [row],
+          } = await tx.query(
+            `SELECT d.starts_at, d.product_id,
+               COALESCE(NULLIF(p.customer_title, ''), NULLIF(p.name, ''), 'Experience') AS product_name
+             FROM departures d
+             JOIN products p ON p.tenant_id = d.tenant_id AND p.id = d.product_id
+             WHERE d.tenant_id = $1 AND d.id = $2`,
+            [actor.tenantId, booking.departure_id],
+          );
+          if (!row) throw new NotFoundException("Departure not found");
+          return row;
+        })(),
       };
     });
   }
@@ -382,5 +591,29 @@ export class ReservationController {
     @Body() b: unknown,
   ) {
     return this.service.confirm(a, parse(id, idValue), parse(keySchema, k), b);
+  }
+  @Post(":id/revive-hold")
+  @Access("bookings.write")
+  reviveHold(
+    @CurrentActor() a: Actor,
+    @Param("id") idValue: string,
+    @Headers("idempotency-key") k: string,
+  ) {
+    return this.service.reviveHold(a, parse(id, idValue), parse(keySchema, k));
+  }
+  @Post(":id/concession")
+  @Access("bookings.write")
+  applyConcession(
+    @CurrentActor() a: Actor,
+    @Param("id") idValue: string,
+    @Headers("idempotency-key") k: string,
+    @Body() b: unknown,
+  ) {
+    return this.service.applyConcession(
+      a,
+      parse(id, idValue),
+      parse(keySchema, k),
+      b,
+    );
   }
 }

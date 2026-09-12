@@ -1,6 +1,6 @@
 # Optional cruise and hotel stay details
 
-Bookings may include one optional stay detail: `cruise` with vessel name and cabin number, or `hotel` with hotel name and room number. These fields are operational identifiers for pickup, waiver rosters, and check-in; they are not payment or waiver evidence.
+Bookings support optional stay detail: `cruise` with vessel name and cabin number, `hotel` with hotel name and room number, `private_accommodation` for Airbnb or another private property label/address, or `local` for a local resident or no visitor accommodation. The departure-waiver and staff reservation flows share this tenant-neutral model. These fields are operational identifiers for pickup, waiver rosters, and check-in; a signed waiver stores an immutable stay snapshot but the stay record itself is not signature evidence.
 
 The application now provides tenant-controlled `CruiseCall` and accommodation property records. A cruise call captures vessel, date, port, scheduled arrival/departure, tender status, and the operational all-aboard deadline. A reservation may link one controlled cruise call or accommodation while retaining its optional cabin or room number. The server copies the controlled vessel or property name into the booking snapshot and rejects cross-tenant or inactive references.
 

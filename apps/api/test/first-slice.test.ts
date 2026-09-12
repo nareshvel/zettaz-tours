@@ -33,6 +33,21 @@ function post(path: string, token: string, body: unknown, k = key()) {
 function get(path: string, token: string) {
   return request(app.getHttpServer()).get(path).auth(token, { type: "bearer" });
 }
+function patch(path: string, token: string, body: unknown, k = key()) {
+  return request(app.getHttpServer())
+    .patch(path)
+    .timeout({ response: 10000, deadline: 15000 })
+    .auth(token, { type: "bearer" })
+    .set("Idempotency-Key", k)
+    .send(body as object);
+}
+function del(path: string, token: string, k = key()) {
+  return request(app.getHttpServer())
+    .delete(path)
+    .timeout({ response: 10000, deadline: 15000 })
+    .auth(token, { type: "bearer" })
+    .set("Idempotency-Key", k);
+}
 async function setupTenant(slug: string, config = mockConfig) {
   const res = await post("/platform/v1/tenants", platform, {
     slug,
@@ -169,12 +184,84 @@ test("resources are tenant-scoped, expired compliance blocks assignment, and che
     notes: "Synthetic test resource",
   });
   assert.equal(resource.status, 201, JSON.stringify(resource.body));
+  const updatedResource = await patch(
+    `/ops/v1/resources/${resource.body.id}`,
+    t.token,
+    {
+      code: resource.body.code,
+      name: "Mock ready boat updated",
+      type: "vessel",
+      capacity: 14,
+      notes: "Synthetic test resource",
+      active: true,
+    },
+  );
+  assert.equal(updatedResource.status, 200, JSON.stringify(updatedResource.body));
+  assert.equal(updatedResource.body.name, "Mock ready boat updated");
+  assert.equal(updatedResource.body.capacity, 14);
+  const doc = await post("/ops/v1/compliance-documents", t.token, {
+    resourceId: resource.body.id,
+    documentType: "vessel insurance",
+    expiresOn: "2099-01-01",
+    notes: "Synthetic valid evidence",
+  });
+  assert.equal(doc.status, 201, JSON.stringify(doc.body));
+  const updatedDoc = await patch(
+    `/ops/v1/compliance-documents/${doc.body.id}`,
+    t.token,
+    {
+      documentType: "vessel insurance",
+      expiresOn: "2099-06-01",
+      notes: "Extended synthetic evidence",
+    },
+  );
+  assert.equal(updatedDoc.status, 200, JSON.stringify(updatedDoc.body));
+  assert.equal(updatedDoc.body.expiresOn, "2099-06-01");
+  assert.equal(
+    (await del(`/ops/v1/compliance-documents/${doc.body.id}`, t.token)).status,
+    200,
+  );
   const assignment = await post("/ops/v1/assignments", t.token, {
     departureId: dep.departureId,
     resourceId: resource.body.id,
     assignmentRole: "vessel",
   });
   assert.equal(assignment.status, 201, JSON.stringify(assignment.body));
+  assert.equal(
+    (await del(`/ops/v1/resources/${resource.body.id}`, t.token)).status,
+    200,
+  );
+  assert.equal(
+    (
+      await post("/ops/v1/assignments", t.token, {
+        departureId: dep.departureId,
+        resourceId: resource.body.id,
+        assignmentRole: "vessel-again",
+      })
+    ).status,
+    400,
+  );
+  const reactivated = await patch(
+    `/ops/v1/resources/${resource.body.id}`,
+    t.token,
+    {
+      code: resource.body.code,
+      name: "Mock ready boat updated",
+      type: "vessel",
+      capacity: 14,
+      notes: "Synthetic test resource",
+      active: true,
+    },
+  );
+  assert.equal(reactivated.status, 200, JSON.stringify(reactivated.body));
+  assert.equal(reactivated.body.active, true);
+  const listed = await get("/ops/v1/resources", t.token);
+  assert.equal(listed.status, 200);
+  assert.equal(
+    listed.body.find((item: { id: string }) => item.id === resource.body.id)
+      ?.active,
+    true,
+  );
   const assignments = await get(
     `/ops/v1/departures/${dep.departureId}/assignments`,
     t.token,
@@ -693,6 +780,26 @@ test("authorized overbooking requires its permission and an audited reason", asy
         departureId: dep.departureId,
         party: { adult: 1 },
         reason: "Mock group exception",
+      })
+    ).status,
+    403,
+  );
+  const reservationsMember = await post("/admin/v1/members", a.token, {
+    name: "Mock Reservations Without Overbook",
+    email: `reservations-no-overbook-${randomUUID()}@example.invalid`,
+    role: "reservations",
+  });
+  const reservationsToken = await issueSession(
+    admin,
+    reservationsMember.body.actorId,
+    a.tenantId,
+  );
+  assert.equal(
+    (
+      await post("/staff/v1/overbook-holds", reservationsToken, {
+        departureId: dep.departureId,
+        party: { adult: 1 },
+        reason: "Must be escalated to an authorized approver",
       })
     ).status,
     403,
@@ -1223,6 +1330,173 @@ test("strict validation rejects unknown fields, bad rates, empty parties and dup
   assert.equal((await post("/admin/v1/schedules", a.token, body)).status, 409);
 });
 
+test("catalog creation normalizes options, passenger units, rates and availability rules", async () => {
+  const created = await departure(a.token, 12);
+  const product = await admin.query(
+    `SELECT p.status,p.availability_mode,count(DISTINCT o.id)::int options,
+            count(DISTINCT u.id)::int units,count(DISTINCT r.id)::int rates
+     FROM products p
+     JOIN product_options o ON o.tenant_id=p.tenant_id AND o.product_id=p.id
+     JOIN passenger_units u ON u.tenant_id=o.tenant_id AND u.option_id=o.id
+     JOIN rate_plans r ON r.tenant_id=o.tenant_id AND r.option_id=o.id
+     WHERE p.tenant_id=$1 AND p.id=$2
+     GROUP BY p.tenant_id,p.id`,
+    [a.tenantId, created.productId],
+  );
+  assert.deepEqual(product.rows[0], {
+    status: "active",
+    availability_mode: "fixed_departure",
+    options: 1,
+    units: mockProduct.categories.length,
+    rates: mockProduct.rates.length,
+  });
+  const rules = await get("/admin/v1/availability-rules", a.token);
+  assert.equal(rules.status, 200, JSON.stringify(rules.body));
+  assert.ok(rules.body.some((rule: { capacity: number; times: string[] }) =>
+    rule.capacity === 12 && rule.times.includes("09:00")));
+  const otherTenantRules = await get("/admin/v1/availability-rules", b.token);
+  assert.equal(otherTenantRules.status, 200);
+  assert.equal(otherTenantRules.body.some((rule: { id: string }) =>
+    rules.body.some((own: { id: string }) => own.id === rule.id)), false);
+
+  const requested = await post("/admin/v1/products", a.token, {
+    ...mockProduct,
+    name: "Mock request-only charter",
+    availabilityMode: "on_request",
+    productKind: "charter",
+    pricingModel: "per_group",
+    privateBooking: true,
+    confirmationMode: "request",
+  });
+  assert.equal(requested.status, 201, JSON.stringify(requested.body));
+  const fixedEditor = await post("/admin/v1/schedules", a.token, {
+    productId: requested.body.productId,
+    startDate: DateTime.utc().plus({ days: 20 }).toISODate(),
+    endDate: DateTime.utc().plus({ days: 21 }).toISODate(),
+    weekdays: [1, 2, 3, 4, 5, 6, 7],
+    localTime: "10:00",
+    capacity: 1,
+    blackoutDates: [],
+  });
+  assert.equal(fixedEditor.status, 400);
+  const catalog = await get("/admin/v1/products", a.token);
+  assert.equal(catalog.status, 200);
+  assert.ok(
+    catalog.body.some(
+      (product: { id: string; availability_mode: string }) =>
+        product.id === requested.body.productId &&
+        product.availability_mode === "on_request",
+    ),
+  );
+  const priced = catalog.body.find(
+    (product: { id: string }) => product.id === created.productId,
+  );
+  assert.equal(Number(priced.price_from_minor), 6000);
+  const date = DateTime.utc().plus({ days: 10 }).toISODate();
+  const bookable = await get(
+    `/staff/v1/workspace/departures?view=upcoming&from=${date}&to=${date}&availabilityMode=fixed_departure`,
+    a.token,
+  );
+  assert.equal(bookable.status, 200, JSON.stringify(bookable.body));
+  assert.ok(
+    bookable.body.items.some(
+      (item: { id: string; availability_mode: string }) =>
+        item.id === created.departureId &&
+        item.availability_mode === "fixed_departure",
+    ),
+  );
+  await admin.query(
+    "UPDATE products SET availability_mode='on_request' WHERE tenant_id=$1 AND id=$2",
+    [a.tenantId, created.productId],
+  );
+  const hidden = await get(
+    `/staff/v1/workspace/departures?view=upcoming&from=${date}&to=${date}&availabilityMode=fixed_departure&productId=${created.productId}`,
+    a.token,
+  );
+  assert.equal(hidden.body.items.length, 0);
+  assert.equal(
+    (
+      await post("/staff/v1/holds", a.token, {
+        departureId: created.departureId,
+        party: { adult: 1 },
+      })
+    ).status,
+    400,
+  );
+});
+
+test("catalog product and availability rule can be opened and updated", async () => {
+  const created = await departure(a.token, 8);
+  const product = await get(`/admin/v1/products/${created.productId}`, a.token);
+  assert.equal(product.status, 200, JSON.stringify(product.body));
+  assert.equal(product.body.id, created.productId);
+  const definition = product.body.definition;
+  const updated = await patch(`/admin/v1/products/${created.productId}`, a.token, {
+    version: product.body.version,
+    name: "Harbor sunset",
+    description: "Evening shared departure",
+    status: "active",
+    productKind: product.body.product_kind ?? "tour",
+    optionName: definition.optionName,
+    durationMinutes: definition.durationMinutes,
+    pricingModel: definition.pricingModel ?? "per_person",
+    privateBooking: Boolean(definition.privateBooking),
+    confirmationMode: definition.confirmationMode ?? "instant",
+    categories: definition.categories,
+    rates: definition.rates.map((rate: { amountMinor: number }, index: number) =>
+      index === 0 ? { ...rate, amountMinor: 12000 } : rate,
+    ),
+  });
+  assert.equal(updated.status, 200, JSON.stringify(updated.body));
+  assert.equal(updated.body.name, "Harbor sunset");
+  assert.equal(updated.body.definition.rates[0].amountMinor, 12000);
+  assert.equal(
+    (
+      await patch(`/admin/v1/products/${created.productId}`, a.token, {
+        version: product.body.version,
+        name: "Stale name",
+        description: "",
+        status: "active",
+        productKind: "tour",
+        optionName: definition.optionName,
+        durationMinutes: definition.durationMinutes,
+        pricingModel: definition.pricingModel ?? "per_person",
+        privateBooking: false,
+        confirmationMode: "instant",
+        categories: definition.categories,
+        rates: definition.rates,
+      })
+    ).status,
+    409,
+  );
+  assert.equal(
+    (await get(`/admin/v1/products/${created.productId}`, b.token)).status,
+    404,
+  );
+  const rules = await get("/admin/v1/availability-rules", a.token);
+  const rule = rules.body.find(
+    (item: { product_id: string }) => item.product_id === created.productId,
+  );
+  assert.ok(rule);
+  const detail = await get(`/admin/v1/availability-rules/${rule.id}`, a.token);
+  assert.equal(detail.status, 200, JSON.stringify(detail.body));
+  assert.ok(
+    detail.body.departures.some(
+      (item: { id: string }) => item.id === created.departureId,
+    ),
+  );
+  const paused = await patch(`/admin/v1/availability-rules/${rule.id}`, a.token, {
+    version: detail.body.version,
+    status: "paused",
+  });
+  assert.equal(paused.status, 200, JSON.stringify(paused.body));
+  assert.equal(paused.body.status, "paused");
+  assert.equal(
+    (await get(`/admin/v1/availability-rules/${rule.id}`, b.token)).status,
+    404,
+  );
+});
+
 test("confirmation failure rolls back capacity, consumption, snapshot, audit and outbox together", async () => {
   const dep = await departure(),
     booking = await heldBooking(dep.departureId);
@@ -1468,6 +1742,25 @@ test("workspace reads paginate, honor tenant scope and restrict staff directory"
   );
   assert.equal(reservations.status, 200);
   assert.equal(reservations.body.items[0].id, booked.bookingId);
+  assert.equal(
+    (
+      await get(
+        "/staff/v1/workspace/reservations?state=held&source=phone",
+        one.token,
+      )
+    ).body.items[0].id,
+    booked.bookingId,
+  );
+  assert.equal(
+    (await get("/staff/v1/workspace/reservations?state=cancelled", one.token))
+      .body.items.length,
+    0,
+  );
+  assert.equal(
+    (await get("/staff/v1/workspace/reservations?from=not-a-date", one.token))
+      .status,
+    400,
+  );
   assert.equal(
     (await get("/staff/v1/workspace/reservations", two.token)).body.items
       .length,
@@ -2181,9 +2474,10 @@ test("crew mobile façade exposes only assigned trips and restricts crew check-i
         {
           passengers: [
             {
-              name: "Crew manifest traveller",
+              name: "Guest 1 · name required",
               category: "adult",
               isMinor: false,
+              identityPending: true,
             },
           ],
         },
@@ -2195,6 +2489,15 @@ test("crew mobile façade exposes only assigned trips and restricts crew check-i
   await post(`/staff/v1/bookings/${booking.bookingId}/confirm`, t.token, {
     version: 1,
   });
+  const crewWaiverTemplate = await post("/ops/v1/waiver-templates", t.token, {
+    title: "Crew mobile waiver",
+    body: "Synthetic crew waiver used only by the integration test.",
+  });
+  assert.equal(
+    crewWaiverTemplate.status,
+    201,
+    JSON.stringify(crewWaiverTemplate.body),
+  );
   const today = await get(
     `/crew/v1/today?date=${DateTime.utc().plus({ days: 10 }).toISODate()}`,
     guide,
@@ -2204,7 +2507,69 @@ test("crew mobile façade exposes only assigned trips and restricts crew check-i
   assert.equal(today.body.trips[0].guests.length, 1);
   assert.equal(today.body.trips[0].guests[0].lead_email, undefined);
   assert.equal(today.body.trips[0].guests[0].passengers.length, 1);
+  assert.equal(today.body.waiverTemplate.id, crewWaiverTemplate.body.id);
   const crewPassenger = today.body.trips[0].guests[0].passengers[0];
+  assert.equal(crewPassenger.waiver_signed, false);
+  assert.equal(crewPassenger.identity_pending, true);
+  const waiverCommand = `crew-waiver-${randomUUID()}`;
+  assert.equal(
+    (
+      await post(`/ops/v1/passengers/${crewPassenger.id}/waiver`, guide, {
+        signerName: "Crew manifest traveller",
+        consentAccepted: true,
+        signatureStrokes: Array.from({ length: 8 }, (_, index) => ({
+          x: index / 10,
+          y: index / 12,
+        })),
+        capturedAt: new Date().toISOString(),
+        deviceCommandId: `missing-name-${randomUUID()}`,
+        stay: { kind: "none" },
+      })
+    ).status,
+    400,
+  );
+  const crewWaiver = await post(
+    `/ops/v1/passengers/${crewPassenger.id}/waiver`,
+    guide,
+    {
+      passengerName: "Crew manifest traveller",
+      signerName: "Crew manifest traveller",
+      consentAccepted: true,
+      signatureStrokes: Array.from({ length: 8 }, (_, index) => ({
+        x: index / 10,
+        y: index / 12,
+      })),
+      capturedAt: new Date().toISOString(),
+      deviceCommandId: waiverCommand,
+      stay: {
+        kind: "private_accommodation",
+        propertyName: "Mock private villa",
+        address: "Synthetic test address",
+      },
+    },
+  );
+  assert.equal(crewWaiver.status, 201, JSON.stringify(crewWaiver.body));
+  assert.equal(
+    crewWaiver.body.templateVersion,
+    crewWaiverTemplate.body.version,
+  );
+  assert.equal(crewWaiver.body.stay.kind, "private_accommodation");
+  const afterWaiver = await get(
+    `/crew/v1/today?date=${DateTime.utc().plus({ days: 10 }).toISODate()}`,
+    guide,
+  );
+  assert.equal(
+    afterWaiver.body.trips[0].guests[0].passengers[0].waiver_signed,
+    true,
+  );
+  assert.equal(
+    afterWaiver.body.trips[0].guests[0].passengers[0].identity_pending,
+    false,
+  );
+  assert.equal(
+    afterWaiver.body.trips[0].guests[0].passengers[0].name,
+    "Crew manifest traveller",
+  );
   const token = await post(
     `/staff/v1/passengers/${crewPassenger.id}/checkin-token`,
     t.token,
@@ -2281,6 +2646,20 @@ test("crew mobile façade exposes only assigned trips and restricts crew check-i
   assert.equal(arrived.status, 201, JSON.stringify(arrived.body));
   const other = await departure(t.token);
   const otherBooking = await heldBooking(other.departureId, t.token);
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${otherBooking.bookingId}/passengers`,
+        t.token,
+        {
+          passengers: [
+            { name: "Unassigned traveller", category: "adult", isMinor: false },
+          ],
+        },
+      )
+    ).status,
+    201,
+  );
   const { rows: otherQuote } = await admin.query(
     "SELECT (quote->>'totalMinor')::int AS total_minor FROM holds WHERE tenant_id=$1 AND id=$2",
     [t.tenantId, otherBooking.holdId],
@@ -2289,6 +2668,26 @@ test("crew mobile façade exposes only assigned trips and restricts crew check-i
   await post(`/staff/v1/bookings/${otherBooking.bookingId}/confirm`, t.token, {
     version: 1,
   });
+  const { rows: otherPassengers } = await admin.query(
+    "SELECT id FROM booking_passengers WHERE tenant_id=$1 AND booking_id=$2 AND superseded_at IS NULL",
+    [t.tenantId, otherBooking.bookingId],
+  );
+  assert.equal(
+    (
+      await post(`/ops/v1/passengers/${otherPassengers[0].id}/waiver`, guide, {
+        signerName: "Unassigned traveller",
+        consentAccepted: true,
+        signatureStrokes: Array.from({ length: 8 }, (_, index) => ({
+          x: index / 10,
+          y: index / 12,
+        })),
+        capturedAt: new Date().toISOString(),
+        deviceCommandId: `crew-waiver-${randomUUID()}`,
+        stay: { kind: "none" },
+      })
+    ).status,
+    400,
+  );
   assert.equal(
     (
       await post(`/ops/v1/bookings/${otherBooking.bookingId}/checkin`, guide, {
@@ -2631,6 +3030,99 @@ test("partner collection claims remain separate from guest payments until financ
       })
     ).status,
     404,
+  );
+});
+
+test("partner invoice and partner collects confirm without guest payment", async () => {
+  const t = await setupTenant(`partner-confirm-${randomUUID().slice(0, 8)}`, {
+    ...mockConfig,
+    minimumPaidPercent: 100,
+  });
+  const invoicePartner = await post("/finance/v1/partners", t.token, {
+    name: "Mock Invoice Channel",
+    email: `invoice-${randomUUID()}@example.invalid`,
+  });
+  assert.equal(invoicePartner.status, 201, JSON.stringify(invoicePartner.body));
+  const collectPartner = await post("/finance/v1/partners", t.token, {
+    name: "Mock Collection Channel",
+    email: `collect-${randomUUID()}@example.invalid`,
+  });
+  assert.equal(collectPartner.status, 201, JSON.stringify(collectPartner.body));
+  const dep = await departure(t.token);
+
+  const invoiceHold = await post("/staff/v1/holds", t.token, {
+    departureId: dep.departureId,
+    party: { adult: 1 },
+  });
+  const invoiceBooking = await post("/staff/v1/bookings", t.token, {
+    holdId: invoiceHold.body.holdId,
+    leadName: "Mock Invoice Guest",
+    leadEmail: "invoice-guest@example.invalid",
+    source: "phone",
+    pickup: { kind: "none" },
+    partner: {
+      partnerId: invoicePartner.body.id,
+      externalReference: "INV-100",
+      collectionMode: "partner_invoice",
+      invoiceRequired: true,
+    },
+  });
+  assert.equal(invoiceBooking.status, 201, JSON.stringify(invoiceBooking.body));
+  const invoiceRead = await get(
+    `/staff/v1/bookings/${invoiceBooking.body.bookingId}`,
+    t.token,
+  );
+  assert.equal(invoiceRead.status, 200, JSON.stringify(invoiceRead.body));
+  assert.equal(invoiceRead.body.partner?.collectionMode, "partner_invoice");
+  assert.equal(invoiceRead.body.partner?.partnerName, "Mock Invoice Channel");
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${invoiceBooking.body.bookingId}/confirm`,
+        t.token,
+        { version: 1 },
+      )
+    ).status,
+    201,
+  );
+  const invoiceSummary = await get(
+    `/finance/v1/bookings/${invoiceBooking.body.bookingId}/finance-summary`,
+    t.token,
+  );
+  assert.equal(invoiceSummary.status, 200, JSON.stringify(invoiceSummary.body));
+  assert.equal(invoiceSummary.body.collectionMode, "partner_invoice");
+  assert.equal(
+    invoiceSummary.body.partnerObligationMinor,
+    invoiceSummary.body.totalMinor,
+  );
+
+  const collectHold = await post("/staff/v1/holds", t.token, {
+    departureId: dep.departureId,
+    party: { adult: 1 },
+  });
+  const collectBooking = await post("/staff/v1/bookings", t.token, {
+    holdId: collectHold.body.holdId,
+    leadName: "Mock Collect Guest",
+    leadEmail: "collect-guest@example.invalid",
+    source: "phone",
+    pickup: { kind: "none" },
+    partner: {
+      partnerId: collectPartner.body.id,
+      externalReference: "COL-100",
+      collectionMode: "partner_collects_for_tenant",
+      invoiceRequired: false,
+    },
+  });
+  assert.equal(collectBooking.status, 201, JSON.stringify(collectBooking.body));
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${collectBooking.body.bookingId}/confirm`,
+        t.token,
+        { version: 1 },
+      )
+    ).status,
+    201,
   );
 });
 
@@ -3174,6 +3666,42 @@ test("password recovery is non-enumerating, single-use, expiring and revokes pri
         .post("/auth/v1/password-recovery/complete")
         .send({ token: requested.body.token, password: "AnotherValid!2026" })
     ).status,
+    401,
+  );
+});
+
+test("crew can establish and manage an authenticated session without catalog access", async () => {
+  const email = `guide-${randomUUID()}@example.invalid`;
+  const invited = await post("/admin/v1/invitations", a.token, {
+    name: "Session Guide",
+    email,
+    role: "guide",
+  });
+  assert.equal(invited.status, 201, JSON.stringify(invited.body));
+  const activated = await request(app.getHttpServer())
+    .post("/auth/v1/invitations/accept")
+    .send({ token: invited.body.token, password: "GuidePassword!2026" });
+  assert.equal(activated.status, 201, JSON.stringify(activated.body));
+
+  const session = await get(
+    "/staff/v1/workspace/session",
+    activated.body.token,
+  );
+  assert.equal(session.status, 200, JSON.stringify(session.body));
+  assert.equal(session.body.actorEmail, email);
+  assert.equal(session.body.role, "guide");
+  assert.equal(session.body.permissions.includes("catalog.read"), false);
+
+  const tenants = await get("/auth/v1/tenants", activated.body.token);
+  assert.equal(tenants.status, 200, JSON.stringify(tenants.body));
+  assert.equal(tenants.body.tenants.length, 1);
+
+  const signedOut = await request(app.getHttpServer())
+    .post("/auth/v1/sign-out")
+    .set("Authorization", `Bearer ${activated.body.token}`);
+  assert.equal(signedOut.status, 201, JSON.stringify(signedOut.body));
+  assert.equal(
+    (await get("/staff/v1/workspace/session", activated.body.token)).status,
     401,
   );
 });

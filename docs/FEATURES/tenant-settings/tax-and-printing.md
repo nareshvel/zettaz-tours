@@ -2,9 +2,9 @@
 
 ## Current tax policy
 
-Track A supports one tenant-level tax or fee rate, stored as basis points. The rate is applied once to the subtotal for a newly created hold. Its resulting amount is frozen in the hold quote and then in the confirmed booking price snapshot. Changing the setting never reprices an existing hold or confirmed booking.
+Track A supports one tenant-level tax or fee rate, stored as basis points. The rate is applied once to the subtotal for a newly created hold as an **exclusive** add-on (`taxMinor` then `totalMinor = subtotalMinor + taxMinor`). The resulting amount is frozen in the hold quote and then in the confirmed booking price snapshot. Changing the setting never reprices an existing hold or confirmed booking.
 
-This is not a tax engine. It does not determine registration obligations, jurisdictions, exemptions, inclusive versus exclusive pricing, tax invoices, returns, or remittance. A tenant must obtain finance and legal approval for its rate and treatment before production use.
+Catalogue / seasonal rates are treated as tax-exclusive until a finance-approved tax engine exists. This is not a tax engine: it does not determine registration obligations, jurisdictions, exemptions, inclusive versus exclusive commercial packaging, tax invoices, returns, or remittance. A tenant must obtain finance and legal approval for its rate and treatment before production use.
 
 ## Printable documents
 

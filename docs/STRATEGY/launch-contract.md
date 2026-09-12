@@ -86,8 +86,8 @@ Stack is locked: NestJS + Next.js + Expo. See [001-stack-nestjs.md](../DECISIONS
 | Three FSMs accepted | Prevents booking-status contradictions in E04–E07 | Product + engineering | Specified in [domain-and-states.md](../ARCHITECTURE/domain-and-states.md); accepted by owner, 9 September 2026 |
 | Phase 1 pricing bound | Stops a six-month pricing engine inside reservations | Product | Specified in [pricing-and-inventory.md](../ARCHITECTURE/pricing-and-inventory.md); accepted by owner, 9 September 2026 |
 | Inventory strategy: shared tours first | Stops a unified engine for charters and transfers | Product | Specified in [pricing-and-inventory.md](../ARCHITECTURE/pricing-and-inventory.md); accepted by owner, 9 September 2026 |
-| Launch payment gateway and card-present path | Checkout, refunds, field collection | Owner + bank/gateway | Open |
-| USD vs XCD: booking, collection, reporting roles | Ledger and check-in UI | Owner + finance | Open |
+| Launch payment gateway and card-present path | Checkout, refunds, field collection | Owner + bank/gateway | Stripe Connect direct charges accepted as Rock's default online path; merchant eligibility, live capabilities, fees/disputes and card-present require provider evidence. See [ADR 016](../DECISIONS/016-rock-launch-operations.md). |
+| USD vs XCD: booking, collection, reporting roles | Ledger and check-in UI | Owner + finance | USD accepted for Rock online booking, Stripe collection and launch reporting; XCD remains local/manual tender and requires an approved conversion-rate source before settling a USD balance. See [ADR 016](../DECISIONS/016-rock-launch-operations.md). |
 | Offline payment conflict rule | Cash recorded twice must not last-write-win | Engineering | Specified in [finance-and-offline.md](../ARCHITECTURE/finance-and-offline.md); accepted by owner, 9 September 2026 |
 | Configuration workbook filled enough to seed tenant one | Products, pickups, partners | Rock Adventures + Zettaz | Schema in [configuration-schema.md](../ARCHITECTURE/configuration-schema.md); data open |
 

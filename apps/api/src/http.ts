@@ -68,6 +68,7 @@ export class AuthGuard implements CanActivate {
       permissions: session.permissions,
       role: session.role,
     };
+    if (required === "authenticated") return true;
     if (!required || !req.actor.permissions.includes(required))
       throw new ForbiddenException();
     return true;

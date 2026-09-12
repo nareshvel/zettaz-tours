@@ -1,5 +1,6 @@
 import { createApp } from "../src/app";
 import { Database, digest } from "../src/database";
+import { DocumentStorageService } from "../src/document-storage";
 import { OutboxService } from "../src/operations";
 
 async function main() {
@@ -14,14 +15,21 @@ async function main() {
       .pool.query("SELECT * FROM resolve_session($1)", [digest(token)]);
     if (!s || s.platform || s.role !== "owner")
       throw new Error("Active tenant owner session required");
+    const actor = {
+      actorId: s.actor_id,
+      tenantId: s.tenant_id,
+      platform: false,
+      permissions: s.permissions,
+      role: s.role,
+    };
+    console.log(await app.get(OutboxService).drain(actor));
     console.log(
-      await app.get(OutboxService).drain({
-        actorId: s.actor_id,
-        tenantId: s.tenant_id,
-        platform: false,
-        permissions: s.permissions,
-        role: s.role,
-      }),
+      "document archives",
+      await app.get(DocumentStorageService).syncPendingArchives(actor),
+    );
+    console.log(
+      "document purge",
+      await app.get(DocumentStorageService).purgeExpired(actor),
     );
   } finally {
     await app.close();

@@ -58,11 +58,16 @@ export async function downloadApiFile(path: string, fallbackName: string) {
   anchor.remove();
   URL.revokeObjectURL(url);
 }
-export function useResource<T>(path: string) {
+export function useResource<T>(path: string | null) {
   const [data, setData] = useState<T | null>(null),
     [error, setError] = useState(""),
     [revision, reload] = useState(0);
   useEffect(() => {
+    if (!path) {
+      setData(null);
+      setError("");
+      return;
+    }
     const abort = new AbortController();
     setData(null);
     setError("");
@@ -75,7 +80,12 @@ export function useResource<T>(path: string) {
   }, [path, revision]);
   return { data, error, reload: () => reload((v) => v + 1) };
 }
-export function usePaged<T>(path: string, search = "") {
+export function usePaged<T>(
+  path: string,
+  search = "",
+  filters: Record<string, string> = {},
+  limit = 30,
+) {
   const [items, setItems] = useState<T[]>([]),
     [cursor, setCursor] = useState<string | null>(null),
     [error, setError] = useState(""),
@@ -88,7 +98,10 @@ export function usePaged<T>(path: string, search = "") {
       setBusy(true);
       setError("");
       try {
-        const query = new URLSearchParams({ search, limit: "30" });
+        const query = new URLSearchParams({ search, limit: String(limit) });
+        Object.entries(filters).forEach(([name, value]) => {
+          if (value) query.set(name, value);
+        });
         if (after) query.set("cursor", after);
         const page = await api<Page<T>>(path + "?" + query);
         if (gen !== generation.current) return;
@@ -100,7 +113,7 @@ export function usePaged<T>(path: string, search = "") {
         if (gen === generation.current) setBusy(false);
       }
     },
-    [path, search],
+    [path, search, JSON.stringify(filters), limit],
   );
   useEffect(() => {
     generation.current++;
@@ -154,12 +167,43 @@ export function useMutation() {
   };
   return { busy, error, run, clear: () => setError("") };
 }
-export function money(amount: number, currency: string) {
-  return new Intl.NumberFormat("en", {
+export function priceFromMinor(product: {
+  price_from_minor?: number | null;
+  definition?: { rates?: { amountMinor: number }[] };
+}) {
+  const listed =
+    product.price_from_minor != null ? Number(product.price_from_minor) : NaN;
+  if (Number.isFinite(listed) && listed > 0) return listed;
+  const amounts = (product.definition?.rates ?? [])
+    .map((rate) => rate.amountMinor)
+    .filter((amount) => amount > 0);
+  return amounts.length ? Math.min(...amounts) : null;
+}
+export function money(amount: number, currency: string, locale = "en") {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
     currencyDisplay: "code",
   }).format(amount / 10 ** digits(currency));
+}
+export function dateOnly(
+  value: string,
+  format: "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD",
+  locale = "en",
+) {
+  const date = new Date(value.length === 10 ? `${value}T12:00:00Z` : value);
+  const parts = new Intl.DateTimeFormat(locale, {
+    timeZone: "UTC",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).formatToParts(date);
+  const part = (type: string) =>
+    parts.find((item) => item.type === type)?.value ?? "";
+  return format
+    .replace("DD", part("day"))
+    .replace("MM", part("month"))
+    .replace("YYYY", part("year"));
 }
 export function digits(currency: string) {
   return (
@@ -181,15 +225,60 @@ export function minor(value: string, currency: string) {
   if (!Number.isSafeInteger(result)) throw new Error("Amount is too large.");
   return result;
 }
-export function dateTime(value: string, timezone: string) {
-  return new Intl.DateTimeFormat("en", {
+export function dateTime(
+  value: string,
+  timezone: string,
+  locale = "en",
+  dateFormat?: "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD",
+  timeFormat?: "12h" | "24h",
+) {
+  const options: Intl.DateTimeFormatOptions = {
     timeZone: timezone,
     month: "short",
     day: "numeric",
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
-  }).format(new Date(value));
+    ...(timeFormat ? { hour12: timeFormat === "12h" } : {}),
+  };
+  const date = new Date(value);
+  if (!dateFormat) return new Intl.DateTimeFormat(locale, options).format(date);
+  const parts = new Intl.DateTimeFormat(locale, {
+    ...options,
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const part = (type: string) =>
+    parts.find((item) => item.type === type)?.value ?? "";
+  const formattedDate = dateFormat
+    .replace("DD", part("day"))
+    .replace("MM", part("month"))
+    .replace("YYYY", part("year"));
+  const formattedTime = [part("hour"), part("minute")]
+    .filter(Boolean)
+    .join(":");
+  return `${formattedDate}, ${formattedTime}${part("dayPeriod") ? ` ${part("dayPeriod")}` : ""}`;
+}
+export function friendlyDateTime(
+  value: string,
+  timezone: string,
+  locale = "en",
+  timeFormat: "12h" | "24h" = "12h",
+) {
+  const date = new Date(value);
+  const day = new Intl.DateTimeFormat(locale, {
+    timeZone: timezone,
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+  const time = new Intl.DateTimeFormat(locale, {
+    timeZone: timezone,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: timeFormat === "12h",
+  }).format(date);
+  return `${day} ${time}`;
 }
 export function label(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());

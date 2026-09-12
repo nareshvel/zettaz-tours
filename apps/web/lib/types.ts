@@ -11,7 +11,12 @@ export type Session = {
   actorPhone?: string | null;
   role: string;
   permissions: string[];
-  supportAccess?: { id:string; purpose:string; permissions:string[]; expires_at:string } | null;
+  supportAccess?: {
+    id: string;
+    purpose: string;
+    permissions: string[];
+    expires_at: string;
+  } | null;
   tenant: {
     id: string;
     name: string;
@@ -40,17 +45,100 @@ export type Product = {
   name: string;
   definition: ProductInput;
   version: number;
+  internal_name?: string;
+  customer_title?: string;
+  description?: string;
+  product_kind?: string;
+  availability_mode?: string;
+  status?: string;
+  option_count?: number;
+  price_from_minor?: number | null;
+  next_departure_at?: string | null;
+  availability_rule_count?: number;
 };
+export type AvailabilityRule = {
+  id: string;
+  version?: number;
+  mode: string;
+  status: string;
+  start_date: string;
+  end_date: string;
+  weekdays: number[];
+  capacity: number | null;
+  timezone: string;
+  minimum_notice_minutes: number;
+  cutoff_minutes: number;
+  product_id?: string;
+  product_name: string;
+  product_availability_mode?: string;
+  option_name: string;
+  times: string[];
+  blackouts?: string[];
+  upcoming_departures: number;
+  departures?: {
+    id: string;
+    starts_at: string;
+    capacity: number;
+    committed: number;
+    available: number;
+    status: string;
+  }[];
+};
+export const availabilityModes = {
+  fixed_departure: {
+    label: "Scheduled departures",
+    bookable: true,
+    summary:
+      "Choose a date and start time. Seats are held from live departure inventory.",
+  },
+  opening_hours: {
+    label: "Opening hours",
+    bookable: false,
+    summary:
+      "Timed entry or daily capacity. This flow will not pretend those products are shared departures.",
+  },
+  open_dated: {
+    label: "Open dated",
+    bookable: false,
+    summary:
+      "Issued as a voucher or redemption window. Dated seat holds are not the inventory primitive.",
+  },
+  on_request: {
+    label: "On request",
+    bookable: false,
+    summary:
+      "Quote or accept later. No seat is reserved until the request is accepted.",
+  },
+  resource_window: {
+    label: "Resource window",
+    bookable: false,
+    summary:
+      "Holds an exclusive vessel, vehicle, or crew for a duration. Not a shared-tour seat pool.",
+  },
+} as const;
+export type AvailabilityMode = keyof typeof availabilityModes;
+export function modeLabel(mode?: string) {
+  return (
+    availabilityModes[mode as AvailabilityMode]?.label ??
+    (mode ? mode.replaceAll("_", " ") : availabilityModes.fixed_departure.label)
+  );
+}
+export const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 export type Departure = {
   id: string;
   product_id: string;
   product_name: string;
+  availability_mode?: string;
+  product_kind?: string;
   option_name: string;
+  duration_minutes: number | null;
   starts_at: string;
   capacity: number;
   committed: number;
   overbooked?: number;
+  held?: number;
   available: number;
+  status?: string;
   categories: ProductInput["categories"];
 };
 export type Reservation = {
@@ -85,22 +173,68 @@ export type Booking = {
   version: number;
   party: Record<string, number>;
   pickup: Pickup;
+  stay?:
+    | { kind: "none" }
+    | {
+        kind: "cruise";
+        vesselName: string;
+        cabinNumber?: string;
+        cruiseCallId?: string;
+      }
+    | {
+        kind: "hotel";
+        hotelName: string;
+        roomNumber?: string;
+        accommodationId?: string;
+      }
+    | {
+        kind: "private_accommodation";
+        propertyName: string;
+        address: string;
+      }
+    | { kind: "local"; address?: string };
   quote: Quote;
   paidMinor: number;
   payments: {
-    id:string; amount_minor:number; currency:string; method:string; status:"settled"|"pending";
-    reference:string; reason:string; occurred_at:string; adjustment_id:string|null;
-    adjustment_kind:"void"|"reversal"|null; adjustment_reference:string|null;
-    adjustment_reason:string|null; adjustment_occurred_at:string|null;
+    id: string;
+    amount_minor: number;
+    currency: string;
+    method: string;
+    status: "settled" | "pending";
+    reference: string;
+    reason: string;
+    occurred_at: string;
+    adjustment_id: string | null;
+    adjustment_kind: "void" | "reversal" | null;
+    adjustment_reference: string | null;
+    adjustment_reason: string | null;
+    adjustment_occurred_at: string | null;
   }[];
   partnerCreditMinor?: number;
+  hasPartnerSnapshot?: boolean;
+  partner?: {
+    partnerId: string;
+    partnerName: string;
+    externalReference: string;
+    collectionMode:
+      | "guest_pays_tenant"
+      | "partner_collects_for_tenant"
+      | "partner_invoice";
+    invoiceRequired: boolean;
+  } | null;
   balanceMinor: number;
   expiresAt: string;
   historicalBalanceMinor: number;
   financeReviewRequired: boolean;
-  departure: { starts_at: string };
+  departure: { starts_at: string; product_name?: string };
 };
-export type Partner = { id: string; name: string; email?: string | null; phone?: string | null; status?: string };
+export type Partner = {
+  id: string;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  status?: string;
+};
 export type BookingFinanceSummary = {
   bookingId: string;
   partnerId: string;
@@ -114,7 +248,11 @@ export type BookingFinanceSummary = {
 };
 export type NotificationMessage = {
   id: string;
-  kind: "booking_confirmation" | "payment_request" | "waiver_request" | "cancellation";
+  kind:
+    | "booking_confirmation"
+    | "payment_request"
+    | "waiver_request"
+    | "cancellation";
   channel: "email";
   recipient: string;
   subject: string;
@@ -150,17 +288,47 @@ export type Audit = {
   occurred_at: string;
 };
 export type Manifest = {
-  departure: { id: string; starts_at: string; capacity: number };
-  itinerary: { id: string; sequence: number; name: string; address: string; directions: string; latitude: number | null; longitude: number | null; map_url: string; visibility: "internal" | "guest" }[];
+  departure: {
+    id: string;
+    starts_at: string;
+    capacity: number;
+    product_name?: string;
+  };
+  itinerary: {
+    id: string;
+    sequence: number;
+    name: string;
+    address: string;
+    directions: string;
+    latitude: number | null;
+    longitude: number | null;
+    map_url: string;
+    visibility: "internal" | "guest";
+  }[];
   bookings: {
     booking_id: string;
     lead_name: string;
     pickup: Pickup;
+    stay?: Booking["stay"];
     party: Record<string, number>;
     party_size: number;
     checkin_state: string | null;
     checkin_version: number | null;
-    passengers: { id: string; name: string; category: string; is_minor: boolean; checkin_state: string | null }[];
+    currency?: string;
+    total_minor?: number;
+    paid_minor?: number;
+    partner_credit_minor?: number;
+    guest_balance_minor?: number;
+    collection_mode?: string | null;
+    passengers: {
+      id: string;
+      name: string;
+      category: string;
+      is_minor: boolean;
+      identity_pending?: boolean;
+      checkin_state: string | null;
+      waiver_signed?: boolean;
+    }[];
   }[];
 };
 export type Page<T> = { items: T[]; nextCursor: string | null };

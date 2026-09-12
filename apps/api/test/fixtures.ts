@@ -17,8 +17,13 @@ export const mockConfig: TenantConfig = {
   taxBasisPoints: 0,
   allowUnresolvedPickup: false,
   allowAmendmentBalance: true,
-  manualPaymentMethods: ["cash", "bank_transfer"],
-  bookingSources: ["phone", "walk_in", "partner_reseller"],
+  manualPaymentMethods: ["cash", "card", "online", "bank_transfer", "reseller_payment"],
+  bookingSources: ["phone", "walk_in", "website", "partner_reseller"],
+  documentStorage: {
+    hotProvider: "filesystem",
+    archiveProvider: "none",
+    hotRetentionDays: 7,
+  },
 };
 export const mockProduct = {
   name: "Mock Coastal Discovery",

@@ -1,6 +1,11 @@
 node_modules/
 .DS_Store
 .env
+.env.development
+.env.production
+.env.staging
 .next/
 dist/
+.local/
 apps/mobile/node_modules
+**/.expo/

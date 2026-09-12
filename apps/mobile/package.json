@@ -10,15 +10,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "expo": "^56.0.0",
-    "expo-camera": "~56.0.8",
-    "expo-secure-store": "~56.0.4",
-    "expo-status-bar": "~56.0.4",
-    "react": "19.2.3",
-    "react-native": "0.85.0"
+    "expo": "^57.0.9",
+    "expo-camera": "~57.0.4",
+    "expo-secure-store": "~57.0.3",
+    "expo-status-bar": "~57.0.1"
   },
   "devDependencies": {
     "@types/react": "^19.2.0",
-    "typescript": "^5.9.3"
+    "typescript": "~6.0.3"
   }
 }

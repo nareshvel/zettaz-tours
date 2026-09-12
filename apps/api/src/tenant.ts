@@ -26,12 +26,14 @@ import {
   invitationSchema,
   memberSchema,
   memberUpdateSchema,
+  roles as systemRoles,
   roleSchema,
   tenantSchema,
   TenantConfig,
   updateConfigSchema,
 } from "../../../packages/shared/src/contracts";
 import { Database, digest, record, Tx } from "./database";
+import { LimitsService } from "./limits";
 import { Access, CurrentActor, keySchema, parse } from "./http";
 type UploadedLogo = {
   mimetype: string;
@@ -91,16 +93,33 @@ export class TenantService {
         ],
       );
       await tx.query(`SELECT set_config('app.tenant',$1,true)`, [tenantId]);
-      const {
-        rows: [ownerRole],
-      } = await tx.query(
-        "INSERT INTO tenant_roles(tenant_id,code,name,is_system) VALUES($1,'owner','Owner',true) RETURNING id",
-        [tenantId],
-      );
-      await tx.query(
-        "INSERT INTO role_permissions(tenant_id,role_id,permission_code) SELECT $1,$2,unnest($3::text[])",
-        [tenantId, ownerRole.id, grants.owner],
-      );
+      const roleNames: Record<(typeof systemRoles)[number], string> = {
+        owner: "Owner",
+        admin: "Administrator",
+        reservations: "Reservations",
+        dispatcher: "Dispatcher",
+        finance: "Finance",
+        auditor: "Auditor",
+        guide: "Guide",
+        driver: "Driver / skipper",
+        resource_manager: "Resource manager",
+        operations_manager: "Operations manager",
+        partner_manager: "Partner manager",
+      };
+      let ownerRoleId = "";
+      for (const code of systemRoles) {
+        const {
+          rows: [role],
+        } = await tx.query(
+          "INSERT INTO tenant_roles(tenant_id,code,name,is_system) VALUES($1,$2,$3,true) RETURNING id",
+          [tenantId, code, roleNames[code]],
+        );
+        await tx.query(
+          "INSERT INTO role_permissions(tenant_id,role_id,permission_code) SELECT $1,$2,unnest($3::text[])",
+          [tenantId, role.id, grants[code]],
+        );
+        if (code === "owner") ownerRoleId = role.id;
+      }
       await tx.query(`INSERT INTO staff_users VALUES($1,$2,$3)`, [
         ownerId,
         data.ownerName,
@@ -108,7 +127,7 @@ export class TenantService {
       ]);
       await tx.query(
         `INSERT INTO memberships(tenant_id,actor_id,role,role_id,permissions) VALUES($1,$2,'owner',$3,$4)`,
-        [tenantId, ownerId, ownerRole.id, grants.owner],
+        [tenantId, ownerId, ownerRoleId, grants.owner],
       );
       const scoped = { ...actor, tenantId };
       await record(tx, scoped, "tenant.created", tenantId, null, {
@@ -295,26 +314,44 @@ export class TenantService {
         "SELECT id,code FROM tenant_roles WHERE tenant_id=$1 AND code=$2",
         [actor.tenantId, data.role],
       );
-      if (!roles[0]) throw new BadRequestException("Selected role is unavailable");
+      if (!roles[0])
+        throw new BadRequestException("Selected role is unavailable");
       const { rows: exists } = await tx.query(
         `SELECT 1 FROM memberships m JOIN staff_users s ON s.id=m.actor_id
          WHERE m.tenant_id=$1 AND lower(s.email)=lower($2)`,
         [actor.tenantId, data.email],
       );
-      if (exists[0]) throw new ConflictException("That email already has tenant access");
-      const value = randomUUID().replaceAll("-", "") + randomUUID().replaceAll("-", "").slice(0, 11);
+      if (exists[0])
+        throw new ConflictException("That email already has tenant access");
+      const value =
+        randomUUID().replaceAll("-", "") +
+        randomUUID().replaceAll("-", "").slice(0, 11);
       const { rows: created } = await tx.query(
         `INSERT INTO tenant_invitations(tenant_id,name,email,role,role_id,token_hash,expires_at,invited_by)
          VALUES($1,$2,lower($3),$4,$5,$6,clock_timestamp()+interval '7 days',$7)
          RETURNING id,expires_at`,
-        [actor.tenantId, data.name, data.email, data.role, roles[0].id, digest(value), actor.actorId],
+        [
+          actor.tenantId,
+          data.name,
+          data.email,
+          data.role,
+          roles[0].id,
+          digest(value),
+          actor.actorId,
+        ],
       );
       await record(tx, actor, "member.invited", created[0].id, null, {
-        email: data.email, role: data.role, expiresAt: created[0].expires_at,
+        email: data.email,
+        role: data.role,
+        expiresAt: created[0].expires_at,
       });
       // Delivery belongs to the future transactional-email adapter. Return once so an
       // authorized administrator can deliver it through an approved channel.
-      return { invitationId: created[0].id, expiresAt: created[0].expires_at, token: value };
+      return {
+        invitationId: created[0].id,
+        expiresAt: created[0].expires_at,
+        token: value,
+      };
     });
   }
   async role(actor: Actor, key: string, input: unknown) {
@@ -409,6 +446,7 @@ export class TenantController {
   constructor(
     private readonly service: TenantService,
     private readonly db: Database,
+    private readonly limits: LimitsService,
   ) {}
   @Get("tenant")
   @Access("catalog.read")
@@ -477,11 +515,12 @@ export class TenantController {
   }
   @Post("invitations")
   @Access("members.write")
-  invite(
+  async invite(
     @CurrentActor() actor: Actor,
     @Headers("idempotency-key") key: string,
     @Body() body: unknown,
   ) {
+    await this.limits.enforce(actor, "staff");
     return this.service.invite(actor, parse(keySchema, key), body);
   }
   @Patch("members/:id")

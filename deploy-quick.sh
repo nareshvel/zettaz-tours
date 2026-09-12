@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Full production deploy — run on the VPS after pushing to GitHub.
-# Usage: ./deploy.sh [branch]
-# Default branch: main
+# Quick production deploy — run on the VPS after pushing to GitHub.
+# Pulls, rebuilds API + web, restarts PM2. Skips npm ci and migrations.
+# Use ./deploy.sh when package-lock or migrations change.
+# Usage: ./deploy-quick.sh [branch]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -23,10 +24,9 @@ if [[ ! -d .git ]]; then
   exit 1
 fi
 
-log "Full deploy from origin/${BRANCH}"
+log "Quick deploy from origin/${BRANCH}"
 git fetch origin "$BRANCH"
 
-# Avoid pull failures from generated Next type stubs
 if git status --porcelain | grep -q 'apps/web/next-env.d.ts'; then
   log "Resetting dirty apps/web/next-env.d.ts"
   git checkout -- apps/web/next-env.d.ts
@@ -34,26 +34,16 @@ fi
 
 git pull --ff-only origin "$BRANCH"
 
-if [[ -f package-lock.json ]]; then
-  log "Installing dependencies (npm install)"
-  npm install
-else
-  log "Installing dependencies (npm install, no lockfile)"
-  npm install
-fi
-
 log "Building API / shared (tsc)"
 npm run build
 
 log "Building Next.js web"
 npm run web:build
 
-log "Applying database migrations"
-npm run db:migrate:prod
-
-log "Restarting PM2 apps"
+log "Restarting PM2 apps (no migrate)"
 pm2 restart "$API_APP" --update-env
 pm2 restart "$WEB_APP" --update-env
 pm2 status
 
-log "Full deploy complete"
+log "Quick deploy complete"
+echo "Note: skipped npm install and db:migrate:prod — run ./deploy.sh if deps or migrations changed."

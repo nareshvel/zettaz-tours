@@ -53,7 +53,7 @@ import {
   RolesPermissions,
 } from "./administration";
 import { Profile } from "./profile";
-import { Entry, Signup } from "./auth";
+import { Entry, Signup, VerifyEmail } from "./auth";
 import { Resources } from "./resources";
 import { Finance } from "./finance";
 import { Integrations } from "./integrations";
@@ -303,6 +303,7 @@ export function Workspace({
   }
   // Signup page — accessible without a session
   if (path === "/signup") return <Signup />;
+  if (path === "/verify-email") return <VerifyEmail />;
 
   if (!session)
     return (

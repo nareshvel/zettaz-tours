@@ -71,7 +71,7 @@ export class TenantService {
       const tenantId = randomUUID(),
         ownerId = randomUUID();
       await tx.query(
-        `INSERT INTO tenants(id,slug,name,timezone,config,business_profile,authorized_contact) VALUES($1,$2,$3,$4,$5,$6,$7)`,
+        `INSERT INTO tenants(id,slug,name,timezone,config,business_profile,authorized_contact,is_mock) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
         [
           tenantId,
           data.slug,
@@ -85,11 +85,12 @@ export class TenantService {
             city: "",
             stateParish: "",
             postalCode: "",
-            country: "US",
+            country: data.country.toUpperCase(),
             email: data.ownerEmail,
             phone: "",
           },
           { name: data.ownerName, email: data.ownerEmail, phone: "" },
+          false,
         ],
       );
       await tx.query(`SELECT set_config('app.tenant',$1,true)`, [tenantId]);

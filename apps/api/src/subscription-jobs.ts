@@ -57,7 +57,7 @@ async function runTrialReminderJob(db: Pool): Promise<void> {
       JOIN tenants t ON t.id = ts.tenant_id
       JOIN memberships m ON m.tenant_id = t.id AND m.role = 'owner' AND m.active
       JOIN staff_users s ON s.id = m.actor_id
-      WHERE ts.status = 'trialing'
+      WHERE ts.status = 'trial'
         AND ts.trial_ends_at IS NOT NULL
         AND ts.trial_ends_at > NOW()
         AND ts.trial_ends_at < NOW() + INTERVAL '8 days'

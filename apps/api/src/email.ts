@@ -221,3 +221,24 @@ export async function sendPasswordRecovery(d: PasswordRecoveryData): Promise<voi
     `),
   });
 }
+
+export interface EmailVerificationData {
+  to: string;
+  name: string;
+  verifyUrl: string;
+}
+
+export async function sendEmailVerification(d: EmailVerificationData): Promise<void> {
+  await send({
+    to: d.to,
+    subject: "Verify your Zettaz Tours email address",
+    html: layout(`
+      <h2>You're almost there, ${d.name.split(" ")[0]}!</h2>
+      <p>Thanks for signing up for Zettaz Tours &amp; Charters. Click the button below to verify your email address and activate your 14-day free trial.</p>
+      <p>This link is valid for <strong>24 hours</strong>.</p>
+      <a class="cta" href="${d.verifyUrl}">Verify my email →</a>
+      <p style="margin-top:24px;font-size:12px;color:#65777b;">Or copy this link into your browser:<br><span style="word-break:break-all;">${d.verifyUrl}</span></p>
+      <p style="margin-top:16px;font-size:12px;color:#65777b;">If you didn't create an account, you can safely ignore this email.</p>
+    `),
+  });
+}

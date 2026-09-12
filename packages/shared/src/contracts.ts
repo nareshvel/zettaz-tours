@@ -79,6 +79,7 @@ export const tenantSchema = z
     }),
     ownerName: label,
     ownerEmail: z.string().email().max(254),
+    country: z.string().min(2).max(2),
     config: configSchema,
   })
   .strict();

@@ -4,6 +4,7 @@ import {
   Get,
   Headers,
   Post,
+  Query,
   UnauthorizedException,
   ConflictException,
 } from "@nestjs/common";
@@ -13,7 +14,7 @@ import { Database, digest } from "./database";
 import { Access, CurrentActor, parse } from "./http";
 import type { Actor } from "../../../packages/shared/src/contracts";
 import { hashPassword, verifyPassword } from "../scripts/sessions";
-import { sendPasswordRecovery } from "./email";
+import { sendPasswordRecovery, sendEmailVerification } from "./email";
 import { TenantService } from "./tenant";
 import { invitationAcceptSchema } from "../../../packages/shared/src/contracts";
 
@@ -39,6 +40,7 @@ const registerSchema = z
     country: z.string().min(2).max(2),
     timezone: z.string().min(1).max(80),
     currency: z.string().min(3).max(3),
+    planId: z.string().uuid().optional(),
     ownerName: z.string().min(2).max(120),
     email: z.string().email().max(254),
     password: z.string().min(12).max(1024),
@@ -125,6 +127,16 @@ export class AuthController {
         identityHash,
       ]);
       throw new UnauthorizedException("Email or password is incorrect.");
+    }
+    // Block sign-in if e-mail not yet verified
+    const { rows: verifiedRows } = await this.db.pool.query(
+      "SELECT email_verified_at FROM staff_users WHERE id=$1",
+      [identity.actor_id],
+    );
+    if (!verifiedRows[0]?.email_verified_at) {
+      throw new UnauthorizedException(
+        "Please verify your email address before signing in. Check your inbox for a verification link.",
+      );
     }
     const { rows: tenants } = await this.db.pool.query(
       "SELECT * FROM staff_login_tenants($1)",
@@ -253,14 +265,12 @@ export class AuthController {
   @Access("public")
   async register(@Body() body: unknown) {
     const input = registerSchema.parse(body);
-    // Check email not already in use (SECURITY DEFINER function; bypasses RLS)
     const { rows: existing } = await this.db.pool.query(
       "SELECT 1 FROM staff_users WHERE lower(email)=lower($1) LIMIT 1",
       [input.email],
     );
     if (existing.length > 0)
       throw new ConflictException("An account with that email address already exists.");
-    // Derive a URL-safe slug from the company name
     const slug = input.companyName
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
@@ -284,13 +294,8 @@ export class AuthController {
       allowAmendmentBalance: true,
       manualPaymentMethods: ["cash", "card", "online", "bank_transfer"],
       bookingSources: ["phone", "walk_in", "website", "partner_reseller"],
-      documentStorage: {
-        hotProvider: "filesystem",
-        archiveProvider: "none",
-        hotRetentionDays: 7,
-      },
+      documentStorage: { hotProvider: "filesystem", archiveProvider: "none", hotRetentionDays: 7 },
     };
-    // Platform-level actor for tenant creation
     const platformActor = {
       actorId: "00000000-0000-0000-0000-000000000000",
       tenantId: null,
@@ -307,21 +312,49 @@ export class AuthController {
       ownerEmail: input.email,
       country: input.country,
     });
-    // Set password for the owner
+    // Store password (SECURITY DEFINER bypasses RLS on user_credentials)
     const passwordHash = await hashPassword(input.password);
+    await this.db.pool.query("SELECT upsert_user_credentials($1,$2)", [ownerId, passwordHash]);
+    // Create trial subscription (Growth plan by default; SECURITY DEFINER bypasses RLS)
+    const planId = input.planId ?? "3e595412-81e5-4c76-8216-25321d7ba56a";
+    await this.db.pool.query("SELECT create_trial_subscription($1,$2)", [tenantId, planId]);
+    // Generate e-mail verification token (24 h TTL)
+    const verifValue = token();
+    const verifHash = digest(verifValue);
+    const verifExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     await this.db.pool.query(
-      "INSERT INTO user_credentials(user_id,password_hash) VALUES($1,$2) ON CONFLICT(user_id) DO UPDATE SET password_hash=EXCLUDED.password_hash",
-      [ownerId, passwordHash],
+      "SELECT set_email_verification_token($1,$2,$3)",
+      [ownerId, verifHash, verifExpiry],
     );
-    // Issue session
+    const frontendUrl = process.env.FRONTEND_URL ?? "http://localhost:3000";
+    const verifyUrl = `${frontendUrl}/verify-email?token=${verifValue}`;
+    void sendEmailVerification({ to: input.email, name: input.ownerName, verifyUrl }).catch(() => {});
+    return { pending: "email_verification" };
+  }
+
+  @Get("verify-email")
+  @Access("public")
+  async verifyEmail(@Query("token") rawToken: string) {
+    if (!rawToken || rawToken.length < 40)
+      throw new UnauthorizedException("Verification link is invalid or expired.");
+    const tokenHash = digest(rawToken);
+    const { rows } = await this.db.pool.query(
+      "SELECT consume_email_verification($1) AS user_id",
+      [tokenHash],
+    );
+    const userId: string | null = rows[0]?.user_id ?? null;
+    if (!userId) throw new UnauthorizedException("Verification link is invalid or expired.");
+    const { rows: tenants } = await this.db.pool.query(
+      "SELECT * FROM staff_login_tenants($1)",
+      [userId],
+    );
+    if (!tenants.length) throw new UnauthorizedException("No workspace found for this account.");
+    const tenantId = tenants[0].tenant_id;
     const value = token();
     await this.db.pool.query(
       "SELECT issue_staff_session($1,$2,$3) AS issued",
-      [ownerId, tenantId, digest(value)],
+      [userId, tenantId, digest(value)],
     );
-    await this.db.pool.query("SELECT record_login_attempt($1,true)", [
-      digest(input.email.trim().toLowerCase()),
-    ]);
     return { token: value, tenantId };
   }
 

@@ -256,16 +256,24 @@ export function Entry({
   );
 }
 
+// Plan definitions shown in the trial selector
+const TRIAL_PLANS = [
+  { id: "4e0e6cc1-89b1-4dcb-a627-bfccb14f0af9", name: "Essentials", price: "$79/mo", limits: "3 staff · 1 location · 50 products", recommended: false },
+  { id: "f7317df1-086a-4ad9-a9c9-c229a5995dcd", name: "Operations", price: "$149/mo", limits: "10 staff · 2 locations · 200 products", recommended: false },
+  { id: "3e595412-81e5-4c76-8216-25321d7ba56a", name: "Growth", price: "$249/mo", limits: "25 staff · 5 locations · 1,000 products", recommended: true },
+  { id: "70a106d7-1977-48a4-aa6d-d816470e477f", name: "Enterprise", price: "$599/mo", limits: "Unlimited · Priority SLA", recommended: false },
+];
+
 export function Signup() {
   const [step, setStep] = useState<1 | 2>(1);
+  const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  // Step 1
   const [companyName, setCompanyName] = useState("");
   const [country, setCountry] = useState("US");
   const [timezone, setTimezone] = useState(() => defaultTimezoneForCountry("US"));
   const [currency, setCurrency] = useState(() => currencyForCountry("US"));
-  // Step 2
+  const [planId, setPlanId] = useState("3e595412-81e5-4c76-8216-25321d7ba56a");
   const [ownerName, setOwnerName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -285,35 +293,46 @@ export function Signup() {
       const res = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ companyName, country, timezone, currency, ownerName, email, password }),
+        body: JSON.stringify({ companyName, country, timezone, currency, planId, ownerName, email, password }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.message ?? "Registration failed. Please try again."); return; }
-      // Set session cookie
-      await fetch("/api/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ _rawToken: data.token, tenantId: data.tenantId }),
-      });
-      window.location.href = "/?welcome=1";
+      setDone(true);
     } catch { setError("Something went wrong. Please try again."); }
     finally { setBusy(false); }
   }
 
-
-
+  if (done) return (
+    <main className="login-page">
+      <div className="login-brand"><img src="/brand/zettaz-logo-dark.svg" alt="Zettaz Tours and Charters" /></div>
+      <section className="login-card" style={{maxWidth:"460px",textAlign:"center"}}>
+        <div style={{width:64,height:64,borderRadius:"50%",background:"#edfaf8",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px"}}>
+          <CheckCircle2 size={32} color="#176c63" />
+        </div>
+        <h1 style={{fontSize:"22px",marginBottom:8}}>Check your inbox</h1>
+        <p className="subtitle" style={{marginBottom:24}}>
+          We sent a verification link to <strong>{email}</strong>.<br />
+          Click it to activate your 14-day free trial.
+        </p>
+        <div style={{background:"#f5f8f7",border:"1px solid #ddecea",borderRadius:10,padding:"16px 20px",textAlign:"left",fontSize:13,color:"#45676b",marginBottom:24}}>
+          <strong style={{color:"#142f36"}}>Can&apos;t find it?</strong> Check your spam folder. The link expires in 24 hours.
+        </div>
+        <Link href="/login" className="text-link" style={{fontSize:14}}>← Back to sign in</Link>
+      </section>
+    </main>
+  );
 
   return (
-    <main className="login-page">
+    <main className="login-page" style={{paddingBottom:48}}>
       <div className="login-brand">
         <img src="/brand/zettaz-logo-dark.svg" alt="Zettaz Tours and Charters" />
       </div>
-      <section className="login-card" style={{maxWidth:"480px"}}>
+      <section className="login-card" style={{maxWidth:step===1?"800px":"480px"}}>
         <p className="eyebrow">FREE 14-DAY TRIAL · NO CARD REQUIRED</p>
         <h1>{step === 1 ? "Set up your workspace" : "Create your account"}</h1>
-        <p className="subtitle">{step === 1 ? "Tell us about your tour operation." : "You'll use these credentials to sign in."}</p>
-        <div style={{display:"flex",gap:"8px",marginBottom:"20px"}}>
-          <span style={{height:"4px",flex:1,borderRadius:"2px",background:step>=1?"#176c63":"#dde3e4"}}/>
+        <p className="subtitle">{step === 1 ? "Tell us about your operation and choose your trial plan." : "You’ll use these credentials to sign in."}</p>
+        <div style={{display:"flex",gap:"8px",marginBottom:"24px"}}>
+          <span style={{height:"4px",flex:1,borderRadius:"2px",background:"#176c63"}}/>
           <span style={{height:"4px",flex:1,borderRadius:"2px",background:step>=2?"#176c63":"#dde3e4"}}/>
         </div>
         {busy ? <Loading /> : step === 1 ? (
@@ -321,22 +340,62 @@ export function Signup() {
             <label className="field"><span>Company / operator name</span>
               <input required value={companyName} onChange={e=>setCompanyName(e.target.value)} placeholder="Blue Horizon Tours" />
             </label>
-            <label className="field"><span>Country</span>
-              <select value={country} onChange={e=>setCountry(e.target.value)}>
-                {COUNTRIES.map(c=><option key={c.code} value={c.code}>{c.name}</option>)}
-              </select>
-            </label>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px",marginBottom:"4px"}}>
+              <label className="field" style={{margin:0}}><span>Country</span>
+                <select value={country} onChange={e=>setCountry(e.target.value)}>
+                  {COUNTRIES.map(c=><option key={c.code} value={c.code}>{c.name}</option>)}
+                </select>
+              </label>
+              <label className="field" style={{margin:0}}><span>Booking currency</span>
+                <select value={currency} onChange={e=>setCurrency(e.target.value)}>
+                  {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+              </label>
+            </div>
             <label className="field"><span>Timezone</span>
               <select value={timezone} onChange={e=>setTimezone(e.target.value)}>
                 {TIMEZONES.map(tz=><option key={tz} value={tz}>{tz}</option>)}
               </select>
             </label>
-            <label className="field"><span>Booking currency</span>
-              <select value={currency} onChange={e=>setCurrency(e.target.value)}>
-                {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
-              </select>
-            </label>
-            <button className="button" type="submit">Continue <ArrowRight size={17}/></button>
+
+            {/* Plan selector */}
+            <div style={{margin:"20px 0 8px"}}>
+              <p style={{margin:"0 0 10px",fontWeight:700,fontSize:13,color:"#142f36",letterSpacing:".02em"}}>
+                TRIAL PLAN&nbsp;
+                <span style={{fontWeight:400,color:"#65777b",fontSize:12}}>— try any plan free for 14 days, upgrade anytime</span>
+              </p>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
+                {TRIAL_PLANS.map(plan=>{
+                  const sel = planId===plan.id;
+                  return (
+                    <button
+                      key={plan.id}
+                      type="button"
+                      onClick={()=>setPlanId(plan.id)}
+                      style={{
+                        position:"relative",textAlign:"left",
+                        border:`2px solid ${sel?"#176c63":"#dde3e4"}`,
+                        borderRadius:10,padding:"14px 16px",
+                        background:sel?"#edfaf8":"#fff",
+                        cursor:"pointer",transition:"border-color .15s,background .15s",
+                      }}
+                    >
+                      {plan.recommended && (
+                        <span style={{position:"absolute",top:-11,right:12,background:"#176c63",color:"#fff",fontSize:10,fontWeight:700,padding:"2px 9px",borderRadius:20,letterSpacing:".05em",whiteSpace:"nowrap"}}>
+                          DEFAULT TRIAL
+                        </span>
+                      )}
+                      <div style={{fontWeight:700,fontSize:14,color:"#142f36",marginBottom:2}}>{plan.name}</div>
+                      <div style={{fontSize:17,fontWeight:800,color:sel?"#176c63":"#142f36",marginBottom:4}}>{plan.price}</div>
+                      <div style={{fontSize:11,color:"#65777b",lineHeight:1.4}}>{plan.limits}</div>
+                      {sel && <CheckCircle2 size={15} color="#176c63" style={{position:"absolute",top:12,right:12}} />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <button className="button" type="submit" style={{width:"100%",marginTop:8}}>Continue <ArrowRight size={17}/></button>
           </form>
         ) : (
           <form onSubmit={handleSubmit}>
@@ -354,15 +413,74 @@ export function Signup() {
             </label>
             {confirmPassword && password !== confirmPassword && <Notice error>Passwords do not match.</Notice>}
             <label className="checkbox" style={{margin:"8px 0 16px",cursor:"pointer"}}>
-                <input type="checkbox" required checked={agreed} onChange={e=>setAgreed(e.target.checked)}/>
-                <span>I agree to the <a href="/terms" style={{color:"#176c63"}}>Terms of Service</a> and <a href="/privacy" style={{color:"#176c63"}}>Privacy Policy</a>.</span>
-              </label>
+              <input type="checkbox" required checked={agreed} onChange={e=>setAgreed(e.target.checked)}/>
+              <span>I agree to the <a href="/terms" style={{color:"#176c63"}}>Terms of Service</a> and <a href="/privacy" style={{color:"#176c63"}}>Privacy Policy</a>.</span>
+            </label>
             {error && <Notice error>{error}</Notice>}
-            <button className="button" disabled={password !== confirmPassword || !agreed} type="submit">Create my workspace <ArrowRight size={17}/></button>
-            <button type="button" className="text-link" style={{border:"none",background:"none",cursor:"pointer",padding:0}} onClick={()=>setStep(1)}>← Back</button>
+            <button className="button" disabled={password !== confirmPassword || !agreed} type="submit" style={{width:"100%"}}>
+              Create my workspace <ArrowRight size={17}/>
+            </button>
+            <button type="button" className="text-link" style={{border:"none",background:"none",cursor:"pointer",padding:"8px 0 0",display:"block"}} onClick={()=>setStep(1)}>← Back</button>
           </form>
         )}
-        <p className="login-note">Already have an account? <Link href="/login" className="text-link">Sign in →</Link></p>
+        <p className="login-note" style={{marginTop:16}}>Already have an account? <Link href="/login" className="text-link">Sign in →</Link></p>
+      </section>
+    </main>
+  );
+}
+
+// ─── VerifyEmail ──────────────────────────────────────────────────────────────
+
+export function VerifyEmail() {
+  const [state, setState] = useState<"verifying" | "success" | "error">("verifying");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get("token");
+    if (!token) { setState("error"); setErrorMsg("Invalid verification link."); return; }
+    fetch(`/api/verify-email?token=${encodeURIComponent(token)}`)
+      .then(res => res.json().then(body => ({ ok: res.ok, body })))
+      .then(async ({ ok, body }) => {
+        if (!ok) { setState("error"); setErrorMsg(body.message ?? "Verification failed."); return; }
+        await fetch("/api/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ _rawToken: body.token, tenantId: body.tenantId }),
+        });
+        setState("success");
+        setTimeout(() => { window.location.href = "/?welcome=1"; }, 1200);
+      })
+      .catch(() => { setState("error"); setErrorMsg("Something went wrong. Please try again."); });
+  }, []);
+
+  return (
+    <main className="login-page">
+      <div className="login-brand"><img src="/brand/zettaz-logo-dark.svg" alt="Zettaz Tours and Charters" /></div>
+      <section className="login-card" style={{maxWidth:460,textAlign:"center"}}>
+        {state === "verifying" && (
+          <>
+            <Loading />
+            <p style={{marginTop:16,color:"#65777b"}}>Verifying your email…</p>
+          </>
+        )}
+        {state === "success" && (
+          <>
+            <div style={{width:64,height:64,borderRadius:"50%",background:"#edfaf8",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px"}}>
+              <CheckCircle2 size={32} color="#176c63" />
+            </div>
+            <h1 style={{fontSize:"22px",marginBottom:8}}>Email verified!</h1>
+            <p className="subtitle">Your workspace is ready. Taking you to the dashboard…</p>
+          </>
+        )}
+        {state === "error" && (
+          <>
+            <h1 style={{fontSize:"20px",marginBottom:8}}>Verification failed</h1>
+            <p className="subtitle" style={{color:"#c0392b"}}>{errorMsg}</p>
+            <Link href="/signup" className="button" style={{marginTop:20,display:"inline-block"}}>Start a new trial</Link>
+            <br/>
+            <Link href="/login" className="text-link" style={{marginTop:12,display:"inline-block"}}>Back to sign in</Link>
+          </>
+        )}
       </section>
     </main>
   );

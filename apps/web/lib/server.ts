@@ -22,7 +22,7 @@ export async function upstream(
   token?: string,
 ) {
   const credential = token ?? (await cookies()).get(sessionCookie)?.value;
-  const publicAuth = path === "/auth/v1/sign-in" || path === "/auth/v1/invitations/accept" || path.startsWith("/auth/v1/password-recovery/");
+  const publicAuth = path === "/auth/v1/sign-in" || path === "/auth/v1/register" || path === "/auth/v1/invitations/accept" || path.startsWith("/auth/v1/password-recovery/");
   if (!credential && !publicAuth)
     return Response.json(
       { message: "Choose a demo tenant to continue." },

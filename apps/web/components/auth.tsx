@@ -353,10 +353,10 @@ export function Signup() {
               <input type="password" minLength={12} required value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} autoComplete="new-password" />
             </label>
             {confirmPassword && password !== confirmPassword && <Notice error>Passwords do not match.</Notice>}
-            <label style={{display:"flex",gap:"10px",alignItems:"flex-start",fontSize:"13px",lineHeight:"1.4",cursor:"pointer",margin:"8px 0 16px"}}>
-              <input type="checkbox" required checked={agreed} onChange={e=>setAgreed(e.target.checked)} style={{marginTop:"2px",accentColor:"#176c63"}}/>
-              <span>I agree to the <a href="/terms" style={{color:"#176c63"}}>Terms of Service</a> and <a href="/privacy" style={{color:"#176c63"}}>Privacy Policy</a>.</span>
-            </label>
+            <label className="checkbox" style={{margin:"8px 0 16px",cursor:"pointer"}}>
+                <input type="checkbox" required checked={agreed} onChange={e=>setAgreed(e.target.checked)}/>
+                <span>I agree to the <a href="/terms" style={{color:"#176c63"}}>Terms of Service</a> and <a href="/privacy" style={{color:"#176c63"}}>Privacy Policy</a>.</span>
+              </label>
             {error && <Notice error>{error}</Notice>}
             <button className="button" disabled={password !== confirmPassword || !agreed} type="submit">Create my workspace <ArrowRight size={17}/></button>
             <button type="button" className="text-link" style={{border:"none",background:"none",cursor:"pointer",padding:0}} onClick={()=>setStep(1)}>← Back</button>

@@ -680,10 +680,30 @@ export function Workspace({
         )}
         <main id="main" className="page" key={session.tenant.id + path}>
           {typeof window !== "undefined" && new URLSearchParams(window.location.search).get("welcome") === "1" && (
-            <div className="checkout-success-banner" role="status">
-              <CheckCircle2 size={18} />
-              <span>Welcome to Zettaz! Your workspace is ready. <button className="text-link" style={{background:"none",border:"none",cursor:"pointer",color:"inherit",textDecoration:"underline"}} onClick={()=>{const u=new URL(window.location.href);u.searchParams.delete("welcome");window.history.replaceState({},"",u.toString());}}>Dismiss</button></span>
-              {(() => {const perms = session.permissions; if(perms.includes("config.write")) return <a href="/profile/subscription" style={{marginLeft:"auto",fontWeight:600,color:"#176c63",textDecoration:"none"}}>Start free trial →</a>; return null;})()}
+            <div className="welcome-banner" role="status">
+              <CheckCircle2 size={18} aria-hidden />
+              <div className="welcome-banner-copy">
+                <strong>Welcome to Zettaz</strong>
+                <span>Your workspace is ready.</span>
+              </div>
+              <div className="welcome-banner-actions">
+                {session.permissions.includes("config.write") && (
+                  <a className="welcome-banner-cta" href="/profile/subscription">
+                    Start free trial →
+                  </a>
+                )}
+                <button
+                  type="button"
+                  className="welcome-banner-dismiss"
+                  onClick={() => {
+                    const u = new URL(window.location.href);
+                    u.searchParams.delete("welcome");
+                    window.history.replaceState({}, "", u.toString());
+                  }}
+                >
+                  Dismiss
+                </button>
+              </div>
             </div>
           )}
           {error && <Notice error>{error}</Notice>}

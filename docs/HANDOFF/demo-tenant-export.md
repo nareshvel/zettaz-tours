@@ -30,24 +30,28 @@ Output (gitignored):
 
 `apps/api/scripts/sql/generated/demo-tenant-demo-rock-adventures-full.sql`
 
-Options:
+Seed INTO an existing production tenant (keeps that tenant’s owner login):
 
-| Flag | Default | Meaning |
-| --- | --- | --- |
-| `--source-slug` | `sample-river-excursions` | Local Rock sample |
-| `--target-slug` | `demo-rock-adventures` | New slug on the target DB |
-| `--target-name` | `Rock Adventures Demo` | Display name |
-| `--mode` | `full` | `full` or `catalog` |
-| `--out` | under `scripts/sql/generated/` | Output path |
+```sh
+npm run db:seed   # ensure local Rock sample is current
+npm run db:export-demo -- --into-tenant-id=f6e566ce-bb5c-4cc7-b801-8992268981d1 --mode=full
+```
 
-The SQL remaps all tenant entity UUIDs, creates demo staff as `demo.{user}@zettaz.com`, clears Stripe subscription ids, and forces a Growth trial plan when the local plan id is obsolete.
+Copy the generated file to the VPS (or pull), then:
 
-### Apply on production
+```sh
+sudo -u postgres psql -d zettaz_tours -f apps/api/scripts/sql/generated/seed-into-f6e566ce-full.sql
+```
 
-1. Migrations current (`npm run db:migrate:prod`) including subscription plans.
-2. TablePlus → production **owner** connection.
-3. Open the generated SQL, review the target slug / staff emails, run.
-4. Protect `demo-rock-adventures` in the clear-signup script if you also clean signup tenants on that database.
-5. Sign in with a `demo.*@zettaz.com` identity and the `DEMO_EXPORT_PASSWORD` you set at export time; change it after first login.
+`--mode=catalog` seeds products/pickups/partners only (no synthetic bookings).
 
-Do **not** promote the local slug `sample-river-excursions` or local passwords into production. The export creates a **new** Demo tenant. Synthetic bookings in `--mode=full` are for demos only, not live operator finance.
+The into-tenant SQL remaps catalog/booking UUIDs onto the existing tenant and rewrites actor FKs to that tenant’s owner. It does **not** create staff or change the login email/password.
+
+### Apply on production (into existing tenant)
+
+1. Copy the generated SQL to the VPS (file is gitignored):
+   `scp apps/api/scripts/sql/generated/seed-into-f6e566ce-full.sql root@YOUR_VPS:/var/www/zettaz-tours/apps/api/scripts/sql/generated/`
+2. On the VPS: `sudo -u postgres psql -d zettaz_tours -f apps/api/scripts/sql/generated/seed-into-f6e566ce-full.sql`
+3. Reload the web app and open Catalog / Departures / Reservations.
+
+Do **not** promote the local slug `sample-river-excursions`. Synthetic bookings in `--mode=full` are for demos only, not live operator finance.

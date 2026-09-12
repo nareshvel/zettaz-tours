@@ -93,7 +93,7 @@ export async function migrate(adminUrl: string, runtimeRole: string) {
       `GRANT EXECUTE ON FUNCTION resolve_session(text) TO ${role}`,
     );
     await tx.query(
-      `GRANT EXECUTE ON FUNCTION staff_login_identity(text),staff_login_tenants(uuid),issue_staff_session(uuid,uuid,text),revoke_staff_session(text),revoke_staff_membership_sessions(uuid,uuid),revoke_all_staff_sessions(uuid),accept_staff_invitation(text,text),login_attempt_allowed(text),record_login_attempt(text,boolean),begin_password_reset(text,text),complete_password_reset(text,text),request_support_access(uuid,uuid,uuid,text,text[]),issue_support_session(uuid,uuid,text),revoke_support_session(text),list_current_tenant_support_access(),current_support_actor_profile(uuid) TO ${role}`,
+      `GRANT EXECUTE ON FUNCTION staff_login_identity(text),staff_login_tenants(uuid),issue_staff_session(uuid,uuid,text),revoke_staff_session(text),revoke_staff_membership_sessions(uuid,uuid),revoke_all_staff_sessions(uuid),accept_staff_invitation(text,text),login_attempt_allowed(text),record_login_attempt(text,boolean),begin_password_reset(text,text),complete_password_reset(text,text),request_support_access(uuid,uuid,uuid,text,text[]),issue_support_session(uuid,uuid,text),revoke_support_session(text),list_current_tenant_support_access(),current_support_actor_profile(uuid),upsert_user_credentials(uuid,text),set_email_verification_token(uuid,text,timestamptz),consume_email_verification(text),create_trial_subscription(uuid,text) TO ${role}`,
     );
     await tx.query(
       `GRANT EXECUTE ON FUNCTION resolve_connector_account(uuid) TO ${role}`,

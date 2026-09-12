@@ -12,8 +12,8 @@ rsync -av --delete apps/web/.next/ "$VPS:$REMOTE_DIR/apps/web/.next/"
 echo "=== Syncing web public ==="
 rsync -av apps/web/public/ "$VPS:$REMOTE_DIR/apps/web/public/"
 
-echo "=== Running migration 060 on VPS ==="
-ssh "$VPS" "psql -U zettaz_owner -d zettaz_tours -f $REMOTE_DIR/apps/api/migrations/060_auth_functions.sql"
+echo "=== Applying migrations on VPS ==="
+ssh "$VPS" "cd $REMOTE_DIR && npm run db:migrate:prod"
 
 echo "=== Restarting PM2 ==="
 ssh "$VPS" "pm2 restart tours-api && pm2 restart tours-web"

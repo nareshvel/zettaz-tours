@@ -328,7 +328,16 @@ export class AuthController {
     );
     const frontendUrl = process.env.FRONTEND_URL ?? "http://localhost:3000";
     const verifyUrl = `${frontendUrl}/verify-email?token=${verifValue}`;
-    void sendEmailVerification({ to: input.email, name: input.ownerName, verifyUrl }).catch(() => {});
+    void sendEmailVerification({ to: input.email, name: input.ownerName, verifyUrl }).catch(
+      (err) => {
+        console.error("[Auth] Verification email failed:", err instanceof Error ? err.message : err);
+        console.error("[Auth] Manual verify URL (dev/ops only):", verifyUrl);
+      },
+    );
+    if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+      console.warn("[Auth] SMTP not configured — verification email was not delivered.");
+      console.warn("[Auth] Manual verify URL:", verifyUrl);
+    }
     return { pending: "email_verification" };
   }
 

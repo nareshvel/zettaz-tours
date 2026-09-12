@@ -41,12 +41,22 @@ const FROM = process.env.SMTP_FROM ?? "Zettaz Tours <noreply@zettaz.com>";
 // ─── Shared send helper ───────────────────────────────────────────────────────
 
 async function send(opts: { to: string; subject: string; html: string }): Promise<void> {
+  const host = process.env.SMTP_HOST;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  if (!host || !user || !pass) {
+    console.warn(
+      `[Email] SKIPPED (SMTP not configured): "${opts.subject}" → ${opts.to}`,
+    );
+    return;
+  }
   try {
     const t = getTransporter();
     await t.sendMail({ from: FROM, ...opts });
     console.log(`[Email] Sent "${opts.subject}" → ${opts.to}`);
   } catch (err: unknown) {
     console.error(`[Email] Failed to send "${opts.subject}" → ${opts.to}:`, err instanceof Error ? err.message : err);
+    throw err;
   }
 }
 

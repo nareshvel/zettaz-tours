@@ -79,3 +79,8 @@ Add a second TablePlus connection with the same host, port and database but user
 To reset the owner password without placing it in shell history, open an interactive `psql` session and use `\password zettaz_owner`. Update `.env` afterward. The `POSTGRES_PASSWORD` Compose variable creates an initial password only; it does not modify an existing database role.
 
 Never commit `.env`, passwords, session tokens, or TablePlus exports containing customer data.
+
+## Signup cleanup and Demo tenant export
+
+- Wipe test `/signup` tenants: [`apps/api/scripts/sql/clear-signup-tenants.sql`](../../apps/api/scripts/sql/clear-signup-tenants.sql) (preview-first; owner connection).
+- Export local Rock sample as a production **Demo** SQL seed: [demo tenant export](demo-tenant-export.md) (`npm run db:export-demo`).

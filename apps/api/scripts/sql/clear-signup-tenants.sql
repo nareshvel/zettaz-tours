@@ -1,0 +1,10 @@
+-- DEPRECATED for TablePlus / zettaz_owner.
+-- Use the VPS postgres wipe instead:
+--
+--   cd /var/www/zettaz-tours
+--   sudo -u postgres psql -d zettaz_tours -f apps/api/scripts/sql/wipe-all-tenants.sql
+--
+-- or: bash apps/api/scripts/sql/wipe-all-tenants.sh
+--
+-- zettaz_owner cannot set session_replication_role or reliably disable
+-- append-only triggers, which is why TablePlus fails.

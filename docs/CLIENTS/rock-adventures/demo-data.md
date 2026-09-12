@@ -30,3 +30,5 @@ Every seeded member has a `user_credentials` record. The seed upserts the passwo
 Run `npm run db:seed` only in a non-production environment. The command updates the two known local demo tenants and reports product, future-departure, booking, and partner counts. It refuses to run when `NODE_ENV=production`.
 
 Before production deployment, provision a clean non-mock tenant and import only approved source data through the controlled import process. Do not promote the demo tenant or its synthetic financial records into production.
+
+For a **sales/demo** copy of this catalog on another database, use the export path in [demo tenant export](../../HANDOFF/demo-tenant-export.md) (`npm run db:export-demo`). That creates a new `demo-rock-adventures` tenant with remapped IDs — it does not clone the local slug or local passwords as-is.

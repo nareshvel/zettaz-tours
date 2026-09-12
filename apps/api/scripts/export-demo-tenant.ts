@@ -112,6 +112,40 @@ function remember(map: Map<string, string>, id: unknown) {
   if (!map.has(key)) map.set(key, randomUUID());
 }
 
+function sqlArrayLiteral(
+  values: unknown[],
+  map: Map<string, string>,
+  staffIds: Set<string>,
+  intoTenantId: string | undefined,
+  ownerSql: string | null,
+  col?: string,
+): string {
+  if (values.length === 0) return "'{}'";
+  const parts = values.map((item) => {
+    if (item === null || item === undefined) return "NULL";
+    if (typeof item === "number" && Number.isFinite(item)) return String(item);
+    if (typeof item === "boolean") return item ? "TRUE" : "FALSE";
+    if (typeof item === "string" && UUID_RE.test(item)) {
+      const key = item.toLowerCase();
+      if (
+        intoTenantId &&
+        ownerSql &&
+        (staffIds.has(key) || (col && ACTOR_COLS.has(col)))
+      )
+        return ownerSql;
+      const mapped = map.get(key) ?? item;
+      return `'${mapped}'`;
+    }
+    if (typeof item === "string") return `'${item.replace(/'/g, "''")}'`;
+    if (typeof item === "object") {
+      return `'${JSON.stringify(item).replace(/'/g, "''")}'`;
+    }
+    return String(item);
+  });
+  // Let Postgres infer element type from the target column.
+  return `ARRAY[${parts.join(",")}]`;
+}
+
 async function main() {
   if (!process.env.ADMIN_DATABASE_URL)
     throw new Error("ADMIN_DATABASE_URL is required (local owner connection)");
@@ -229,6 +263,15 @@ async function main() {
       if (value instanceof Date) return `'${value.toISOString()}'::timestamptz`;
       if (Buffer.isBuffer(value))
         return `'\\x${value.toString("hex")}'::bytea`;
+      if (Array.isArray(value))
+        return sqlArrayLiteral(
+          value,
+          map,
+          staffIds,
+          intoTenantId,
+          ownerSql,
+          col,
+        );
       if (typeof value === "object") {
         const json = JSON.stringify(value).replace(/'/g, "''");
         return `'${json}'::jsonb`;

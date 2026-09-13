@@ -18,9 +18,12 @@ chmod +x deploy.sh deploy-quick.sh   # once after first pull
 
 | Script | When to use |
 | --- | --- |
-| `./deploy.sh` | **Full** — pull, `npm install`, API build, web build, `db:migrate:prod`, restart both with `--update-env` |
-| `./deploy-quick.sh` | **Quick** — pull, API + web build, restart both. Skips install and migrations |
+| `./deploy.sh` | **Full** — `git pull origin main`, `npm install`, API build (`npm run build`), web build, `db:migrate:prod`, restart both with `--update-env` |
+| `./deploy-quick.sh` | **Quick** — `git pull origin main`, API build + web build, restart both. Skips install and migrations only |
 | `./deploy-rsync-from-local.sh` | Optional laptop path: rsync pre-built `dist` / `.next` (prefer the two scripts above) |
+
+Both `deploy.sh` and `deploy-quick.sh` already run **`npm run build`** (API/shared TypeScript → `dist/`). Without that, API code changes would not take effect after PM2 restart. Quick only skips dependency install and migrations.
+
 
 Optional branch: `./deploy.sh main` or `./deploy-quick.sh feature-branch`.
 

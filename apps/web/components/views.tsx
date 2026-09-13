@@ -551,7 +551,21 @@ function monthBounds(day: string): [string, string] {
   const end = `${year}-${String(month).padStart(2, "0")}-${String(last).padStart(2, "0")}`;
   return [start, end];
 }
-type DateRangePreset = "today" | "week" | "month" | "custom";
+function lastMonthBounds(day: string): [string, string] {
+  const [year, month] = day.split("-").map(Number);
+  const prevMonth = month === 1 ? 12 : month! - 1;
+  const prevYear = month === 1 ? year! - 1 : year!;
+  return monthBounds(
+    `${prevYear}-${String(prevMonth).padStart(2, "0")}-15`,
+  );
+}
+type DateRangePreset =
+  | "today"
+  | "week"
+  | "month"
+  | "last_month"
+  | "past"
+  | "custom";
 function rangeBounds(
   preset: DateRangePreset,
   today: string,
@@ -561,6 +575,8 @@ function rangeBounds(
   if (preset === "today") return [today, today];
   if (preset === "week") return [mondayOf(today), sundayOf(today)];
   if (preset === "month") return monthBounds(today);
+  if (preset === "last_month") return lastMonthBounds(today);
+  if (preset === "past") return ["", shiftDay(today, -1)];
   return [customFrom || today, customTo || today];
 }
 
@@ -582,6 +598,7 @@ export function Reservations({ session }: { session: Session }) {
     "staff/v1/workspace/reservations",
     search,
     filters,
+    25,
   );
   useEffect(() => {
     if (!filtersOpen) return;
@@ -623,12 +640,16 @@ export function Reservations({ session }: { session: Session }) {
         ? "This week"
         : range === "month"
           ? "This month"
-          : "Custom range";
+          : range === "last_month"
+            ? "Last month"
+            : range === "past"
+              ? "All past"
+              : "Custom range";
   function selectRange(next: DateRangePreset) {
     setRange(next);
     if (next === "custom") {
-      setCustomFrom(from);
-      setCustomTo(to);
+      setCustomFrom(from || today);
+      setCustomTo(to || today);
     }
   }
   const clearFilters = () => {
@@ -774,6 +795,8 @@ export function Reservations({ session }: { session: Session }) {
                           ["today", "Today"],
                           ["week", "This week"],
                           ["month", "This month"],
+                          ["last_month", "Last month"],
+                          ["past", "All past"],
                           ["custom", "Custom range"],
                         ] as const
                       ).map(([value, caption]) => (
@@ -821,7 +844,11 @@ export function Reservations({ session }: { session: Session }) {
                         ? today
                         : range === "week"
                           ? `${weekStart} – ${weekEnd}`
-                          : `${monthBounds(today)[0]} – ${monthBounds(today)[1]}`}
+                          : range === "last_month"
+                            ? `${lastMonthBounds(today)[0]} – ${lastMonthBounds(today)[1]}`
+                            : range === "past"
+                              ? `Through ${shiftDay(today, -1)}`
+                              : `${monthBounds(today)[0]} – ${monthBounds(today)[1]}`}
                     </p>
                   )}
                   <div className="filter-popover-actions">

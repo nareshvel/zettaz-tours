@@ -23,9 +23,11 @@ You do **not** create 18 products to take 18 bookings on a shared departure.
 
 1. Confirm the product is a **shared** fixed-departure tour (not private charter).
 2. Set schedule **seat capacity** to total guest units you will sell for that departure time.
-3. Register vehicles under **Team & resources**.
-4. Assign vehicles on the departure as bookings fill (ops readiness).
+3. Register vehicles under **Fleet**.
+4. Assign vehicles on the departure as bookings fill (ops readiness; Catalog → Assignments).
 5. If each party must own a whole vehicle exclusively → stop; that needs the charter/resource inventory model (deferred unless promoted).
+
+**Naming:** Fleet = operational assets. Inventory (elsewhere in docs) = sellable seats. Do not conflate.
 
 ## Open revisit triggers
 

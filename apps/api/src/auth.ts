@@ -292,6 +292,7 @@ export class AuthController {
       manualPaymentMethods: ["cash", "card", "online", "bank_transfer"],
       bookingSources: ["phone", "walk_in", "website", "partner_reseller"],
       documentStorage: { hotProvider: "filesystem", archiveProvider: "none", hotRetentionDays: 7 },
+      documentLibrary: { quotaBytes: 1073741824 },
     };
     const platformActor = {
       actorId: "00000000-0000-0000-0000-000000000000",

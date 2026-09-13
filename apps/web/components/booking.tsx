@@ -241,10 +241,12 @@ function CustomerMessages({
   bookingId,
   timezone,
   canRequest,
+  balanceMinor,
 }: {
   bookingId: string;
   timezone: string;
   canRequest: boolean;
+  balanceMinor: number;
 }) {
   const messages = useResource<NotificationMessage[]>(
     `staff/v1/bookings/${bookingId}/notifications`,
@@ -313,7 +315,14 @@ function CustomerMessages({
           </button>
           <button
             className="button secondary"
-            disabled={request.busy || retry.busy}
+            disabled={
+              request.busy || retry.busy || balanceMinor <= 0
+            }
+            title={
+              balanceMinor <= 0
+                ? "Balance is already paid in full"
+                : undefined
+            }
             onClick={() => void prepare("payment_request")}
           >
             <Mail size={16} aria-hidden />
@@ -2498,6 +2507,7 @@ export function BookingDetail({
                 canRequest={session.permissions.includes(
                   "notifications.request",
                 )}
+                balanceMinor={b.balanceMinor}
               />
             </section>
           )}

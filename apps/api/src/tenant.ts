@@ -28,11 +28,14 @@ import {
   memberUpdateSchema,
   roles as systemRoles,
   roleSchema,
+  staffCreateSchema,
+  staffUpdateSchema,
   tenantSchema,
   TenantConfig,
   updateConfigSchema,
 } from "../../../packages/shared/src/contracts";
 import { Database, digest, record, Tx } from "./database";
+import { sendStaffAccessInvite, smtpConfigured } from "./email";
 import { LimitsService } from "./limits";
 import { Access, CurrentActor, keySchema, parse } from "./http";
 type UploadedLogo = {
@@ -266,6 +269,291 @@ export class TenantService {
       },
     );
   }
+  async createStaff(actor: Actor, key: string, input: unknown) {
+    const data = parse(staffCreateSchema, input);
+    const displayName = [data.firstName, data.lastName]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    return this.db.command(actor, "staff.create", key, data, async (tx) => {
+      const settings = await tenant(tx, actor);
+      const countryDefault =
+        (settings.business_profile as { country?: string } | null)?.country ||
+        "";
+      const address = {
+        ...data.address,
+        country: data.address.country || countryDefault,
+      };
+      const { rows: roles } = await tx.query(
+        "SELECT id,code,name FROM tenant_roles WHERE tenant_id=$1 AND code=$2",
+        [actor.tenantId, data.role],
+      );
+      if (!roles[0])
+        throw new BadRequestException("Selected role is unavailable");
+      const email = data.email.toLowerCase();
+      const { rows: existingMembers } = await tx.query(
+        `SELECT 1 FROM memberships m JOIN staff_users s ON s.id=m.actor_id
+         WHERE m.tenant_id=$1 AND lower(s.email)=$2`,
+        [actor.tenantId, email],
+      );
+      if (existingMembers[0])
+        throw new ConflictException("That email already has tenant access");
+      let {
+        rows: [user],
+      } = await tx.query(
+        "SELECT id,name FROM staff_users WHERE lower(email)=$1 FOR UPDATE",
+        [email],
+      );
+      let actorId: string;
+      if (user) {
+        actorId = user.id;
+        await tx.query(
+          `UPDATE staff_users
+           SET name=$2, first_name=$3, last_name=$4, phone_number=$5, address=$6
+           WHERE id=$1`,
+          [
+            actorId,
+            displayName,
+            data.firstName,
+            data.lastName,
+            data.phone,
+            address,
+          ],
+        );
+      } else {
+        actorId = randomUUID();
+        await tx.query(
+          `INSERT INTO staff_users(id,name,email,phone_number,first_name,last_name,address,is_active)
+           VALUES($1,$2,$3,$4,$5,$6,$7,true)`,
+          [
+            actorId,
+            displayName,
+            email,
+            data.phone,
+            data.firstName,
+            data.lastName,
+            address,
+          ],
+        );
+        await tx.query(
+          "INSERT INTO user_credentials(user_id) VALUES($1) ON CONFLICT DO NOTHING",
+          [actorId],
+        );
+      }
+      const { rows: permissions } = await tx.query(
+        "SELECT COALESCE(array_agg(permission_code ORDER BY permission_code),'{}') AS codes FROM role_permissions WHERE tenant_id=$1 AND role_id=$2",
+        [actor.tenantId, roles[0].id],
+      );
+      await tx.query(
+        `INSERT INTO memberships(tenant_id,actor_id,role,role_id,permissions,active)
+         VALUES($1,$2,$3,$4,$5,false)`,
+        [
+          actor.tenantId,
+          actorId,
+          data.role,
+          roles[0].id,
+          permissions[0].codes,
+        ],
+      );
+      await tx.query(
+        `INSERT INTO crew_profiles(tenant_id,membership_actor_id,operational_name,notes,active)
+         VALUES($1,$2,$3,'',true)
+         ON CONFLICT (tenant_id, membership_actor_id) DO UPDATE
+           SET operational_name=EXCLUDED.operational_name, active=true`,
+        [actor.tenantId, actorId, displayName],
+      );
+      await record(tx, actor, "staff.created", actorId, null, {
+        role: data.role,
+        email,
+        active: false,
+      });
+      return { actorId, role: data.role, email, active: false };
+    });
+  }
+
+  async updateStaff(
+    actor: Actor,
+    actorId: string,
+    key: string,
+    input: unknown,
+  ) {
+    const data = parse(staffUpdateSchema, input);
+    const displayName = [data.firstName, data.lastName]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    return this.db.command(
+      actor,
+      `staff.update:${actorId}`,
+      key,
+      data,
+      async (tx) => {
+        const {
+          rows: [before],
+        } = await tx.query(
+          `SELECT m.role,m.active,s.name,s.email,s.phone_number,s.first_name,s.last_name,s.address
+           FROM memberships m JOIN staff_users s ON s.id=m.actor_id
+           WHERE m.tenant_id=$1 AND m.actor_id=$2
+           FOR UPDATE`,
+          [actor.tenantId, actorId],
+        );
+        if (!before) throw new NotFoundException();
+        if (before.role === "owner" && data.role && data.role !== "owner")
+          throw new BadRequestException(
+            "Ownership changes require a separate workflow",
+          );
+        if (before.role === "owner" && data.active === false)
+          throw new BadRequestException("The owner membership cannot be revoked");
+        await tx.query(
+          `UPDATE staff_users
+           SET name=$2, first_name=$3, last_name=$4, phone_number=$5, address=$6
+           WHERE id=$1`,
+          [
+            actorId,
+            displayName,
+            data.firstName,
+            data.lastName,
+            data.phone,
+            data.address,
+          ],
+        );
+        if (before.role !== "owner") {
+          const nextRole = data.role ?? before.role;
+          const nextActive =
+            data.active === undefined ? before.active : data.active;
+          const { rows: roles } = await tx.query(
+            "SELECT id FROM tenant_roles WHERE tenant_id=$1 AND code=$2",
+            [actor.tenantId, nextRole],
+          );
+          if (!roles[0])
+            throw new BadRequestException("Selected role is unavailable");
+          const { rows: permissions } = await tx.query(
+            "SELECT COALESCE(array_agg(permission_code ORDER BY permission_code),'{}') AS codes FROM role_permissions WHERE tenant_id=$1 AND role_id=$2",
+            [actor.tenantId, roles[0].id],
+          );
+          await tx.query(
+            `UPDATE memberships SET role=$3,role_id=$4,permissions=$5,active=$6
+             WHERE tenant_id=$1 AND actor_id=$2`,
+            [
+              actor.tenantId,
+              actorId,
+              nextRole,
+              roles[0].id,
+              permissions[0].codes,
+              nextActive,
+            ],
+          );
+          if (!nextActive)
+            await tx.query("SELECT revoke_staff_membership_sessions($1,$2)", [
+              actorId,
+              actor.tenantId,
+            ]);
+        }
+        await tx.query(
+          `INSERT INTO crew_profiles(tenant_id,membership_actor_id,operational_name,notes,active)
+           VALUES($1,$2,$3,'',true)
+           ON CONFLICT (tenant_id, membership_actor_id) DO UPDATE
+             SET operational_name=EXCLUDED.operational_name`,
+          [actor.tenantId, actorId, displayName],
+        );
+        await record(tx, actor, "staff.updated", actorId, before, {
+          ...data,
+          name: displayName,
+        });
+        return { actorId, name: displayName };
+      },
+    );
+  }
+
+  async grantAccess(actor: Actor, actorId: string, key: string) {
+    return this.db
+      .command(actor, `staff.grant_access:${actorId}`, key, { actorId }, async (tx) => {
+        const {
+          rows: [member],
+        } = await tx.query(
+          `SELECT m.role,m.active,m.role_id,s.name,s.email,r.name AS role_name,t.name AS tenant_name
+           FROM memberships m
+           JOIN staff_users s ON s.id=m.actor_id
+           JOIN tenant_roles r ON r.tenant_id=m.tenant_id AND r.id=m.role_id
+           JOIN tenants t ON t.id=m.tenant_id
+           WHERE m.tenant_id=$1 AND m.actor_id=$2`,
+          [actor.tenantId, actorId],
+        );
+        if (!member) throw new NotFoundException();
+        if (member.role === "owner")
+          throw new BadRequestException(
+            "Owner access is managed through ownership transfer",
+          );
+        await tx.query(
+          `UPDATE tenant_invitations
+           SET revoked_at=clock_timestamp()
+           WHERE tenant_id=$1 AND lower(email)=lower($2)
+             AND accepted_at IS NULL AND revoked_at IS NULL`,
+          [actor.tenantId, member.email],
+        );
+        const value =
+          randomUUID().replaceAll("-", "") +
+          randomUUID().replaceAll("-", "").slice(0, 11);
+        const { rows: created } = await tx.query(
+          `INSERT INTO tenant_invitations(tenant_id,name,email,role,role_id,token_hash,expires_at,invited_by)
+           VALUES($1,$2,lower($3),$4,$5,$6,clock_timestamp()+interval '7 days',$7)
+           RETURNING id,expires_at`,
+          [
+            actor.tenantId,
+            member.name,
+            member.email,
+            member.role,
+            member.role_id,
+            digest(value),
+            actor.actorId,
+          ],
+        );
+        await record(tx, actor, "staff.access_granted", actorId, null, {
+          invitationId: created[0].id,
+          email: member.email,
+          expiresAt: created[0].expires_at,
+        });
+        return {
+          actorId,
+          invitationId: created[0].id,
+          expiresAt: created[0].expires_at,
+          token: value,
+          email: member.email as string,
+          name: member.name as string,
+          roleName: member.role_name as string,
+          tenantName: member.tenant_name as string,
+        };
+      })
+      .then(async (created) => {
+        let emailed = false;
+        if (smtpConfigured()) {
+          const base =
+            process.env.APP_PUBLIC_URL?.replace(/\/$/, "") ||
+            "http://127.0.0.1:3191";
+          try {
+            await sendStaffAccessInvite({
+              to: created.email,
+              name: created.name,
+              tenantName: created.tenantName,
+              roleName: created.roleName,
+              activateUrl: `${base}/activate`,
+              token: created.token,
+            });
+            emailed = true;
+          } catch {
+            emailed = false;
+          }
+        }
+        return {
+          actorId: created.actorId,
+          invitationId: created.invitationId,
+          expiresAt: created.expiresAt,
+          token: created.token,
+          emailed,
+        };
+      });
+  }
+
   async member(actor: Actor, key: string, input: unknown) {
     const data = parse(memberSchema, input);
     return this.db.command(actor, "member.create", key, data, async (tx) => {
@@ -300,6 +588,12 @@ export class TenantService {
       await tx.query(
         "INSERT INTO memberships(tenant_id,actor_id,role,role_id,permissions) VALUES($1,$2,$3,$4,$5)",
         [actor.tenantId, actorId, data.role, roles[0].id, permissions[0].codes],
+      );
+      await tx.query(
+        `INSERT INTO crew_profiles(tenant_id,membership_actor_id,operational_name,notes,active)
+         VALUES($1,$2,$3,'',true)
+         ON CONFLICT (tenant_id, membership_actor_id) DO NOTHING`,
+        [actor.tenantId, actorId, data.name],
       );
       await record(tx, actor, "member.created", actorId, null, {
         role: data.role,
@@ -492,6 +786,44 @@ export class TenantController {
     @Body() body: unknown,
   ) {
     return this.service.member(actor, parse(keySchema, key), body);
+  }
+  @Post("staff")
+  @Access("members.write")
+  async createStaff(
+    @CurrentActor() actor: Actor,
+    @Headers("idempotency-key") key: string,
+    @Body() body: unknown,
+  ) {
+    await this.limits.enforce(actor, "staff");
+    return this.service.createStaff(actor, parse(keySchema, key), body);
+  }
+  @Patch("staff/:id")
+  @Access("members.write")
+  updateStaff(
+    @CurrentActor() actor: Actor,
+    @Param("id") actorId: string,
+    @Headers("idempotency-key") key: string,
+    @Body() body: unknown,
+  ) {
+    return this.service.updateStaff(
+      actor,
+      parse(id, actorId),
+      parse(keySchema, key),
+      body,
+    );
+  }
+  @Post("staff/:id/grant-access")
+  @Access("members.write")
+  grantAccess(
+    @CurrentActor() actor: Actor,
+    @Param("id") actorId: string,
+    @Headers("idempotency-key") key: string,
+  ) {
+    return this.service.grantAccess(
+      actor,
+      parse(id, actorId),
+      parse(keySchema, key),
+    );
   }
   @Post("roles")
   @Access("members.write")

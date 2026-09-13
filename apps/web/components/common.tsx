@@ -205,15 +205,7 @@ export function ConfirmDialog({
 
   return (
     <div className="confirm-dialog-root" role="presentation">
-      <button
-        type="button"
-        className="confirm-dialog-scrim"
-        aria-label="Dismiss"
-        disabled={busy}
-        onClick={() => {
-          if (!busy) onClose();
-        }}
-      />
+      <div className="confirm-dialog-scrim" aria-hidden="true" />
       <form
         className="panel confirm-dialog-sheet"
         role="dialog"
@@ -288,6 +280,7 @@ export function FormDialog({
   title,
   description,
   children,
+  afterActions,
   busy,
   error,
   submitLabel = "Save",
@@ -301,6 +294,8 @@ export function FormDialog({
   title: string;
   description?: string;
   children: React.ReactNode;
+  /** Content rendered below Cancel / Submit (e.g. existing records). */
+  afterActions?: React.ReactNode;
   busy?: boolean;
   error?: string | null;
   submitLabel?: string;
@@ -325,15 +320,7 @@ export function FormDialog({
 
   return (
     <div className="confirm-dialog-root" role="presentation">
-      <button
-        type="button"
-        className="confirm-dialog-scrim"
-        aria-label="Dismiss"
-        disabled={busy}
-        onClick={() => {
-          if (!busy) onClose();
-        }}
-      />
+      <div className="confirm-dialog-scrim" aria-hidden="true" />
       <form
         className={
           "panel confirm-dialog-sheet form-dialog-sheet" +
@@ -363,8 +350,10 @@ export function FormDialog({
           </button>
         </header>
         <div className="confirm-dialog-body">
-          {children}
-          {error && <Notice error>{error}</Notice>}
+          <div className="confirm-dialog-fields">
+            {children}
+            {error && <Notice error>{error}</Notice>}
+          </div>
           <div className="confirm-dialog-actions">
             <button
               type="button"
@@ -382,6 +371,9 @@ export function FormDialog({
               {busy ? "Working…" : submitLabel}
             </button>
           </div>
+          {afterActions ? (
+            <div className="confirm-dialog-after">{afterActions}</div>
+          ) : null}
         </div>
       </form>
     </div>

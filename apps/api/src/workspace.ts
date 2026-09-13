@@ -199,11 +199,46 @@ export class WorkspaceController {
     const q = parse(querySchema, raw);
     return this.db.transaction(actor, async (tx) => {
       const { rows } = await tx.query(
-        `SELECT m.actor_id AS id,m.role,m.active,s.name,s.email FROM memberships m JOIN staff_users s ON s.id=m.actor_id
-      WHERE m.tenant_id=$1 AND ($2::uuid IS NULL OR m.actor_id>$2) AND s.name ILIKE $3 ORDER BY m.actor_id LIMIT $4`,
+        `SELECT m.actor_id AS id,m.role,m.active,s.name,s.email,
+                COALESCE(s.phone_number,'') AS phone,
+                COALESCE(s.first_name, split_part(s.name,' ',1)) AS first_name,
+                COALESCE(s.last_name,'') AS last_name,
+                COALESCE(s.address,'{}'::jsonb) AS address,
+                s.last_login_at,
+                (s.signup_completed_at IS NOT NULL) AS has_password,
+                EXISTS(
+                  SELECT 1 FROM tenant_invitations i
+                  WHERE i.tenant_id=m.tenant_id AND lower(i.email)=lower(s.email)
+                    AND i.accepted_at IS NULL AND i.revoked_at IS NULL
+                    AND i.expires_at > clock_timestamp()
+                ) AS invite_pending,
+                (
+                  SELECT COUNT(*)::int FROM compliance_documents d
+                  WHERE d.tenant_id=m.tenant_id AND d.crew_actor_id=m.actor_id
+                ) AS document_count,
+                EXISTS(
+                  SELECT 1 FROM crew_profiles c
+                  WHERE c.tenant_id=m.tenant_id AND c.membership_actor_id=m.actor_id AND c.active
+                ) AS crew_active
+         FROM memberships m JOIN staff_users s ON s.id=m.actor_id
+         WHERE m.tenant_id=$1 AND ($2::uuid IS NULL OR m.actor_id>$2)
+           AND (s.name ILIKE $3 OR s.email ILIKE $3)
+         ORDER BY m.actor_id LIMIT $4`,
         [actor.tenantId, q.cursor ?? null, "%" + q.search + "%", q.limit + 1],
       );
-      return page(rows, q.limit);
+      return page(
+        rows.map((row) => ({
+          ...row,
+          access_status: row.active
+            ? "active"
+            : row.invite_pending
+              ? "invited"
+              : row.has_password
+                ? "revoked"
+                : "pending",
+        })),
+        q.limit,
+      );
     });
   }
   @Get("roles")

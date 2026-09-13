@@ -11,11 +11,23 @@ import {
   Param,
   Patch,
   Post,
+  StreamableFile,
+  UploadedFile,
+  UseInterceptors,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { createReadStream } from "node:fs";
+import { access } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Actor } from "../../../packages/shared/src/contracts";
 import { Database, record } from "./database";
+import {
+  absoluteLibraryPath,
+  assertLibraryQuota,
+  DocumentLibraryService,
+  type UploadedLibraryFile,
+} from "./document-library";
 import { Access, CurrentActor, keySchema, parse } from "./http";
 
 const resourceSchema = z
@@ -90,9 +102,26 @@ const assignmentUpdateSchema = z
   })
   .strict();
 
+/** Multipart form fields arrive as strings; JSON bodies pass through. */
+function coerceDocumentBody(raw: unknown) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const body = { ...(raw as Record<string, unknown>) };
+  for (const key of ["evidencePath", "notes", "documentType", "expiresOn"]) {
+    if (body[key] === undefined || body[key] === null) continue;
+    body[key] = String(body[key]);
+  }
+  for (const key of ["resourceId", "crewActorId"]) {
+    if (body[key] === "" || body[key] === undefined) delete body[key];
+  }
+  return body;
+}
+
 @Injectable()
 export class ResourceService {
-  constructor(private readonly db: Database) {}
+  constructor(
+    private readonly db: Database,
+    private readonly library: DocumentLibraryService,
+  ) {}
   listResources(actor: Actor) {
     return this.db.transaction(
       actor,
@@ -111,7 +140,17 @@ export class ResourceService {
       async (tx) =>
         (
           await tx.query(
-            "SELECT c.membership_actor_id AS actor_id,c.operational_name,c.notes,c.active,s.name,s.email FROM crew_profiles c JOIN staff_users s ON s.id=c.membership_actor_id WHERE c.tenant_id=$1 ORDER BY c.active DESC,c.operational_name",
+            `SELECT c.membership_actor_id AS actor_id,c.operational_name,c.notes,c.active,
+                    s.name,s.email,m.role,
+                    COALESCE(tr.name, m.role) AS role_name
+               FROM crew_profiles c
+               JOIN staff_users s ON s.id=c.membership_actor_id
+               JOIN memberships m
+                 ON m.tenant_id=c.tenant_id AND m.actor_id=c.membership_actor_id
+               LEFT JOIN tenant_roles tr
+                 ON tr.tenant_id=m.tenant_id AND tr.id=m.role_id
+              WHERE c.tenant_id=$1
+              ORDER BY c.active DESC,c.operational_name`,
             [actor.tenantId],
           )
         ).rows,
@@ -123,11 +162,29 @@ export class ResourceService {
       async (tx) =>
         (
           await tx.query(
-            "SELECT id,resource_id,crew_actor_id,document_type,expires_on,evidence_path,notes FROM compliance_documents WHERE tenant_id=$1 ORDER BY expires_on,id",
+            `SELECT d.id,d.resource_id,d.crew_actor_id,d.document_type,d.expires_on,
+                    d.evidence_path,d.notes,d.file_name,d.content_type,d.byte_size,
+                    d.storage_key IS NOT NULL AS has_file,
+                    CASE
+                      WHEN d.resource_id IS NOT NULL THEN 'resource'
+                      ELSE 'crew'
+                    END AS subject_kind,
+                    COALESCE(r.name, s.name, c.operational_name, '') AS subject_name
+               FROM compliance_documents d
+               LEFT JOIN operational_resources r
+                 ON r.tenant_id=d.tenant_id AND r.id=d.resource_id
+               LEFT JOIN crew_profiles c
+                 ON c.tenant_id=d.tenant_id AND c.membership_actor_id=d.crew_actor_id
+               LEFT JOIN staff_users s ON s.id=d.crew_actor_id
+              WHERE d.tenant_id=$1
+              ORDER BY d.expires_on,d.id`,
             [actor.tenantId],
           )
         ).rows,
     );
+  }
+  libraryUsage(actor: Actor) {
+    return this.library.usage(actor);
   }
   createResource(actor: Actor, key: string, raw: unknown) {
     const input = parse(resourceSchema, raw);
@@ -303,35 +360,87 @@ export class ResourceService {
       },
     );
   }
-  createDocument(actor: Actor, key: string, raw: unknown) {
-    const input = parse(documentSchema, raw);
-    return this.db.command(
-      actor,
-      "compliance_document.create",
-      key,
-      input,
-      async (tx) => {
-        const id = randomUUID();
-        await tx.query(
-          "INSERT INTO compliance_documents(tenant_id,id,resource_id,crew_actor_id,document_type,expires_on,evidence_path,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
-          [
-            actor.tenantId,
+  async createDocument(
+    actor: Actor,
+    key: string,
+    raw: unknown,
+    file?: UploadedLibraryFile,
+  ) {
+    const input = parse(documentSchema, coerceDocumentBody(raw));
+    let stored:
+      | {
+          storageKey: string;
+          fileName: string;
+          contentType: string;
+          byteSize: number;
+        }
+      | null = null;
+    if (file) {
+      const usage = await this.library.usage(actor);
+      assertLibraryQuota(usage.usedBytes, file.size, usage.quotaBytes);
+      const kind = input.crewActorId ? "crew" : "resource";
+      const subjectId = (input.crewActorId ?? input.resourceId)!;
+      stored = await this.library.writeSubjectFile(
+        actor.tenantId!,
+        kind,
+        subjectId,
+        file,
+      );
+    }
+    try {
+      return await this.db.command(
+        actor,
+        "compliance_document.create",
+        key,
+        {
+          ...input,
+          fileName: stored?.fileName ?? null,
+          byteSize: stored?.byteSize ?? 0,
+        },
+        async (tx) => {
+          const id = randomUUID();
+          await tx.query(
+            `INSERT INTO compliance_documents(
+               tenant_id,id,resource_id,crew_actor_id,document_type,expires_on,
+               evidence_path,notes,file_name,content_type,byte_size,storage_key
+             ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+            [
+              actor.tenantId,
+              id,
+              input.resourceId ?? null,
+              input.crewActorId ?? null,
+              input.documentType,
+              input.expiresOn,
+              input.evidencePath,
+              input.notes,
+              stored?.fileName ?? null,
+              stored?.contentType ?? null,
+              stored?.byteSize ?? 0,
+              stored?.storageKey ?? null,
+            ],
+          );
+          await record(tx, actor, "compliance_document.created", id, null, {
+            ...input,
+            hasFile: Boolean(stored),
+            byteSize: stored?.byteSize ?? 0,
+          });
+          return {
             id,
-            input.resourceId ?? null,
-            input.crewActorId ?? null,
-            input.documentType,
-            input.expiresOn,
-            input.evidencePath,
-            input.notes,
-          ],
-        );
-        await record(tx, actor, "compliance_document.created", id, null, input);
-        return { id, ...input };
-      },
-    );
+            ...input,
+            fileName: stored?.fileName ?? null,
+            contentType: stored?.contentType ?? null,
+            byteSize: stored?.byteSize ?? 0,
+            hasFile: Boolean(stored),
+          };
+        },
+      );
+    } catch (error) {
+      if (stored) await this.library.deleteStoredFile(stored.storageKey);
+      throw error;
+    }
   }
   updateDocument(actor: Actor, id: string, key: string, raw: unknown) {
-    const input = parse(documentUpdateSchema, raw);
+    const input = parse(documentUpdateSchema, coerceDocumentBody(raw));
     return this.db.command(
       actor,
       "compliance_document.update",
@@ -341,7 +450,7 @@ export class ResourceService {
         const {
           rows: [before],
         } = await tx.query(
-          "SELECT id,resource_id,crew_actor_id,document_type,expires_on,evidence_path,notes FROM compliance_documents WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
+          "SELECT id,resource_id,crew_actor_id,document_type,expires_on,evidence_path,notes,file_name,content_type,byte_size,storage_key FROM compliance_documents WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
           [actor.tenantId, id],
         );
         if (!before) throw new NotFoundException("Document not found");
@@ -371,12 +480,16 @@ export class ResourceService {
           resourceId: before.resource_id,
           crewActorId: before.crew_actor_id,
           ...input,
+          fileName: before.file_name,
+          contentType: before.content_type,
+          byteSize: before.byte_size,
+          hasFile: Boolean(before.storage_key),
         };
       },
     );
   }
-  deleteDocument(actor: Actor, id: string, key: string) {
-    return this.db.command(
+  async deleteDocument(actor: Actor, id: string, key: string) {
+    const result = await this.db.command(
       actor,
       "compliance_document.delete",
       key,
@@ -385,7 +498,7 @@ export class ResourceService {
         const {
           rows: [before],
         } = await tx.query(
-          "SELECT id,resource_id,crew_actor_id,document_type,expires_on,evidence_path,notes FROM compliance_documents WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
+          "SELECT id,resource_id,crew_actor_id,document_type,expires_on,evidence_path,notes,file_name,byte_size,storage_key FROM compliance_documents WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
           [actor.tenantId, id],
         );
         if (!before) throw new NotFoundException("Document not found");
@@ -394,9 +507,42 @@ export class ResourceService {
           [actor.tenantId, id],
         );
         await record(tx, actor, "compliance_document.deleted", id, before, null);
-        return { id, deleted: true };
+        return { id, deleted: true, storageKey: before.storage_key as string | null };
       },
     );
+    await this.library.deleteStoredFile(result.storageKey);
+    return { id: result.id, deleted: true };
+  }
+  async downloadDocument(actor: Actor, id: string) {
+    const row = await this.db.transaction(actor, async (tx) => {
+      const {
+        rows: [doc],
+      } = await tx.query(
+        "SELECT id,file_name,content_type,storage_key FROM compliance_documents WHERE tenant_id=$1 AND id=$2",
+        [actor.tenantId, id],
+      );
+      return doc as
+        | {
+            id: string;
+            file_name: string | null;
+            content_type: string | null;
+            storage_key: string | null;
+          }
+        | undefined;
+    });
+    if (!row?.storage_key) throw new NotFoundException("Document file not found");
+    const absolute = absoluteLibraryPath(row.storage_key);
+    try {
+      await access(absolute);
+    } catch {
+      throw new NotFoundException("Document file not found");
+    }
+    const stream = createReadStream(absolute);
+    const filename = row.file_name || "document";
+    return new StreamableFile(stream, {
+      type: row.content_type || "application/octet-stream",
+      disposition: `attachment; filename="${filename.replace(/"/g, "")}"`,
+    });
   }
   createAssignment(actor: Actor, key: string, raw: unknown) {
     const input = parse(assignmentSchema, raw);
@@ -630,6 +776,22 @@ export class ResourceController {
   ) {
     return this.service.documents(actor);
   }
+  @Get("document-library/usage")
+  @Access("documents.expiry.manage")
+  libraryUsage(@CurrentActor() actor: Actor) {
+    return this.service.libraryUsage(actor);
+  }
+  @Get("compliance-documents/:id/file")
+  @Access("documents.expiry.manage")
+  documentFile(
+    @CurrentActor() actor: Actor,
+    @Param("id") id: string,
+  ) {
+    return this.service.downloadDocument(
+      actor,
+      z.string().uuid().parse(id),
+    );
+  }
   @Post("resources") @Access("resources.write") resource(
     @CurrentActor() actor: Actor,
     @Headers("idempotency-key") key: string,
@@ -692,12 +854,29 @@ export class ResourceController {
       parse(keySchema, key),
     );
   }
-  @Post("compliance-documents") @Access("documents.expiry.manage") document(
+  @Post("compliance-documents")
+  @Access("documents.expiry.manage")
+  @UseInterceptors(
+    FileInterceptor("file", { limits: { fileSize: 10 * 1024 * 1024 } }),
+  )
+  document(
     @CurrentActor() actor: Actor,
     @Headers("idempotency-key") key: string,
     @Body() body: unknown,
+    @UploadedFile()
+    file?: {
+      buffer: Buffer;
+      mimetype: string;
+      originalname: string;
+      size: number;
+    },
   ) {
-    return this.service.createDocument(actor, parse(keySchema, key), body);
+    return this.service.createDocument(
+      actor,
+      parse(keySchema, key),
+      body,
+      file,
+    );
   }
   @Patch("compliance-documents/:id")
   @Access("documents.expiry.manage")

@@ -6,7 +6,7 @@ import { ArrowRight, ListFilter, Pause, Pencil, Play } from "lucide-react";
 import type { AvailabilityRule, Product, Session } from "@/lib/types";
 import { weekdayLabels } from "@/lib/types";
 import { formatMediumDateRange, useMutation } from "@/lib/client";
-import { Empty, Loading, Notice, Status } from "./common";
+import { Empty, Loading, Notice, Status, TenantDateInput } from "./common";
 import { ScheduleFormDialog } from "./schedule-form-dialog";
 
 export type ScheduleRange = "any" | "week" | "month" | "custom";
@@ -90,6 +90,8 @@ export function SchedulesFilterButton({
   productId,
   filters,
   timezone,
+  locale,
+  dateFormat,
   onFiltersChange,
   onProductFilter,
   onClearProductFilter,
@@ -98,6 +100,8 @@ export function SchedulesFilterButton({
   productId: string;
   filters: ScheduleListFilters;
   timezone: string;
+  locale: string;
+  dateFormat: "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD";
   onFiltersChange: (next: ScheduleListFilters) => void;
   onProductFilter: (productId: string) => void;
   onClearProductFilter: () => void;
@@ -266,34 +270,34 @@ export function SchedulesFilterButton({
           </div>
           {filters.range === "custom" && (
             <div className="filter-custom-range">
-              <label className="compact-control">
-                <span>From</span>
-                <input
-                  type="date"
-                  value={filters.customFrom}
-                  max={filters.customTo || undefined}
-                  onChange={(e) =>
-                    onFiltersChange({
-                      ...filters,
-                      customFrom: e.target.value,
-                    })
-                  }
-                />
-              </label>
-              <label className="compact-control">
-                <span>To</span>
-                <input
-                  type="date"
-                  value={filters.customTo}
-                  min={filters.customFrom || undefined}
-                  onChange={(e) =>
-                    onFiltersChange({
-                      ...filters,
-                      customTo: e.target.value,
-                    })
-                  }
-                />
-              </label>
+              <TenantDateInput
+                label="From"
+                compact
+                value={filters.customFrom}
+                max={filters.customTo || undefined}
+                onChange={(customFrom) =>
+                  onFiltersChange({
+                    ...filters,
+                    customFrom,
+                  })
+                }
+                locale={locale}
+                dateFormat={dateFormat}
+              />
+              <TenantDateInput
+                label="To"
+                compact
+                value={filters.customTo}
+                min={filters.customFrom || undefined}
+                onChange={(customTo) =>
+                  onFiltersChange({
+                    ...filters,
+                    customTo,
+                  })
+                }
+                locale={locale}
+                dateFormat={dateFormat}
+              />
             </div>
           )}
           {filters.range !== "any" && filters.range !== "custom" && activeBounds ? (

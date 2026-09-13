@@ -279,8 +279,24 @@ export type Member = {
   id: string;
   name: string;
   email: string;
+  phone?: string;
+  first_name?: string;
+  last_name?: string;
+  address?: {
+    street?: string;
+    suite?: string;
+    city?: string;
+    stateParish?: string;
+    postalCode?: string;
+    country?: string;
+  };
   role: string;
   active: boolean;
+  access_status?: "active" | "invited" | "revoked" | "pending";
+  last_login_at?: string | null;
+  document_count?: number;
+  invite_pending?: boolean;
+  has_password?: boolean;
 };
 export type Audit = {
   id: string;

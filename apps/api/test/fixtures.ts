@@ -24,6 +24,9 @@ export const mockConfig: TenantConfig = {
     archiveProvider: "none",
     hotRetentionDays: 7,
   },
+  documentLibrary: {
+    quotaBytes: 1073741824,
+  },
 };
 export const mockProduct = {
   name: "Mock Coastal Discovery",

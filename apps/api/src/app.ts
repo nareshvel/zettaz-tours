@@ -26,11 +26,12 @@ import { AuthController } from "./auth";
 import { ResourceController, ResourceService } from "./resources";
 import { PrintController, PrintService } from "./printing";
 import { DocumentStorageService } from "./document-storage";
+import { DocumentLibraryService } from "./document-library";
 import { CrewController, CrewService } from "./crew";
 import { PartnerController, PartnerService } from "./partners";
 import { IntegrationController, IntegrationService } from "./integrations";
 import { PassengerController, PassengerService } from "./passengers";
-import { NotificationController, NotificationService } from "./notifications";
+import { NotificationModule } from "./notifications";
 import { StayController, StayService } from "./stays";
 import { CustomerController, CustomerService } from "./customers";
 import { ReportController, ReportService } from "./reports";
@@ -69,7 +70,7 @@ class InventoryModule {}
 @Module({ providers: [FinanceService], exports: [FinanceService] })
 class FinanceModule {}
 @Module({
-  imports: [InventoryModule, FinanceModule],
+  imports: [InventoryModule, FinanceModule, NotificationModule],
   providers: [ReservationService, BookingChangeService],
   controllers: [
     ReservationController,
@@ -98,6 +99,7 @@ class SystemController {
     FinanceModule,
     ReservationModule,
     OperationsModule,
+    NotificationModule,
     StripeBillingModule,
   ],
   controllers: [
@@ -112,7 +114,6 @@ class SystemController {
     PartnerController,
     IntegrationController,
     PassengerController,
-    NotificationController,
     StayController,
     CustomerController,
     PlatformSupportController,
@@ -127,11 +128,11 @@ class SystemController {
     ResourceService,
     PrintService,
     DocumentStorageService,
+    DocumentLibraryService,
     CrewService,
     PartnerService,
     IntegrationService,
     PassengerService,
-    NotificationService,
     StayService,
     CustomerService,
     SupportService,

@@ -352,6 +352,107 @@ test("resources are tenant-scoped, expired compliance blocks assignment, and che
   );
 });
 
+test("compliance document library uploads, quotas, downloads and tenant isolation", async () => {
+  const t = await setupTenant(`library-${randomUUID().slice(0, 8)}`, {
+    ...mockConfig,
+    documentLibrary: { quotaBytes: 2048 },
+  });
+  const other = await setupTenant(`library-b-${randomUUID().slice(0, 8)}`);
+  const resource = await post("/ops/v1/resources", t.token, {
+    code: `lib-${randomUUID().slice(0, 8)}`,
+    name: "Library test vessel",
+    type: "vessel",
+    capacity: 6,
+    notes: "",
+  });
+  assert.equal(resource.status, 201, JSON.stringify(resource.body));
+
+  const usageBefore = await get("/ops/v1/document-library/usage", t.token);
+  assert.equal(usageBefore.status, 200, JSON.stringify(usageBefore.body));
+  assert.equal(usageBefore.body.quotaBytes, 2048);
+  assert.equal(usageBefore.body.usedBytes, 0);
+
+  const pdfBytes = Buffer.from(
+    "%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n",
+  );
+  const uploaded = await request(app.getHttpServer())
+    .post("/ops/v1/compliance-documents")
+    .auth(t.token, { type: "bearer" })
+    .set("Idempotency-Key", key())
+    .field("resourceId", resource.body.id)
+    .field("documentType", "vessel insurance")
+    .field("expiresOn", "2099-01-01")
+    .field("notes", "Synthetic library upload")
+    .attach("file", pdfBytes, {
+      filename: "insurance.pdf",
+      contentType: "application/pdf",
+    });
+  assert.equal(uploaded.status, 201, JSON.stringify(uploaded.body));
+  assert.equal(uploaded.body.hasFile, true);
+  assert.ok(uploaded.body.byteSize > 0);
+
+  const usageAfter = await get("/ops/v1/document-library/usage", t.token);
+  assert.equal(usageAfter.status, 200);
+  assert.equal(usageAfter.body.usedBytes, uploaded.body.byteSize);
+  assert.equal(usageAfter.body.fileCount, 1);
+
+  const listed = await get("/ops/v1/compliance-documents", t.token);
+  assert.equal(listed.status, 200);
+  const row = listed.body.find(
+    (item: { id: string }) => item.id === uploaded.body.id,
+  );
+  assert.ok(row);
+  assert.equal(row.has_file, true);
+  assert.equal(row.subject_kind, "resource");
+  assert.match(String(row.subject_name), /Library test vessel/);
+
+  const download = await get(
+    `/ops/v1/compliance-documents/${uploaded.body.id}/file`,
+    t.token,
+  );
+  assert.equal(download.status, 200);
+  assert.match(
+    String(download.headers["content-type"] ?? ""),
+    /application\/pdf/,
+  );
+
+  assert.equal(
+    (
+      await get(
+        `/ops/v1/compliance-documents/${uploaded.body.id}/file`,
+        other.token,
+      )
+    ).status,
+    404,
+  );
+
+  const overQuota = await request(app.getHttpServer())
+    .post("/ops/v1/compliance-documents")
+    .auth(t.token, { type: "bearer" })
+    .set("Idempotency-Key", key())
+    .field("resourceId", resource.body.id)
+    .field("documentType", "inspection")
+    .field("expiresOn", "2099-06-01")
+    .attach("file", Buffer.alloc(2048, 1), {
+      filename: "too-big.pdf",
+      contentType: "application/pdf",
+    });
+  assert.equal(overQuota.status, 413, JSON.stringify(overQuota.body));
+
+  assert.equal(
+    (
+      await del(
+        `/ops/v1/compliance-documents/${uploaded.body.id}`,
+        t.token,
+      )
+    ).status,
+    200,
+  );
+  const usageCleared = await get("/ops/v1/document-library/usage", t.token);
+  assert.equal(usageCleared.body.usedBytes, 0);
+  assert.equal(usageCleared.body.fileCount, 0);
+});
+
 test("operations board and pickup plans stay scoped, versioned and aligned with reservation changes", async () => {
   const dep = await departure(a.token, 8);
   const booking = await heldBooking(
@@ -3618,6 +3719,62 @@ test("customer communication requests are durable, auditable, held without SMTP 
   );
   assert.equal(retried.status, 201, JSON.stringify(retried.body));
   assert.equal(retried.body.status, "held_provider");
+});
+
+test("payment request is blocked when balance is paid in full and confirm auto-queues confirmation email", async () => {
+  const dep = await departure(a.token, 6);
+  const booking = await heldBooking(dep.departureId, a.token);
+  const { rows: quoteRows } = await admin.query(
+    "SELECT (quote->>'totalMinor')::int AS total_minor FROM holds WHERE tenant_id=$1 AND id=$2",
+    [a.tenantId, booking.holdId],
+  );
+  const total = quoteRows[0].total_minor as number;
+  assert.ok(total > 0);
+  const paid = await pay(booking.bookingId, total, a.token);
+  assert.equal(paid.status, 201, JSON.stringify(paid.body));
+  const blocked = await post(
+    `/staff/v1/bookings/${booking.bookingId}/notifications`,
+    a.token,
+    { kind: "payment_request" },
+  );
+  assert.equal(blocked.status, 400, JSON.stringify(blocked.body));
+  assert.match(
+    JSON.stringify(blocked.body.detail ?? blocked.body),
+    /paid in full/i,
+  );
+  const confirmed = await post(
+    `/staff/v1/bookings/${booking.bookingId}/confirm`,
+    a.token,
+    { version: 1 },
+  );
+  assert.equal(confirmed.status, 201, JSON.stringify(confirmed.body));
+  const listed = await get(
+    `/staff/v1/bookings/${booking.bookingId}/notifications`,
+    a.token,
+  );
+  assert.equal(listed.status, 200, JSON.stringify(listed.body));
+  assert.ok(
+    listed.body.some(
+      (row: { kind: string }) => row.kind === "booking_confirmation",
+    ),
+    JSON.stringify(listed.body),
+  );
+  const again = await post(
+    `/staff/v1/bookings/${booking.bookingId}/confirm`,
+    a.token,
+    { version: confirmed.body.version },
+  );
+  assert.equal(again.status, 201, JSON.stringify(again.body));
+  const listedAgain = await get(
+    `/staff/v1/bookings/${booking.bookingId}/notifications`,
+    a.token,
+  );
+  assert.equal(
+    listedAgain.body.filter(
+      (row: { kind: string }) => row.kind === "booking_confirmation",
+    ).length,
+    1,
+  );
 });
 
 test("bookings link tenant-controlled cruise calls and accommodations without cross-tenant references", async () => {

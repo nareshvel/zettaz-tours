@@ -2,7 +2,6 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  CalendarDays,
   Download,
   MapPin,
   Pencil,
@@ -39,6 +38,7 @@ import {
   Loading,
   Notice,
   Status,
+  TenantDateInput,
 } from "./common";
 
 const emptyLocationForm = {
@@ -74,15 +74,14 @@ export function OperationsBoard({ session }: { session: Session }) {
         title="Day board"
         description="Today’s trips: pickup readiness, weather holds, and board guests."
         action={
-          <label className="date-control">
-            <CalendarDays size={16} />
-            <input
-              aria-label="Day board date"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
-          </label>
+          <TenantDateInput
+            label="Day board date"
+            compact
+            value={date}
+            onChange={setDate}
+            locale={session.tenant.config.locale}
+            dateFormat={session.tenant.config.dateFormat}
+          />
         }
       />
       <Notice>

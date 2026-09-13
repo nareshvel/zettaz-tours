@@ -23,6 +23,7 @@ import {
   BarChart3,
   Route,
   CheckCircle2,
+  FileText,
 } from "lucide-react";
 import type { DemoTenant, Session } from "@/lib/types";
 import { errorText, label, setTenantContext } from "@/lib/client";
@@ -55,6 +56,7 @@ import {
 import { Profile } from "./profile";
 import { Entry, Signup, VerifyEmail } from "./auth";
 import { Resources } from "./resources";
+import { DocumentLibrary } from "./document-library";
 import { Finance } from "./finance";
 import { Integrations } from "./integrations";
 import { Reports } from "./reports";
@@ -146,7 +148,7 @@ const navigation = [
   },
   {
     href: "/resources",
-    name: "Team & resources",
+    name: "Fleet",
     icon: UsersRound,
     permission: "resources.write",
   },
@@ -161,6 +163,12 @@ const navigation = [
     name: "Tenant settings",
     icon: SlidersHorizontal,
     permission: "config.write",
+  },
+  {
+    href: "/document-library",
+    name: "Document library",
+    icon: FileText,
+    permission: "documents.expiry.manage",
   },
   {
     href: "/audit",
@@ -382,7 +390,7 @@ export function Workspace({
         "partner.statement.read",
         "partner.collection.verify",
       ],
-      "/resources": ["resources.write", "assignments.write"],
+      "/resources": ["resources.write"],
     };
     return (alternatives[href] ?? [permission]).some(can);
   };
@@ -405,6 +413,7 @@ export function Workspace({
         "/resources",
         "/team",
         "/settings",
+        "/document-library",
         "/audit",
       ],
     },
@@ -495,10 +504,11 @@ export function Workspace({
     permission = "catalog.read";
     content = <Catalog session={session} />;
   } else if (area === "resources") {
-    permission = can("resources.write")
-      ? "resources.write"
-      : "assignments.write";
+    permission = "resources.write";
     content = <Resources session={session} />;
+  } else if (area === "document-library") {
+    permission = "documents.expiry.manage";
+    content = <DocumentLibrary session={session} />;
   } else if (area === "settings") {
     permission = "config.write";
     content = <Settings session={session} refresh={load} />;

@@ -514,12 +514,48 @@ export class BookingChangeService {
   historyRead(actor: Actor, bookingId: string) {
     return this.db.transaction(actor, async (tx) => {
       await this.reservations.booking(tx, actor, bookingId);
-      return (
-        await tx.query(
-          "SELECT id,version,kind,before_data,after_data,reason,actor_id,occurred_at FROM booking_changes WHERE tenant_id=$1 AND booking_id=$2 ORDER BY version DESC",
-          [actor.tenantId, bookingId],
-        )
-      ).rows;
+      const { rows } = await tx.query(
+        "SELECT id,version,kind,before_data,after_data,reason,actor_id,occurred_at FROM booking_changes WHERE tenant_id=$1 AND booking_id=$2 ORDER BY version DESC",
+        [actor.tenantId, bookingId],
+      );
+      const departureIds = new Set<string>();
+      for (const row of rows) {
+        const beforeId = row.before_data?.departure_id;
+        const afterId = row.after_data?.departure_id;
+        if (typeof beforeId === "string") departureIds.add(beforeId);
+        if (typeof afterId === "string") departureIds.add(afterId);
+      }
+      const labels = new Map<
+        string,
+        { id: string; starts_at: string; product_name: string }
+      >();
+      if (departureIds.size) {
+        const { rows: deps } = await tx.query(
+          `SELECT d.id,d.starts_at,p.name AS product_name
+           FROM departures d
+           JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id
+           WHERE d.tenant_id=$1 AND d.id = ANY($2::uuid[])`,
+          [actor.tenantId, [...departureIds]],
+        );
+        for (const dep of deps) {
+          labels.set(dep.id, dep);
+        }
+      }
+      return rows.map((row) => ({
+        ...row,
+        before_data: {
+          ...row.before_data,
+          departure: row.before_data?.departure_id
+            ? labels.get(row.before_data.departure_id) ?? null
+            : null,
+        },
+        after_data: {
+          ...row.after_data,
+          departure: row.after_data?.departure_id
+            ? labels.get(row.after_data.departure_id) ?? null
+            : null,
+        },
+      }));
     });
   }
 

@@ -250,6 +250,9 @@ function config(currency: string) {
       archiveProvider: "none",
       hotRetentionDays: 7,
     },
+    documentLibrary: {
+      quotaBytes: 1073741824,
+    },
   };
 }
 

@@ -8,7 +8,7 @@ Give a tenant one operational source of truth for the people and assets required
 
 - A tenant configures the resource types and assignment requirements for each product or departure. No operator's guide, driver, vessel, vehicle or safety rule is a product default.
 - A staff member may have multiple tenant memberships; a crew record links a tenant membership to operational qualifications without granting additional application permissions.
-- A required document has a tenant-defined type, expiry date and evidence reference. The exact storage/retention policy is pending.
+- A required document has a tenant-defined type, expiry date and optional uploaded evidence file (PDF/JPG/PNG/WebP). Files live in a long-lived per-tenant document library with a hard storage quota (default 1 GiB).
 - A document expiring today is not valid for a new assignment unless a tenant policy says otherwise. The initial implementation treats expiry before the departure's local date as expired.
 - An override requires `safety.assignment.override`, a reason, actor, time and audit event. The implementation permits it only when the selected subject has an expired document; it does not make unrelated assignments broadly exempt.
 - Full inspections, defects, maintenance, fuel, utilization and route optimization are Track B.
@@ -17,18 +17,21 @@ Give a tenant one operational source of truth for the people and assets required
 
 - `operational_resources`: tenant-owned asset with code, name, type, active state, optional capacity and operational notes.
 - `crew_profiles`: tenant membership, display/operational name, active state and notes.
-- `compliance_documents`: tenant-owned document for exactly one resource or crew profile, document type, expiry date and evidence storage reference.
+- `compliance_documents`: tenant-owned document for exactly one resource or crew profile, document type, expiry date, optional file metadata (`file_name`, `content_type`, `byte_size`, `storage_key`), and optional legacy evidence reference text.
 - `departure_assignments`: departure, one crew or resource subject, assignment role, scheduled time window, status, override reason and audit linkage.
 
 The database must enforce tenant-scoped foreign keys and prevent an active resource or crew profile from overlapping assignments in the same time window. It must also prevent a crew member or resource from being assigned when a required applicable document is expired, unless an audited authorized override is present.
 
 ## API and UI sequence
 
-1. Manage resources and crew records in **Team & resources** (create/edit via modal; remove deactivates).
-2. Record expiry documents with a tenant-controlled evidence reference (edit/delete supported).
-3. View a departure's assignment/readiness panel and assign an available **active** subject.
-4. Show unassigned and blocked items on Operations today.
-5. Expose only the assigned crew member's minimum trip data to the future mobile surface.
+1. Manage people under **Staff** (Add staff, Grant access, personal compliance documents with upload). Every staff membership has a crew profile for assignment.
+2. Manage fleet assets under **Fleet** (create/edit via modal; Manage documents per asset; remove deactivates).
+3. Manage all compliance files and storage usage under **Document library** (`/document-library`).
+4. Assign crew and fleet assets under **Catalog → Assignments** (date-range board + planner sheet with click/drag onto departures via `ops/v1/assignments`). Staff `assignment_role` comes from Workspace role; fleet uses asset type.
+5. Show unassigned and blocked items on Operations today.
+6. Expose only the assigned crew member's minimum trip data to the mobile surface.
+
+Do not name Fleet “Inventory” — sellable seat capacity is a separate domain (see pricing-and-inventory and shared-capacity-vs-fleet).
 
 ## Acceptance
 

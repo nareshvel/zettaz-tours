@@ -20,7 +20,7 @@ Proposed tenant lifecycle: setup → active → restricted → archived, with re
 
 Visible groups are derived from permissions, release availability and tenant features. Denied screens are not discoverable through search, badges or counts. A configured but temporarily unavailable gateway shows actionable status to authorized administrators. Track B products are omitted until enabled; no empty placeholder menus.
 
-The tenant web aside uses four task-oriented groups: **Workspace** for the overview, **Operations** for day board / departures / reservations / catalog, **Insights** for reports and customers (read-oriented), and **Administration** for finance/resources/staff/settings/audit. A group is omitted when none of its destinations are permitted. Finance accepts its scoped finance permission families, Team & resources accepts resource management or assignment authority, and every authenticated staff user can reach their own profile. **Zettaz subscription** lives under **My profile → Subscription** and is shown only to the tenant owner (not in the main aside). On phone/tablet (≤1366px) the profile shell stacks identity + horizontal section chips above content with no gap between strip and panel; desktop keeps a sticky side rail. Route authorization remains server-enforced.
+The tenant web aside uses four task-oriented groups: **Workspace** for the overview, **Operations** for day board / departures / reservations / catalog, **Insights** for reports and customers (read-oriented), and **Administration** for finance / **Fleet** / **Staff** / settings / **Document library** / audit. A group is omitted when none of its destinations are permitted. Finance accepts its scoped finance permission families, Fleet accepts `resources.write`, Document library accepts `documents.expiry.manage`, Staff accepts `members.write`, and every authenticated staff user can reach their own profile.
 
 | Group / screens | Primary users | Main work and required states | Release |
 | --- | --- | --- | --- |
@@ -28,13 +28,15 @@ The tenant web aside uses four task-oriented groups: **Workspace** for the overv
 | Day Board (menu label; route `/operations`) | Dispatcher | One-day pickup readiness, weather/closure, path to board guests (manifest) | Track A |
 | Departures / calendar, detail | Reservations, dispatcher | Capacity vs sellable instances across dates; Book; open manifest | Track A |
 | Reservations / list, new, detail, change review | Reservations; authorized read roles | Search by reference/name/date/source; draft/hold/confirm; party, pickup, money, timeline; expiry/conflict recovery | Track A |
-| Catalog / products, options, rates, schedules, policies | Owner/admin | Effective dates, rate gaps/overlaps, categories, one add-on, publish/archive | Track A |
+| Catalog / products, rates, schedules, assignments | Owner/admin; dispatcher | Products and schedules; date-scoped departure crew/asset assignments | Track A |
 | Customers / search, detail | Reservations; scoped roles | Contact and history (Insights); protected sensitive data. Create/edit remains later. | Track A |
 | Operations pickup/plan/list/rebook (under Day Board) | Dispatcher | Plan pickups (edit sequence), Print pickup list, recovery after closure; weather hold/close/reopen via in-app reason dialog | Track A |
 | Partners / organizations, contacts, contracts, booking history | Owner/admin; scoped reservations/finance | External hotels/resellers, attribution, collector terms; finance-only money views | Track A staff-managed |
 | Finance / overview, booking payments, refunds, partner statements, remittances | Finance/owner | Guest dues, partner dues, evidence review, receipt matching, unallocated amounts, corrections | Track A slim |
-| Team & resources / staff, assets, expiry documents | Admin, dispatcher, resource manager | Qualification/expiry status and conflict detail; security roles managed in Settings | Track A minimum |
-| Documents / waiver versions and evidence | Authorized owner/staff | Publish approved version, scoped signature review, guardian context; immutable signed version | Track A |
+| Fleet / assets | Admin, dispatcher, resource manager | Asset readiness and compliance docs; people under Staff; assignments live under Catalog | Track A minimum |
+| Staff / people, roles, personal docs | Owner/admin | Add staff, grant access, roles; crew profile auto-created | Track A |
+| Document library / compliance files & storage | Owner/admin; `documents.expiry.manage` | Tenant-scoped file library, usage meter, hard quota; staff and fleet evidence uploads | Track A |
+| Documents / waiver versions and evidence | Authorized owner/staff | Publish approved version, scoped signature review, guardian context; immutable signed version (separate from Document library) | Track A |
 | Integrations / connections, mappings, inbox, reconciliation | Authorized admin/staff | WP, imports, retries/quarantine and mapping fixes; payment secrets restricted | Track A |
 | Reports / operations, collections, partner dues | Scoped owner/finance/auditor | Explicit date basis, population, currency and permitted export | Track A basic |
 | Settings / business, currencies/policies, members/roles, notifications, payment providers, audit | Owner/admin by permission | Setup and change audit; finance/provider actions not implied by general settings access | Track A |

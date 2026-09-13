@@ -56,6 +56,17 @@ export const configSchema = z
         archiveProvider: "none",
         hotRetentionDays: 7,
       }),
+    /** Long-lived compliance library (licenses, insurance). Separate from waiver hot PDFs. */
+    documentLibrary: z
+      .object({
+        quotaBytes: z
+          .number()
+          .int()
+          .positive()
+          .max(100 * 1024 * 1024 * 1024)
+          .default(1073741824),
+      })
+      .default({ quotaBytes: 1073741824 }),
   })
   .strict()
   .refine(
@@ -243,6 +254,50 @@ export const memberSchema = z
       .string()
       .regex(/^[a-z][a-z0-9_]{1,80}$/)
       .refine((role) => role !== "owner", "Owner cannot be assigned here"),
+  })
+  .strict();
+export const staffAddressSchema = z
+  .object({
+    street: z.string().trim().max(200).default(""),
+    suite: z.string().trim().max(80).default(""),
+    city: z.string().trim().max(100).default(""),
+    stateParish: z.string().trim().max(100).default(""),
+    postalCode: z.string().trim().max(30).default(""),
+    country: z.string().trim().max(100).default(""),
+  })
+  .strict();
+export const staffCreateSchema = z
+  .object({
+    firstName: label,
+    lastName: z.string().trim().max(80).default(""),
+    email: z.string().email().max(254),
+    phone: z.string().trim().max(40).default(""),
+    address: staffAddressSchema.default({
+      street: "",
+      suite: "",
+      city: "",
+      stateParish: "",
+      postalCode: "",
+      country: "",
+    }),
+    role: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]{1,80}$/)
+      .refine((role) => role !== "owner", "Owner cannot be assigned here"),
+  })
+  .strict();
+export const staffUpdateSchema = z
+  .object({
+    firstName: label,
+    lastName: z.string().trim().max(80).default(""),
+    phone: z.string().trim().max(40).default(""),
+    address: staffAddressSchema,
+    role: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]{1,80}$/)
+      .refine((role) => role !== "owner", "Owner cannot be assigned here")
+      .optional(),
+    active: z.boolean().optional(),
   })
   .strict();
 export const memberUpdateSchema = z

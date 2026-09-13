@@ -24,6 +24,13 @@ import {
   Hotel,
   Lock,
   Handshake,
+  MoreHorizontal,
+  UserRound,
+  Phone,
+  MapPin,
+  MailPlus,
+  Ban,
+  RotateCcw,
 } from "lucide-react";
 import type {
   Session,
@@ -47,6 +54,7 @@ import {
   useMutation,
   usePaged,
   useResource,
+  downloadApiFile,
 } from "@/lib/client";
 import {
   Back,
@@ -68,14 +76,23 @@ import { Integrations } from "./integrations";
 import { ScheduleFormDialog } from "./schedule-form-dialog";
 import { CatalogSchedulesPanel, SchedulesFilterButton } from "./catalog-schedules";
 import type { ScheduleListFilters } from "./catalog-schedules";
+import { CatalogAssignmentsPanel } from "./catalog-assignments";
+import {
+  type ComplianceDocument,
+  type LibraryUsage,
+  StaffDocumentAddFields,
+  StaffDocumentArchive,
+  uploadComplianceDocument,
+} from "./document-library";
 
 function catalogTab(
   router: { replace: (href: string, options?: { scroll?: boolean }) => void },
-  next: "products" | "schedules",
+  next: "products" | "schedules" | "assignments",
   productId?: string,
 ) {
   const params = new URLSearchParams();
   if (next === "schedules") params.set("tab", "schedules");
+  if (next === "assignments") params.set("tab", "assignments");
   if (productId) params.set("product", productId);
   const query = params.toString();
   router.replace(query ? `/catalog?${query}` : "/catalog", { scroll: false });
@@ -137,7 +154,11 @@ export function Catalog({ session }: { session: Session }) {
     });
   const tab = searchParams.get("tab");
   const view =
-    tab === "schedules" || tab === "availability" ? "schedules" : "products";
+    tab === "schedules" || tab === "availability"
+      ? "schedules"
+      : tab === "assignments"
+        ? "assignments"
+        : "products";
   const scheduleProductId = searchParams.get("product") ?? "";
   useEffect(() => {
     if (searchParams.get("new") !== "1") return;
@@ -148,6 +169,7 @@ export function Catalog({ session }: { session: Session }) {
     router.replace(query ? `/catalog?${query}` : "/catalog", { scroll: false });
   }, [searchParams, router]);
   const canWrite = session.permissions.includes("catalog.write");
+  const canAssign = session.permissions.includes("assignments.write");
   const items = products.data ?? [];
   const active =
     products.data?.filter((p) => (p.status ?? "active") === "active").length ??
@@ -159,7 +181,7 @@ export function Catalog({ session }: { session: Session }) {
     (sum, rule) => sum + rule.upcoming_departures,
     0,
   );
-  function show(next: "products" | "schedules") {
+  function show(next: "products" | "schedules" | "assignments") {
     catalogTab(
       router,
       next,
@@ -176,7 +198,7 @@ export function Catalog({ session }: { session: Session }) {
     <>
       <Heading
         title="Catalog"
-        description="The experiences you sell, their published rates, and when they run."
+        description="The experiences you sell, when they run, and who or what is assigned to each departure."
       />
       <div className="catalog-metrics" aria-label="Catalog summary">
         <div>
@@ -216,6 +238,15 @@ export function Catalog({ session }: { session: Session }) {
           >
             Schedules
           </button>
+          {canAssign && (
+            <button
+              role="tab"
+              aria-selected={view === "assignments"}
+              onClick={() => show("assignments")}
+            >
+              Assignments
+            </button>
+          )}
         </div>
         {view === "products" ? (
           canWrite ? (
@@ -228,13 +259,15 @@ export function Catalog({ session }: { session: Session }) {
               <span className="button-label">Add product</span>
             </Link>
           ) : null
-        ) : (
+        ) : view === "schedules" ? (
           <div className="catalog-view-actions departure-view-actions">
             <SchedulesFilterButton
               products={items}
               productId={scheduleProductId}
               filters={scheduleFilters}
               timezone={session.tenant.timezone}
+              locale={session.tenant.config.locale}
+              dateFormat={session.tenant.config.dateFormat}
               onFiltersChange={setScheduleFilters}
               onProductFilter={setScheduleProductFilter}
               onClearProductFilter={clearScheduleFilter}
@@ -251,7 +284,7 @@ export function Catalog({ session }: { session: Session }) {
               </button>
             ) : null}
           </div>
-        )}
+        ) : null}
       </div>
       {products.error ? (
         <Notice error>{products.error}</Notice>
@@ -352,6 +385,8 @@ export function Catalog({ session }: { session: Session }) {
             <Notice>This catalog view shows up to 100 products.</Notice>
           )}
         </>
+      ) : view === "assignments" ? (
+        <CatalogAssignmentsPanel session={session} products={items} />
       ) : rules.error ? (
         <Notice error>{rules.error}</Notice>
       ) : !rules.data ? (
@@ -370,7 +405,7 @@ export function Catalog({ session }: { session: Session }) {
           onReload={() => rules.reload()}
         />
       )}
-      {canWrite && (
+      {canWrite && view !== "assignments" && (
         <ScheduleFormDialog
           session={session}
           open={scheduleModalOpen}
@@ -3489,14 +3524,13 @@ export function Settings({
                       onChange={(e) => setVesselName(e.target.value)}
                     />
                   </Field>
-                  <Field label="Call date">
-                    <input
-                      required
-                      type="date"
-                      value={callDate}
-                      onChange={(e) => setCallDate(e.target.value)}
-                    />
-                  </Field>
+                  <TenantDateInput
+                    label="Call date"
+                    value={callDate}
+                    onChange={setCallDate}
+                    locale={session.tenant.config.locale}
+                    dateFormat={session.tenant.config.dateFormat}
+                  />
                   <Field label="Port or marina">
                     <input
                       required
@@ -4096,40 +4130,168 @@ function SupportAccessSettings() {
   );
 }
 export function Team({ session }: { session: Session }) {
-  const members = usePaged<Member>("staff/v1/workspace/members"),
+  const members = usePaged<Member>("staff/v1/workspace/members", "", {}, 25),
     mutation = useMutation(),
     add = useMutation(),
+    grant = useMutation(),
+    docMutation = useMutation(),
     roleData = useResource<{ roles: RoleData[] }>("staff/v1/workspace/roles");
-  const [name, setName] = useState(""),
-    [email, setEmail] = useState(""),
-    [role, setRole] = useState("reservations"),
-    [inviteOpen, setInviteOpen] = useState(false),
+  const canManageDocs = session.permissions.includes("documents.expiry.manage");
+  const documents = useResource<ComplianceDocument[]>(
+    canManageDocs ? "ops/v1/compliance-documents" : null,
+  );
+  const defaultCountry = session.tenant.business_profile?.country || "";
+  const emptyForm = {
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    street: "",
+    suite: "",
+    city: "",
+    stateParish: "",
+    postalCode: "",
+    country: defaultCountry,
+    role: "reservations",
+  };
+  const [form, setForm] = useState(emptyForm),
+    [editor, setEditor] = useState<null | { mode: "create" } | { mode: "edit"; member: Member }>(
+      null,
+    ),
+    [menuFor, setMenuFor] = useState<string | null>(null),
     [invitationToken, setInvitationToken] = useState(""),
-    [pendingRevoke, setPendingRevoke] = useState<Member | null>(null);
+    [grantNotice, setGrantNotice] = useState(""),
+    [pendingRevoke, setPendingRevoke] = useState<Member | null>(null),
+    [docsFor, setDocsFor] = useState<Member | null>(null),
+    [docBusy, setDocBusy] = useState(false),
+    [docError, setDocError] = useState(""),
+    [docForm, setDocForm] = useState({
+      documentType: "",
+      expiresOn: "",
+      notes: "",
+      file: null as File | null,
+    });
+  const libraryUsage = useResource<LibraryUsage>(
+    canManageDocs && docsFor ? "ops/v1/document-library/usage" : null,
+  );
   const roles = (roleData.data?.roles ?? []).filter(
     (item) => item.code !== "owner",
   );
   const activeCount = members.items.filter((item) => item.active).length;
-  const revokedCount = members.items.filter((item) => !item.active).length;
+  const invitedCount = members.items.filter(
+    (item) => item.access_status === "invited" || item.access_status === "pending",
+  ).length;
+  const revokedCount = members.items.filter(
+    (item) => item.access_status === "revoked",
+  ).length;
+  const roleName = (code: string) =>
+    roleData.data?.roles.find((r) => r.code === code)?.name ?? label(code);
 
-  async function createInvite() {
-    const result = await add.run<{ token: string }>("admin/v1/invitations", {
-      name,
-      email,
-      role,
+  useEffect(() => {
+    if (!menuFor) return;
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target as Element | null;
+      if (target?.closest?.(".staff-row-menu")) return;
+      setMenuFor(null);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setMenuFor(null);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuFor]);
+
+  function openCreate() {
+    setForm({ ...emptyForm, role: roles[0]?.code ?? "reservations" });
+    setEditor({ mode: "create" });
+  }
+  function openEdit(m: Member) {
+    setForm({
+      firstName: m.first_name || m.name.split(" ")[0] || "",
+      lastName: m.last_name || m.name.split(" ").slice(1).join(" "),
+      email: m.email,
+      phone: m.phone || "",
+      street: m.address?.street || "",
+      suite: m.address?.suite || "",
+      city: m.address?.city || "",
+      stateParish: m.address?.stateParish || "",
+      postalCode: m.address?.postalCode || "",
+      country: m.address?.country || defaultCountry,
+      role: m.role === "owner" ? m.role : m.role,
     });
-    if (result) {
-      setName("");
-      setEmail("");
-      setInviteOpen(false);
-      setInvitationToken(result.token);
+    setEditor({ mode: "edit", member: m });
+    setMenuFor(null);
+  }
+
+  async function saveStaff() {
+    const address = {
+      street: form.street,
+      suite: form.suite,
+      city: form.city,
+      stateParish: form.stateParish,
+      postalCode: form.postalCode,
+      country: form.country,
+    };
+    if (editor?.mode === "create") {
+      const result = await add.run("admin/v1/staff", {
+        firstName: form.firstName,
+        lastName: form.lastName,
+        email: form.email,
+        phone: form.phone,
+        address,
+        role: form.role,
+      });
+      if (result) {
+        setEditor(null);
+        members.reload();
+      }
+      return;
+    }
+    if (editor?.mode === "edit") {
+      const body: Record<string, unknown> = {
+        firstName: form.firstName,
+        lastName: form.lastName,
+        phone: form.phone,
+        address,
+      };
+      if (editor.member.role !== "owner") body.role = form.role;
+      const result = await mutation.run(
+        "admin/v1/staff/" + editor.member.id,
+        body,
+        "PATCH",
+      );
+      if (result) {
+        setEditor(null);
+        members.reload();
+      }
     }
   }
 
-  async function update(m: Member, r: string, active: boolean) {
+  async function grantAccess(m: Member) {
+    setMenuFor(null);
+    const result = await grant.run<{
+      token: string;
+      emailed: boolean;
+    }>("admin/v1/staff/" + m.id + "/grant-access", {});
+    if (result) {
+      setInvitationToken(result.token);
+      setGrantNotice(
+        result.emailed
+          ? `Activation email sent to ${m.email}.`
+          : `Invitation created. Copy the token below — SMTP email was not sent.`,
+      );
+      members.reload();
+    }
+  }
+
+  async function revoke(m: Member) {
     const result = await mutation.run(
       "admin/v1/members/" + m.id,
-      { role: r, active },
+      { role: m.role, active: false },
       "PATCH",
     );
     if (result) {
@@ -4138,12 +4300,77 @@ export function Team({ session }: { session: Session }) {
     }
   }
 
+  async function restore(m: Member) {
+    setMenuFor(null);
+    const result = await mutation.run(
+      "admin/v1/members/" + m.id,
+      { role: m.role, active: true },
+      "PATCH",
+    );
+    if (result) members.reload();
+  }
+
+  const memberDocs =
+    docsFor && documents.data
+      ? documents.data.filter((d) => d.crew_actor_id === docsFor.id)
+      : [];
+
+  async function saveDocument() {
+    if (!docsFor) return;
+    setDocBusy(true);
+    setDocError("");
+    try {
+      await uploadComplianceDocument(
+        session.tenant.id,
+        {
+          crewActorId: docsFor.id,
+          documentType: docForm.documentType,
+          expiresOn: docForm.expiresOn,
+          notes: docForm.notes,
+        },
+        docForm.file,
+      );
+      setDocForm({
+        documentType: "",
+        expiresOn: "",
+        notes: "",
+        file: null,
+      });
+      setDocsFor(null);
+      documents.reload();
+      libraryUsage.reload();
+      members.reload();
+    } catch (e) {
+      setDocError((e as Error).message);
+    } finally {
+      setDocBusy(false);
+    }
+  }
+
+  async function deleteDocument(id: string) {
+    const result = await docMutation.run(
+      "ops/v1/compliance-documents/" + id,
+      {},
+      "DELETE",
+    );
+    if (result !== undefined) {
+      documents.reload();
+      libraryUsage.reload();
+      members.reload();
+    }
+  }
+
+  function accessLabel(m: Member) {
+    if (m.role === "owner") return "active";
+    return m.access_status ?? (m.active ? "active" : "revoked");
+  }
+
   return (
     <>
       <Heading
         eyebrow="ADMINISTRATION"
         title="Staff & access"
-        description="Invite tenant staff and manage roles. External partners and resellers use a separate access model."
+        description="People, workspace access, and personal compliance documents. External partners use a separate access model."
       />
 
       <div className="resource-metrics staff-metrics">
@@ -4151,17 +4378,19 @@ export function Team({ session }: { session: Session }) {
           <strong>
             {members.busy && !members.items.length ? "—" : activeCount}
           </strong>
-          <span>Active staff</span>
+          <span>Active</span>
+        </div>
+        <div>
+          <strong>
+            {members.busy && !members.items.length ? "—" : invitedCount}
+          </strong>
+          <span>Pending access</span>
         </div>
         <div className={revokedCount ? "attention" : ""}>
           <strong>
             {members.busy && !members.items.length ? "—" : revokedCount}
           </strong>
           <span>Revoked</span>
-        </div>
-        <div>
-          <strong>{roleData.data ? roles.length : "—"}</strong>
-          <span>Assignable roles</span>
         </div>
       </div>
 
@@ -4191,55 +4420,73 @@ export function Team({ session }: { session: Session }) {
         <button
           type="button"
           className="button catalog-add-btn"
-          aria-label="Invite staff member"
-          onClick={() => setInviteOpen(true)}
+          aria-label="Add staff"
+          onClick={openCreate}
         >
           <Plus size={17} />
-          <span className="button-label">Invite staff</span>
+          <span className="button-label">Add staff</span>
         </button>
       </div>
 
-      {invitationToken && (
+      {(invitationToken || grantNotice) && (
         <section className="panel form-panel staff-invite-token">
-          <h2>Activation token</h2>
-          <p className="muted">
-            Copy this token now. It is shown once and cannot be recovered. The
-            recipient activates at <strong>/activate</strong>.
-          </p>
-          <Field label="One-time token">
-            <input
-              readOnly
-              value={invitationToken}
-              onFocus={(e) => e.currentTarget.select()}
-            />
-          </Field>
-          <div className="button-row">
-            <button
-              type="button"
-              className="button secondary"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(invitationToken);
-                } catch {
-                  /* ignore */
-                }
-              }}
-            >
-              Copy token
-            </button>
-            <button
-              type="button"
-              className="button"
-              onClick={() => setInvitationToken("")}
-            >
-              Done
-            </button>
-          </div>
+          <h2>Grant access</h2>
+          {grantNotice && <p className="muted">{grantNotice}</p>}
+          {invitationToken && (
+            <>
+              <p className="muted">
+                Recipient activates at <strong>/activate</strong> with this
+                one-time token (expires in 7 days).
+              </p>
+              <Field label="One-time token">
+                <input
+                  readOnly
+                  value={invitationToken}
+                  onFocus={(e) => e.currentTarget.select()}
+                />
+              </Field>
+              <div className="button-row">
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(invitationToken);
+                    } catch {
+                      /* ignore */
+                    }
+                  }}
+                >
+                  Copy token
+                </button>
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => {
+                    setInvitationToken("");
+                    setGrantNotice("");
+                  }}
+                >
+                  Done
+                </button>
+              </div>
+            </>
+          )}
         </section>
       )}
 
-      {(members.error || mutation.error) && (
-        <Notice error>{members.error || mutation.error}</Notice>
+      {(members.error ||
+        mutation.error ||
+        add.error ||
+        grant.error ||
+        docMutation.error) && (
+        <Notice error>
+          {members.error ||
+            mutation.error ||
+            add.error ||
+            grant.error ||
+            docMutation.error}
+        </Notice>
       )}
 
       <section className="panel" aria-label="Staff members">
@@ -4247,8 +4494,8 @@ export function Team({ session }: { session: Session }) {
           <div>
             <h2>Staff members</h2>
             <p className="muted">
-              Role changes apply immediately. Revoking access blocks sign-in for
-              this tenant without deleting the person record.
+              Add people once. Grant access sends an activation email; revoke
+              blocks sign-in without deleting the person.
             </p>
           </div>
         </div>
@@ -4263,6 +4510,8 @@ export function Team({ session }: { session: Session }) {
                     <th>Staff member</th>
                     <th>Role</th>
                     <th>Access</th>
+                    <th>Last login</th>
+                    <th>Docs</th>
                     <th />
                   </tr>
                 </thead>
@@ -4274,7 +4523,10 @@ export function Team({ session }: { session: Session }) {
                           {m.name}
                           {m.id === session.actorId ? " (you)" : ""}
                         </strong>
-                        <small>{m.email}</small>
+                        <small>
+                          {m.email}
+                          {m.phone ? ` · ${m.phone}` : ""}
+                        </small>
                       </td>
                       <td>
                         {m.role === "owner" ? (
@@ -4283,49 +4535,102 @@ export function Team({ session }: { session: Session }) {
                             Owner
                           </span>
                         ) : (
-                          <select
-                            aria-label={"Role for " + m.name}
-                            value={m.role}
-                            disabled={mutation.busy}
-                            onChange={(e) =>
-                              update(m, e.target.value, m.active)
+                          roleName(m.role)
+                        )}
+                      </td>
+                      <td>
+                        <Status state={accessLabel(m)} />
+                      </td>
+                      <td>
+                        <small>
+                          {m.last_login_at
+                            ? dateTime(
+                                m.last_login_at,
+                                session.tenant.timezone,
+                              )
+                            : "—"}
+                        </small>
+                      </td>
+                      <td>
+                        <small>{m.document_count ?? 0}</small>
+                      </td>
+                      <td className="staff-actions-cell">
+                        <div className="staff-row-menu">
+                          <button
+                            type="button"
+                            className="icon-button"
+                            aria-label={`Actions for ${m.name}`}
+                            aria-expanded={menuFor === m.id}
+                            onClick={() =>
+                              setMenuFor((id) => (id === m.id ? null : m.id))
                             }
                           >
-                            {roles.map((r) => (
-                              <option key={r.id} value={r.code}>
-                                {r.name}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                      </td>
-                      <td>
-                        <Status state={m.active ? "active" : "revoked"} />
-                      </td>
-                      <td>
-                        {m.role !== "owner" && (
-                          <div className="row-actions">
-                            {m.active ? (
+                            <MoreHorizontal size={18} />
+                          </button>
+                          {menuFor === m.id && (
+                            <div className="staff-action-menu" role="menu">
                               <button
                                 type="button"
-                                className="text-link danger-text"
-                                disabled={mutation.busy}
-                                onClick={() => setPendingRevoke(m)}
+                                role="menuitem"
+                                onClick={() => openEdit(m)}
                               >
-                                Revoke access
+                                <Pencil size={15} aria-hidden="true" />
+                                Edit
                               </button>
-                            ) : (
-                              <button
-                                type="button"
-                                className="text-link"
-                                disabled={mutation.busy}
-                                onClick={() => update(m, m.role, true)}
-                              >
-                                Restore access
-                              </button>
-                            )}
-                          </div>
-                        )}
+                              {m.role !== "owner" && (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  disabled={grant.busy}
+                                  onClick={() => void grantAccess(m)}
+                                >
+                                  <MailPlus size={15} aria-hidden="true" />
+                                  {m.access_status === "active"
+                                    ? "Resend access"
+                                    : "Grant access"}
+                                </button>
+                              )}
+                              {canManageDocs && (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setDocsFor(m);
+                                    setMenuFor(null);
+                                  }}
+                                >
+                                  <FileText size={15} aria-hidden="true" />
+                                  Manage documents
+                                </button>
+                              )}
+                              {m.role !== "owner" &&
+                                m.id !== session.actorId &&
+                                (m.active ? (
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="danger-text"
+                                    onClick={() => {
+                                      setPendingRevoke(m);
+                                      setMenuFor(null);
+                                    }}
+                                  >
+                                    <Ban size={15} aria-hidden="true" />
+                                    Revoke access
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => void restore(m)}
+                                  >
+                                    <RotateCcw size={15} aria-hidden="true" />
+                                    Restore access
+                                  </button>
+                                ))}
+                            </div>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -4340,104 +4645,289 @@ export function Team({ session }: { session: Session }) {
                       {m.name}
                       {m.id === session.actorId ? " (you)" : ""}
                     </strong>
-                    <Status state={m.active ? "active" : "revoked"} />
+                    <Status state={accessLabel(m)} />
                   </div>
-                  <small>{m.email}</small>
-                  {m.role === "owner" ? (
-                    <span className="owner-role">
-                      <ShieldCheck size={15} />
-                      Owner
-                    </span>
-                  ) : (
-                    <Field label="Role">
-                      <select
-                        aria-label={"Role for " + m.name}
-                        value={m.role}
-                        disabled={mutation.busy}
-                        onChange={(e) => update(m, e.target.value, m.active)}
+                  <small>
+                    {m.email}
+                    {m.phone ? ` · ${m.phone}` : ""}
+                  </small>
+                  <p>{roleName(m.role)}</p>
+                  <div className="row-actions">
+                    <button
+                      type="button"
+                      className="text-link"
+                      onClick={() => openEdit(m)}
+                    >
+                      Edit
+                    </button>
+                    {m.role !== "owner" && (
+                      <button
+                        type="button"
+                        className="text-link"
+                        onClick={() => void grantAccess(m)}
                       >
-                        {roles.map((r) => (
-                          <option key={r.id} value={r.code}>
-                            {r.name}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                  )}
-                  {m.role !== "owner" && (
-                    <div className="row-actions">
-                      {m.active ? (
-                        <button
-                          type="button"
-                          className="text-link danger-text"
-                          disabled={mutation.busy}
-                          onClick={() => setPendingRevoke(m)}
-                        >
-                          Revoke access
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="text-link"
-                          disabled={mutation.busy}
-                          onClick={() => update(m, m.role, true)}
-                        >
-                          Restore access
-                        </button>
-                      )}
-                    </div>
-                  )}
+                        Grant access
+                      </button>
+                    )}
+                    {canManageDocs && (
+                      <button
+                        type="button"
+                        className="text-link"
+                        onClick={() => setDocsFor(m)}
+                      >
+                        Documents
+                      </button>
+                    )}
+                  </div>
                 </article>
               ))}
             </div>
           </>
         ) : (
           <Empty title="No staff members yet">
-            Invite the first team member to share tenant access.
+            Add the first team member, then grant workspace access.
           </Empty>
         )}
         <More {...members} count={members.items.length} />
       </section>
 
       <FormDialog
-        open={inviteOpen}
-        title="Invite staff member"
-        description="Creates a one-time activation token that expires in seven days. Send it only through an approved channel."
-        busy={add.busy}
-        error={add.error}
-        submitLabel="Create invitation"
-        onClose={() => setInviteOpen(false)}
-        onSubmit={createInvite}
+        open={Boolean(editor)}
+        className="staff-form-dialog"
+        title={editor?.mode === "edit" ? "Edit staff" : "Add staff"}
+        description={
+          editor?.mode === "edit"
+            ? "Update contact details and role. Login access is managed separately."
+            : "Add someone to the roster. They stay inactive until you grant access."
+        }
+        busy={add.busy || mutation.busy}
+        error={add.error || mutation.error}
+        submitLabel={editor?.mode === "edit" ? "Save changes" : "Add staff"}
+        onClose={() => setEditor(null)}
+        onSubmit={() => void saveStaff()}
       >
-        <Field label="Name" required>
-          <input
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+        <section className="staff-form-section">
+          <div className="staff-form-section-head">
+            <UserRound size={16} aria-hidden="true" />
+            <div>
+              <h3>Person</h3>
+              <p>Name used on manifests and assignments.</p>
+            </div>
+          </div>
+          <div className="form-grid">
+            <Field label="First name" required>
+              <input
+                required
+                autoComplete="given-name"
+                value={form.firstName}
+                onChange={(e) =>
+                  setForm((v) => ({ ...v, firstName: e.target.value }))
+                }
+              />
+            </Field>
+            <Field label="Last name">
+              <input
+                autoComplete="family-name"
+                value={form.lastName}
+                onChange={(e) =>
+                  setForm((v) => ({ ...v, lastName: e.target.value }))
+                }
+              />
+            </Field>
+          </div>
+        </section>
+
+        <section className="staff-form-section">
+          <div className="staff-form-section-head">
+            <Phone size={16} aria-hidden="true" />
+            <div>
+              <h3>Contact</h3>
+              <p>Email is required for invitations and account recovery.</p>
+            </div>
+          </div>
+          <div className="form-grid">
+            <Field label="Email" required>
+              <input
+                type="email"
+                required
+                autoComplete="email"
+                disabled={editor?.mode === "edit"}
+                value={form.email}
+                onChange={(e) =>
+                  setForm((v) => ({ ...v, email: e.target.value }))
+                }
+              />
+            </Field>
+            <Field label="Phone">
+              <input
+                type="tel"
+                autoComplete="tel"
+                value={form.phone}
+                onChange={(e) =>
+                  setForm((v) => ({ ...v, phone: e.target.value }))
+                }
+              />
+            </Field>
+          </div>
+        </section>
+
+        <section className="staff-form-section">
+          <div className="staff-form-section-head">
+            <MapPin size={16} aria-hidden="true" />
+            <div>
+              <h3>Address</h3>
+              <p>Optional. Useful for payroll and emergency contact records.</p>
+            </div>
+          </div>
+          <div className="staff-address-grid">
+            <div className="staff-field-span-2">
+              <Field label="Street address">
+                <input
+                  autoComplete="street-address"
+                  value={form.street}
+                  onChange={(e) =>
+                    setForm((v) => ({ ...v, street: e.target.value }))
+                  }
+                />
+              </Field>
+            </div>
+            <Field label="Apt / suite">
+              <input
+                autoComplete="address-line2"
+                value={form.suite}
+                onChange={(e) =>
+                  setForm((v) => ({ ...v, suite: e.target.value }))
+                }
+              />
+            </Field>
+            <Field label="City">
+              <input
+                autoComplete="address-level2"
+                value={form.city}
+                onChange={(e) =>
+                  setForm((v) => ({ ...v, city: e.target.value }))
+                }
+              />
+            </Field>
+            <Field label="State / Parish">
+              <input
+                autoComplete="address-level1"
+                value={form.stateParish}
+                onChange={(e) =>
+                  setForm((v) => ({ ...v, stateParish: e.target.value }))
+                }
+              />
+            </Field>
+            <Field label="Postal code">
+              <input
+                autoComplete="postal-code"
+                value={form.postalCode}
+                onChange={(e) =>
+                  setForm((v) => ({ ...v, postalCode: e.target.value }))
+                }
+              />
+            </Field>
+            <div className="staff-field-span-3">
+              <Field label="Country">
+                <select
+                  autoComplete="country"
+                  value={form.country}
+                  onChange={(e) =>
+                    setForm((v) => ({ ...v, country: e.target.value }))
+                  }
+                >
+                  <option value="">Select country</option>
+                  {COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+          </div>
+        </section>
+
+        <section className="staff-form-section staff-form-section-role">
+          <div className="staff-form-section-head">
+            <ShieldCheck size={16} aria-hidden="true" />
+            <div>
+              <h3>Role</h3>
+              <p>Controls what they can do once access is granted.</p>
+            </div>
+          </div>
+          {editor?.mode === "edit" && editor.member.role === "owner" ? (
+            <p className="staff-form-note">
+              Owner role cannot be changed here.
+            </p>
+          ) : (
+            <Field label="Workspace role" required>
+              <select
+                required
+                value={form.role}
+                onChange={(e) =>
+                  setForm((v) => ({ ...v, role: e.target.value }))
+                }
+                disabled={!roles.length}
+              >
+                {roles.map((r) => (
+                  <option key={r.id} value={r.code}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+        </section>
+      </FormDialog>
+
+      <FormDialog
+        open={Boolean(docsFor)}
+        className="staff-docs-dialog"
+        title={docsFor ? `Documents · ${docsFor.name}` : "Documents"}
+        description="Expiry documents for this person, stored in this tenant’s document library."
+        busy={docBusy || docMutation.busy}
+        error={docError || docMutation.error}
+        submitLabel="Add document"
+        submitDisabled={
+          !docForm.documentType ||
+          !docForm.expiresOn ||
+          (libraryUsage.data != null &&
+            libraryUsage.data.usedBytes >= libraryUsage.data.quotaBytes &&
+            Boolean(docForm.file))
+        }
+        onClose={() => {
+          setDocsFor(null);
+          setDocError("");
+          setDocForm({
+            documentType: "",
+            expiresOn: "",
+            notes: "",
+            file: null,
+          });
+        }}
+        onSubmit={() => void saveDocument()}
+        afterActions={
+          <StaffDocumentArchive
+            docs={memberDocs}
+            usage={libraryUsage.data}
+            busy={docBusy || docMutation.busy}
+            onDownload={(doc) =>
+              void downloadApiFile(
+                `ops/v1/compliance-documents/${doc.id}/file`,
+                doc.file_name || "document",
+              )
+            }
+            onRemove={(id) => void deleteDocument(id)}
           />
-        </Field>
-        <Field label="Email" required>
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </Field>
-        <Field label="Role" required>
-          <select
-            required
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            disabled={!roles.length}
-          >
-            {roles.map((r) => (
-              <option key={r.id} value={r.code}>
-                {r.name}
-              </option>
-            ))}
-          </select>
-        </Field>
+        }
+      >
+        <StaffDocumentAddFields
+          form={docForm}
+          setForm={setDocForm}
+          locale={session.tenant.config.locale}
+          dateFormat={session.tenant.config.dateFormat}
+        />
       </FormDialog>
 
       <ConfirmDialog
@@ -4454,7 +4944,7 @@ export function Team({ session }: { session: Session }) {
         error={mutation.error}
         onClose={() => setPendingRevoke(null)}
         onConfirm={() => {
-          if (pendingRevoke) return update(pendingRevoke, pendingRevoke.role, false);
+          if (pendingRevoke) return revoke(pendingRevoke);
         }}
       />
     </>

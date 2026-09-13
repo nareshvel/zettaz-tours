@@ -54,8 +54,14 @@ const KIND_META: Record<
   payment_request: {
     subjectPrefix: "Payment request",
     headline: "Payment is requested",
-    intro: (ctx) =>
-      `Hello ${ctx.leadName}, ${ctx.tenantName} is requesting payment for the booking below. Please follow the operator’s approved payment instructions.`,
+    intro: (ctx) => {
+      const due = Math.max(0, ctx.totalMinor - ctx.paidMinor);
+      const dueNote =
+        due > 0
+          ? ` A balance remains on this booking.`
+          : "";
+      return `Hello ${ctx.leadName}, ${ctx.tenantName} is requesting payment for the booking below.${dueNote} This message does not include an online payment link — please contact ${ctx.tenantName} for their approved payment instructions.`;
+    },
   },
   waiver_request: {
     subjectPrefix: "Waiver request",

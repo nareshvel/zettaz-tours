@@ -24,6 +24,7 @@ import { Database, record, Tx } from "./database";
 import { Access, CurrentActor, keySchema, parse } from "./http";
 import { InventoryService } from "./inventory";
 import { FinanceService } from "./finance";
+import { NotificationService } from "./notifications";
 import { tenant } from "./tenant";
 
 @Injectable()
@@ -32,6 +33,7 @@ export class ReservationService {
     private readonly db: Database,
     private readonly inventory: InventoryService,
     private readonly finance: FinanceService,
+    private readonly notifications: NotificationService,
   ) {}
   async booking(tx: Tx, actor: Actor, bookingId: string, lock = false) {
     const {
@@ -206,123 +208,178 @@ export class ReservationService {
   }
   confirm(actor: Actor, bookingId: string, key: string, input: unknown) {
     const data = parse(confirmSchema, input);
-    return this.db.command(
-      actor,
-      `booking.confirm:${bookingId}`,
-      key,
-      data,
-      async (tx) => {
-        const initial = await this.booking(tx, actor, bookingId);
-        await this.inventory.departure(tx, actor, initial.departure_id, true);
-        const booking = await this.booking(tx, actor, bookingId, true);
-        if (booking.state === "confirmed")
-          return { bookingId, state: "confirmed", version: booking.version };
-        if (booking.state !== "held")
-          throw new ConflictException("Booking cannot be confirmed");
-        if (booking.version !== data.version)
-          throw new ConflictException("Stale booking version");
-        const hold = await this.inventory.hold(tx, actor, booking.hold_id),
-          quote = hold.quote as Quote;
-        if (!hold.live) throw new ConflictException("Hold expired");
-        if (
-          booking.pickup.kind === "unresolved" &&
-          !quote.allowUnresolvedPickup
-        )
-          throw new ConflictException(
-            "Pickup must be resolved before confirmation",
-          );
-        const { rows: attribution } = await tx.query(
-          "SELECT partner_id,external_reference,collection_mode,invoice_required FROM booking_partner_attributions WHERE tenant_id=$1 AND booking_id=$2",
-          [actor.tenantId, bookingId],
-        );
-        const partnerSettlement =
-          attribution[0]?.collection_mode === "partner_invoice" ||
-          attribution[0]?.collection_mode === "partner_collects_for_tenant";
-        const paid = await this.finance.paid(tx, actor, bookingId);
-        if (
-          !partnerSettlement &&
-          BigInt(paid) * 100n <
-            BigInt(quote.totalMinor) * BigInt(quote.minimumPaidPercent)
-        )
-          throw new ConflictException("Required payment has not settled");
-        await this.inventory.consume(tx, actor, booking.hold_id);
-        await tx.query(
-          `UPDATE bookings SET state='confirmed',version=version+1 WHERE tenant_id=$1 AND id=$2`,
-          [actor.tenantId, bookingId],
-        );
-        await tx.query(`INSERT INTO price_snapshots VALUES($1,$2,$3,$4)`, [
-          actor.tenantId,
-          bookingId,
-          booking.version + 1,
-          quote,
-        ]);
-        if (attribution[0]) {
-          const partner = attribution[0];
-          await tx.query(
-            `INSERT INTO booking_partner_snapshots(tenant_id,booking_id,booking_version,partner_id,external_reference,collection_mode,invoice_required,total_minor,currency)
-             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-            [
-              actor.tenantId,
+    return this.db
+      .command(
+        actor,
+        `booking.confirm:${bookingId}`,
+        key,
+        data,
+        async (tx) => {
+          const initial = await this.booking(tx, actor, bookingId);
+          await this.inventory.departure(tx, actor, initial.departure_id, true);
+          const booking = await this.booking(tx, actor, bookingId, true);
+          if (booking.state === "confirmed")
+            return {
               bookingId,
-              booking.version + 1,
-              partner.partner_id,
-              partner.external_reference,
-              partner.collection_mode,
-              partner.invoice_required,
-              quote.totalMinor,
-              quote.currency,
-            ],
+              state: "confirmed",
+              version: booking.version,
+              notificationId: null as string | null,
+              notificationStatus: null as string | null,
+            };
+          if (booking.state !== "held")
+            throw new ConflictException("Booking cannot be confirmed");
+          if (booking.version !== data.version)
+            throw new ConflictException("Stale booking version");
+          const hold = await this.inventory.hold(tx, actor, booking.hold_id),
+            quote = hold.quote as Quote;
+          if (!hold.live) throw new ConflictException("Hold expired");
+          if (
+            booking.pickup.kind === "unresolved" &&
+            !quote.allowUnresolvedPickup
+          )
+            throw new ConflictException(
+              "Pickup must be resolved before confirmation",
+            );
+          const { rows: attribution } = await tx.query(
+            "SELECT partner_id,external_reference,collection_mode,invoice_required FROM booking_partner_attributions WHERE tenant_id=$1 AND booking_id=$2",
+            [actor.tenantId, bookingId],
           );
-          if (partner.collection_mode === "partner_invoice")
-          {
-            const obligationId = randomUUID();
+          const partnerSettlement =
+            attribution[0]?.collection_mode === "partner_invoice" ||
+            attribution[0]?.collection_mode === "partner_collects_for_tenant";
+          const paid = await this.finance.paid(tx, actor, bookingId);
+          if (
+            !partnerSettlement &&
+            BigInt(paid) * 100n <
+              BigInt(quote.totalMinor) * BigInt(quote.minimumPaidPercent)
+          )
+            throw new ConflictException("Required payment has not settled");
+          await this.inventory.consume(tx, actor, booking.hold_id);
+          await tx.query(
+            `UPDATE bookings SET state='confirmed',version=version+1 WHERE tenant_id=$1 AND id=$2`,
+            [actor.tenantId, bookingId],
+          );
+          await tx.query(`INSERT INTO price_snapshots VALUES($1,$2,$3,$4)`, [
+            actor.tenantId,
+            bookingId,
+            booking.version + 1,
+            quote,
+          ]);
+          if (attribution[0]) {
+            const partner = attribution[0];
             await tx.query(
-              "INSERT INTO partner_obligations(tenant_id,id,booking_id,partner_id,amount_minor,currency,kind) VALUES($1,$2,$3,$4,$5,$6,'partner_invoice')",
+              `INSERT INTO booking_partner_snapshots(tenant_id,booking_id,booking_version,partner_id,external_reference,collection_mode,invoice_required,total_minor,currency)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
               [
                 actor.tenantId,
-                obligationId,
                 bookingId,
+                booking.version + 1,
                 partner.partner_id,
+                partner.external_reference,
+                partner.collection_mode,
+                partner.invoice_required,
                 quote.totalMinor,
                 quote.currency,
               ],
             );
-            await record(tx, actor, "partner.obligation.created", obligationId, null, {
+            if (partner.collection_mode === "partner_invoice") {
+              const obligationId = randomUUID();
+              await tx.query(
+                "INSERT INTO partner_obligations(tenant_id,id,booking_id,partner_id,amount_minor,currency,kind) VALUES($1,$2,$3,$4,$5,$6,'partner_invoice')",
+                [
+                  actor.tenantId,
+                  obligationId,
+                  bookingId,
+                  partner.partner_id,
+                  quote.totalMinor,
+                  quote.currency,
+                ],
+              );
+              await record(
+                tx,
+                actor,
+                "partner.obligation.created",
+                obligationId,
+                null,
+                {
+                  bookingId,
+                  partnerId: partner.partner_id,
+                  amountMinor: quote.totalMinor,
+                  currency: quote.currency,
+                  kind: "partner_invoice",
+                },
+              );
+            }
+            await record(
+              tx,
+              actor,
+              "partner.terms.snapshotted",
               bookingId,
-              partnerId: partner.partner_id,
-              amountMinor: quote.totalMinor,
-              currency: quote.currency,
-              kind: "partner_invoice",
-            });
+              null,
+              {
+                partnerId: partner.partner_id,
+                externalReference: partner.external_reference,
+                collectionMode: partner.collection_mode,
+                invoiceRequired: partner.invoice_required,
+                totalMinor: quote.totalMinor,
+                currency: quote.currency,
+              },
+            );
           }
-          await record(tx, actor, "partner.terms.snapshotted", bookingId, null, {
-            partnerId: partner.partner_id,
-            externalReference: partner.external_reference,
-            collectionMode: partner.collection_mode,
-            invoiceRequired: partner.invoice_required,
-            totalMinor: quote.totalMinor,
-            currency: quote.currency,
-          });
+          await record(
+            tx,
+            actor,
+            "price_snapshot.created",
+            bookingId,
+            null,
+            quote,
+          );
+          await record(
+            tx,
+            actor,
+            "booking.confirmed",
+            bookingId,
+            { state: booking.state, version: booking.version },
+            { state: "confirmed", version: booking.version + 1 },
+          );
+          let notificationId: string | null = null;
+          let notificationStatus: string | null = null;
+          if (booking.lead_email) {
+            const queued = await this.notifications.queueInTransaction(
+              tx,
+              actor,
+              bookingId,
+              "booking_confirmation",
+            );
+            notificationId = queued.id;
+            notificationStatus = queued.status;
+          }
+          return {
+            bookingId,
+            state: "confirmed",
+            version: booking.version + 1,
+            notificationId,
+            notificationStatus,
+          };
+        },
+      )
+      .then(async (result) => {
+        if (
+          result.notificationId &&
+          result.notificationStatus === "queued"
+        ) {
+          await this.notifications.deliver(
+            actor,
+            bookingId,
+            result.notificationId,
+          );
         }
-        await record(
-          tx,
-          actor,
-          "price_snapshot.created",
-          bookingId,
-          null,
-          quote,
-        );
-        await record(
-          tx,
-          actor,
-          "booking.confirmed",
-          bookingId,
-          { state: booking.state, version: booking.version },
-          { state: "confirmed", version: booking.version + 1 },
-        );
-        return { bookingId, state: "confirmed", version: booking.version + 1 };
-      },
-    );
+        return {
+          bookingId: result.bookingId,
+          state: result.state,
+          version: result.version,
+        };
+      });
   }
   reviveHold(actor: Actor, bookingId: string, key: string) {
     return this.db.command(

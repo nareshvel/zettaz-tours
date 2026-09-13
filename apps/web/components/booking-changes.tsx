@@ -24,15 +24,144 @@ type ChangeQuote = {
   expiresAt: string;
   allowAmendmentBalance: boolean;
 };
+type DepartureLabel = {
+  id: string;
+  starts_at: string;
+  product_name: string;
+};
 type Change = {
   id: string;
   version: number;
   kind: string;
   reason: string;
   occurred_at: string;
-  before_data: { quote?: Quote; departure_id?: string; lead_name?: string };
-  after_data: { quote?: Quote; financeReviewRequired?: boolean };
+  before_data: {
+    quote?: Quote;
+    departure_id?: string;
+    lead_name?: string;
+    lead_email?: string;
+    party?: Record<string, number>;
+    pickup?: Pickup;
+    state?: string;
+    departure?: DepartureLabel | null;
+  };
+  after_data: {
+    quote?: Quote;
+    departure_id?: string;
+    lead_name?: string;
+    lead_email?: string;
+    party?: Record<string, number>;
+    pickup?: Pickup;
+    state?: string;
+    financeReviewRequired?: boolean;
+    departure?: DepartureLabel | null;
+  };
 };
+
+function partyText(party?: Record<string, number>) {
+  if (!party) return "";
+  return Object.entries(party)
+    .filter(([, n]) => Number(n) > 0)
+    .map(([name, n]) => `${n} ${name}`)
+    .join(", ");
+}
+
+function pickupText(pickup?: Pickup) {
+  if (!pickup || pickup.kind === "none") return "None";
+  if (pickup.kind === "selected") {
+    return [pickup.location, pickup.instructions].filter(Boolean).join(" — ");
+  }
+  if (pickup.kind === "unresolved") {
+    return pickup.note ? `Unresolved — ${pickup.note}` : "Unresolved";
+  }
+  return "Pickup";
+}
+
+function departureText(
+  data: Change["before_data"] | Change["after_data"],
+  timezone: string,
+) {
+  if (data.departure) {
+    return `${data.departure.product_name} · ${dateTime(data.departure.starts_at, timezone)}`;
+  }
+  if (data.departure_id) return data.departure_id.slice(0, 8).toUpperCase();
+  return "";
+}
+
+function changeLines(
+  change: Change,
+  timezone: string,
+): Array<{ label: string; from: string; to: string }> {
+  const before = change.before_data;
+  const after = change.after_data;
+  const lines: Array<{ label: string; from: string; to: string }> = [];
+  const beforeDep = departureText(before, timezone);
+  const afterDep = departureText(after, timezone);
+  if (beforeDep && afterDep && before.departure_id !== after.departure_id) {
+    lines.push({ label: "Departure", from: beforeDep, to: afterDep });
+  }
+  const beforeParty = partyText(before.party);
+  const afterParty = partyText(after.party);
+  if (beforeParty !== afterParty && (beforeParty || afterParty)) {
+    lines.push({
+      label: "Guests",
+      from: beforeParty || "—",
+      to: afterParty || "—",
+    });
+  }
+  if (
+    before.lead_name !== after.lead_name &&
+    (before.lead_name || after.lead_name)
+  ) {
+    lines.push({
+      label: "Lead guest",
+      from: before.lead_name || "—",
+      to: after.lead_name || "—",
+    });
+  }
+  if (
+    before.lead_email !== after.lead_email &&
+    (before.lead_email || after.lead_email)
+  ) {
+    lines.push({
+      label: "Email",
+      from: before.lead_email || "—",
+      to: after.lead_email || "—",
+    });
+  }
+  const beforePickup = before.pickup ? pickupText(before.pickup) : "";
+  const afterPickup = after.pickup ? pickupText(after.pickup) : "";
+  if (
+    JSON.stringify(before.pickup ?? null) !==
+      JSON.stringify(after.pickup ?? null) &&
+    (beforePickup || afterPickup)
+  ) {
+    lines.push({
+      label: "Pickup",
+      from: beforePickup || "—",
+      to: afterPickup || "—",
+    });
+  }
+  if (before.quote && after.quote) {
+    const fromMoney = money(before.quote.totalMinor, before.quote.currency);
+    const toMoney = money(after.quote.totalMinor, after.quote.currency);
+    if (
+      before.quote.totalMinor !== after.quote.totalMinor ||
+      before.quote.currency !== after.quote.currency
+    ) {
+      lines.push({ label: "Total", from: fromMoney, to: toMoney });
+    }
+  }
+  if (before.state !== after.state && (before.state || after.state)) {
+    lines.push({
+      label: "Status",
+      from: before.state ? label(before.state) : "—",
+      to: after.state ? label(after.state) : "—",
+    });
+  }
+  return lines;
+}
+
 export function BookingHistory({
   bookingId,
   session,
@@ -53,33 +182,35 @@ export function BookingHistory({
       ) : !history.data.length ? (
         <p className="muted">No amendments or cancellations recorded.</p>
       ) : (
-        history.data.map((c) => (
-          <article className="history-item" key={c.id}>
-            <div className="history-item-head">
-              <strong>
-                {label(c.kind)} · v{c.version}
-              </strong>
-              <small>{dateTime(c.occurred_at, session.tenant.timezone)}</small>
-            </div>
-            <p>{c.reason}</p>
-            {c.before_data.quote && c.after_data.quote && (
-              <p className="history-money">
-                {money(
-                  c.before_data.quote.totalMinor,
-                  c.before_data.quote.currency,
-                )}{" "}
-                →{" "}
-                {money(
-                  c.after_data.quote.totalMinor,
-                  c.after_data.quote.currency,
-                )}
-              </p>
-            )}
-            {c.after_data.financeReviewRequired && (
-              <span className="status held">Finance review</span>
-            )}
-          </article>
-        ))
+        history.data.map((c) => {
+          const lines = changeLines(c, session.tenant.timezone);
+          return (
+            <article className="history-item" key={c.id}>
+              <div className="history-item-head">
+                <strong>
+                  {label(c.kind)} · v{c.version}
+                </strong>
+                <small>{dateTime(c.occurred_at, session.tenant.timezone)}</small>
+              </div>
+              {c.reason ? <p>{c.reason}</p> : null}
+              {lines.length > 0 && (
+                <ul className="history-diff-list">
+                  {lines.map((line) => (
+                    <li key={line.label}>
+                      <span className="history-diff-label">{line.label}</span>
+                      <span className="history-diff-values">
+                        {line.from} → {line.to}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {c.after_data.financeReviewRequired && (
+                <span className="status held">Finance review</span>
+              )}
+            </article>
+          );
+        })
       )}
     </section>
   );

@@ -33,3 +33,7 @@ Configured under **Settings → Printers & documents**.
 ## Boundary
 
 Database waiver signature strokes remain the authoritative evidence. The PDF is a derived operational copy for archive destinations, not a second source of truth.
+
+## Not the compliance document library
+
+Staff and fleet **compliance documents** (licenses, insurance, inspections) use a separate long-lived store under `DOCUMENT_LIBRARY_ROOT` (default `.local/document-library`), keyed as `{tenantId}/compliance/{crew|resource}/{subjectId}/{fileId}.{ext}`. Metadata and byte sizes live on `compliance_documents`. Tenant quota is `TenantConfig.documentLibrary.quotaBytes` (default 1 GiB) and uploads are hard-blocked when exceeded. See [resources-and-assignments.md](resources-and-assignments.md). Do not route compliance files through `document_artifacts` or the 7-day hot purge.

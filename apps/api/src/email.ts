@@ -254,10 +254,31 @@ export async function sendEmailVerification(d: EmailVerificationData): Promise<v
   });
 }
 
-export function smtpConfigured(): boolean {
-  return Boolean(
-    process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS,
-  );
+export interface StaffAccessInviteData {
+  to: string;
+  name: string;
+  tenantName: string;
+  roleName: string;
+  activateUrl: string;
+  token: string;
+}
+
+export async function sendStaffAccessInvite(
+  d: StaffAccessInviteData,
+): Promise<void> {
+  await send({
+    to: d.to,
+    subject: `Activate your ${d.tenantName} workspace access`,
+    html: layout(`
+      <h2>You're invited to ${escapeHtml(d.tenantName)}</h2>
+      <p>Hello ${escapeHtml(d.name.split(" ")[0] || d.name)},</p>
+      <p>You have been granted workspace access as <strong>${escapeHtml(d.roleName)}</strong>. Use the button below to set your password and activate your account.</p>
+      <p>This invitation expires in <strong>7 days</strong>.</p>
+      <a class="cta" href="${d.activateUrl}">Activate access →</a>
+      <p style="margin-top:24px;font-size:12px;color:#65777b;">Or open <span style="word-break:break-all;">${escapeHtml(d.activateUrl)}</span> and enter this one-time token:</p>
+      <p style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;word-break:break-all;background:#f5f7f7;padding:12px;border-radius:8px;">${escapeHtml(d.token)}</p>
+    `),
+  });
 }
 
 function escapeHtml(value: string) {
@@ -266,6 +287,12 @@ function escapeHtml(value: string) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+export function smtpConfigured(): boolean {
+  return Boolean(
+    process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS,
+  );
 }
 
 function customerLayout(tenantName: string, body: string): string {

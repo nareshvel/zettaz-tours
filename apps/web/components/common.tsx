@@ -68,11 +68,13 @@ export function Empty({
   );
 }
 export function Status({ state }: { state: string }) {
-  return (
-    <span className={"status " + state}>
-      {state === "held" ? "On hold" : label(state)}
-    </span>
-  );
+  const text =
+    state === "held"
+      ? "On hold"
+      : state === "held_provider"
+        ? "Held"
+        : label(state);
+  return <span className={"status " + state}>{text}</span>;
 }
 export function Field({
   label: caption,

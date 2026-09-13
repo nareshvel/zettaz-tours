@@ -1690,6 +1690,19 @@ td small {
   background: #e8f4ee;
   color: #247454;
 }
+.status.sent {
+  background: #e8f4ee;
+  color: #247454;
+}
+.status.failed {
+  background: #fdecea;
+  color: #7b1c1c;
+}
+.status.held_provider,
+.status.queued {
+  background: #fff3d8;
+  color: #836322;
+}
 .status.inactive {
   background: #edf1f2;
   color: #53656a;
@@ -4807,6 +4820,19 @@ fieldset {
 .detail-row small {
   color: var(--muted);
   overflow-wrap: anywhere;
+}
+.comms-row-actions {
+  display: flex !important;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.comms-row-actions .button {
+  width: auto;
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 12px;
 }
 .manifest-passengers {
   display: grid;

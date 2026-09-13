@@ -4,16 +4,29 @@
 
 The application stores tenant-scoped, auditable email requests for booking confirmations, payment requests, waiver requests, and cancellations. A request captures the booking recipient, locale, subject, and rendered body at the time it is prepared. This preserves exactly what staff intended to communicate even if the booking or tenant profile later changes.
 
-Requests remain `held_provider` until a transactional email provider, sender-domain policy, retry policy, suppression handling, and delivery webhook contract are approved. The UI must never describe a held request as sent. Provider credentials and delivery state do not belong in browser code.
+Delivery uses the platform **SMTP_*** settings from `.env.development` / `.env.production` (same adapter as verification and recovery mail):
+
+| Status | Meaning |
+| --- | --- |
+| `sent` | SMTP accepted the message |
+| `failed` | SMTP error; staff can **Retry** |
+| `held_provider` | SMTP_HOST / SMTP_USER / SMTP_PASS not configured; staff can **Retry** after configuring |
+| `queued` | Brief intermediate state while sending |
+
+The UI must not describe a held or failed request as sent. Provider credentials and delivery state do not belong in browser code.
 
 ## Authorization and evidence
 
-- Owners, administrators, and reservation staff may prepare requests.
+- Owners, administrators, and reservation staff may prepare requests and retry failed/held ones.
 - Auditors may read communication history but cannot prepare requests.
-- Every request writes audit and transactional-outbox evidence in the same database transaction.
+- Every request writes audit and transactional-outbox evidence in the same database transaction as the durable row; send/fail/retry also write audit actions (`notification.sent`, `notification.failed`, `notification.retry_queued`).
 - PostgreSQL row-level security and the booking composite foreign key enforce tenant ownership.
 - The customer message body is not copied into the generic audit event payload; it remains in the controlled notification record.
 
-## Provider adapter follow-up
+## Retry
 
-The future worker may move a request from `held_provider` to `queued` only when the tenant has an enabled provider configuration. It must use an idempotent provider key, record the provider message identifier, consume delivery/failure webhooks, cap retries, and preserve failure detail. Tenant-editable localized templates should be versioned and snapshotted into each request before automatic sending is enabled.
+`POST /staff/v1/bookings/:bookingId/notifications/:messageId/retry` re-sends the stored subject/body for `failed` or `held_provider` rows. Already `sent` or `cancelled` rows cannot be retried.
+
+## Follow-up
+
+Tenant-editable localized templates, suppression lists, delivery webhooks, and per-tenant From addresses remain Track A hardening. Runtime SMTP remains the approved launch path per [ADR 016](../DECISIONS/016-rock-launch-operations.md).

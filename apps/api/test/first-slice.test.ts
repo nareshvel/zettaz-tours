@@ -3510,12 +3510,13 @@ test("passenger rosters match the held party, remain tenant-scoped and freeze at
   assert.equal((await get(path, b.token)).status, 404);
 });
 
-test("customer communication requests are durable, auditable, held without a provider and tenant-scoped", async () => {
+test("customer communication requests are durable, auditable, held without SMTP and tenant-scoped", async () => {
   const dep = await departure(a.token, 6);
   const booking = await heldBooking(dep.departureId, a.token);
   const path = `/staff/v1/bookings/${booking.bookingId}/notifications`;
   const prepared = await post(path, a.token, { kind: "payment_request" });
   assert.equal(prepared.status, 201, JSON.stringify(prepared.body));
+  // Test env has no SMTP_* — request stays held until configured, then retryable.
   assert.equal(prepared.body.status, "held_provider");
   assert.equal(prepared.body.recipient, "traveler@example.invalid");
   const listed = await get(path, a.token);
@@ -3528,6 +3529,13 @@ test("customer communication requests are durable, auditable, held without a pro
     [a.tenantId, prepared.body.id],
   );
   assert.equal(audit.rows[0].action, "notification.requested");
+  const retried = await post(
+    `${path}/${prepared.body.id}/retry`,
+    a.token,
+    {},
+  );
+  assert.equal(retried.status, 201, JSON.stringify(retried.body));
+  assert.equal(retried.body.status, "held_provider");
 });
 
 test("bookings link tenant-controlled cruise calls and accommodations without cross-tenant references", async () => {

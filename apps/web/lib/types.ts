@@ -257,7 +257,9 @@ export type NotificationMessage = {
   recipient: string;
   subject: string;
   status: "held_provider" | "queued" | "sent" | "failed" | "cancelled";
+  failure_detail?: string | null;
   requested_at: string;
+  sent_at?: string | null;
 };
 export type PartnerClaim = {
   id: string;

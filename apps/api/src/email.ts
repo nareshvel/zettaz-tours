@@ -252,3 +252,74 @@ export async function sendEmailVerification(d: EmailVerificationData): Promise<v
     `),
   });
 }
+
+export function smtpConfigured(): boolean {
+  return Boolean(
+    process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS,
+  );
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function customerLayout(tenantName: string, body: string): string {
+  const paragraphs = escapeHtml(body)
+    .split(/\n+/)
+    .filter(Boolean)
+    .map((line) => `<p>${line}</p>`)
+    .join("");
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { margin:0; padding:0; background:#f5f7f7; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+    .wrap { max-width:560px; margin:40px auto; background:#fff; border-radius:12px; overflow:hidden; box-shadow:0 2px 12px rgba(0,0,0,.06); }
+    .header { background:#142f36; padding:28px 32px; }
+    .header h1 { margin:0; color:#fff; font-size:20px; font-weight:800; letter-spacing:-0.3px; }
+    .header p { margin:4px 0 0; color:rgba(255,255,255,.55); font-size:13px; }
+    .body { padding:32px; color:#172f35; font-size:14px; line-height:1.6; }
+    .footer { padding:20px 32px; background:#f5f7f7; font-size:11px; color:#65777b; text-align:center; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <h1>${escapeHtml(tenantName)}</h1>
+      <p>Booking communication</p>
+    </div>
+    <div class="body">${paragraphs}</div>
+    <div class="footer">Sent on behalf of ${escapeHtml(tenantName)} via Zettaz Tours &amp; Charters.</div>
+  </div>
+</body>
+</html>`;
+}
+
+/** Tenant booking / customer communications via platform SMTP_* settings. */
+export async function sendCustomerMessage(d: {
+  to: string;
+  subject: string;
+  body: string;
+  tenantName: string;
+}): Promise<{ messageId: string }> {
+  if (!smtpConfigured()) {
+    throw new Error("SMTP is not configured (SMTP_HOST / SMTP_USER / SMTP_PASS).");
+  }
+  const t = getTransporter();
+  const info = await t.sendMail({
+    from: FROM,
+    to: d.to,
+    subject: d.subject,
+    text: d.body,
+    html: customerLayout(d.tenantName, d.body),
+  });
+  console.log(`[Email] Sent customer message "${d.subject}" → ${d.to}`);
+  return { messageId: String(info.messageId ?? "") };
+}
+

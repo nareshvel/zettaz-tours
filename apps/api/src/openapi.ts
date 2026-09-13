@@ -37,7 +37,13 @@ const routes: [string, string, z.ZodType | null, string][] = [
     "/staff/v1/bookings/{id}/notifications",
     "post",
     null,
-    "Prepare an auditable customer communication request",
+    "Prepare and send an auditable customer communication via SMTP",
+  ],
+  [
+    "/staff/v1/bookings/{id}/notifications/{messageId}/retry",
+    "post",
+    null,
+    "Retry a failed or held customer communication",
   ],
   ["/finance/v1/partners", "get", null, "List tenant partner organizations"],
   [

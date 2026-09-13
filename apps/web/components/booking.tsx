@@ -250,6 +250,7 @@ function CustomerMessages({
     `staff/v1/bookings/${bookingId}/notifications`,
   );
   const request = useMutation();
+  const retry = useMutation();
   const [success, setSuccess] = useState("");
   async function prepare(kind: NotificationMessage["kind"]) {
     const result = await request.run<NotificationMessage>(
@@ -257,9 +258,39 @@ function CustomerMessages({
       { kind },
     );
     if (result) {
-      setSuccess(
-        "Communication prepared and held. It will not send until a tenant email provider is configured.",
-      );
+      if (result.status === "sent")
+        setSuccess("Email sent to the guest.");
+      else if (result.status === "failed")
+        setSuccess(
+          result.failure_detail
+            ? `Send failed: ${result.failure_detail}. You can retry.`
+            : "Send failed. You can retry.",
+        );
+      else if (result.status === "held_provider")
+        setSuccess(
+          "Communication saved but not sent — configure SMTP_HOST, SMTP_USER, and SMTP_PASS, then retry.",
+        );
+      else setSuccess("Communication prepared.");
+      messages.reload();
+    }
+  }
+  async function retrySend(messageId: string) {
+    const result = await retry.run<NotificationMessage>(
+      `staff/v1/bookings/${bookingId}/notifications/${messageId}/retry`,
+      {},
+    );
+    if (result) {
+      if (result.status === "sent") setSuccess("Email sent to the guest.");
+      else if (result.status === "failed")
+        setSuccess(
+          result.failure_detail
+            ? `Retry failed: ${result.failure_detail}`
+            : "Retry failed.",
+        );
+      else if (result.status === "held_provider")
+        setSuccess(
+          "Still held — SMTP is not configured on this server.",
+        );
       messages.reload();
     }
   }
@@ -267,14 +298,14 @@ function CustomerMessages({
     <section className="panel form-panel">
       <h2>Customer communications</h2>
       <p className="muted">
-        Prepare an auditable email request. Delivery remains held until an
-        approved email provider is configured.
+        Send auditable guest emails through the workspace SMTP settings.
+        Failed or held messages can be retried.
       </p>
       {canRequest && (
         <div className="button-row comms-actions">
           <button
             className="button secondary"
-            disabled={request.busy}
+            disabled={request.busy || retry.busy}
             onClick={() => void prepare("booking_confirmation")}
           >
             <Mail size={16} aria-hidden />
@@ -282,7 +313,7 @@ function CustomerMessages({
           </button>
           <button
             className="button secondary"
-            disabled={request.busy}
+            disabled={request.busy || retry.busy}
             onClick={() => void prepare("payment_request")}
           >
             <Mail size={16} aria-hidden />
@@ -290,7 +321,7 @@ function CustomerMessages({
           </button>
           <button
             className="button secondary"
-            disabled={request.busy}
+            disabled={request.busy || retry.busy}
             onClick={() => void prepare("waiver_request")}
           >
             <Mail size={16} aria-hidden />
@@ -298,7 +329,7 @@ function CustomerMessages({
           </button>
           <button
             className="button secondary"
-            disabled={request.busy}
+            disabled={request.busy || retry.busy}
             onClick={() => void prepare("cancellation")}
           >
             <Mail size={16} aria-hidden />
@@ -307,8 +338,10 @@ function CustomerMessages({
         </div>
       )}
       {success && <Notice>{success}</Notice>}
-      {(request.error || messages.error) && (
-        <Notice error>{request.error || messages.error}</Notice>
+      {(request.error || retry.error || messages.error) && (
+        <Notice error>
+          {request.error || retry.error || messages.error}
+        </Notice>
       )}
       {messages.data?.length ? (
         <div className="stack-list">
@@ -319,9 +352,26 @@ function CustomerMessages({
                 <small>
                   {message.recipient} ·{" "}
                   {dateTime(message.requested_at, timezone)}
+                  {message.failure_detail
+                    ? ` · ${message.failure_detail}`
+                    : ""}
                 </small>
               </span>
-              <Status state={message.status} />
+              <span className="comms-row-actions">
+                <Status state={message.status} />
+                {canRequest &&
+                  (message.status === "failed" ||
+                    message.status === "held_provider") && (
+                    <button
+                      type="button"
+                      className="button secondary"
+                      disabled={retry.busy || request.busy}
+                      onClick={() => void retrySend(message.id)}
+                    >
+                      Retry
+                    </button>
+                  )}
+              </span>
             </div>
           ))}
         </div>

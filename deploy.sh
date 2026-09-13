@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 # Full production deploy — run on the VPS after pushing to GitHub.
+#
+# Includes:
+#   git pull origin main (or BRANCH arg)
+#   npm install
+#   npm run build          ← API + shared TypeScript
+#   npm run web:build
+#   npm run db:migrate:prod
+#   pm2 restart tours-api + tours-web --update-env
+#
 # Usage: ./deploy.sh [branch]
 # Default branch: main
 set -euo pipefail
@@ -23,7 +32,7 @@ if [[ ! -d .git ]]; then
   exit 1
 fi
 
-log "Full deploy from origin/${BRANCH}"
+log "Full deploy (origin/${BRANCH})"
 git fetch origin "$BRANCH"
 
 # Avoid pull failures from generated Next type stubs
@@ -32,23 +41,19 @@ if git status --porcelain | grep -q 'apps/web/next-env.d.ts'; then
   git checkout -- apps/web/next-env.d.ts
 fi
 
+log "git pull origin ${BRANCH}"
 git pull --ff-only origin "$BRANCH"
 
-if [[ -f package-lock.json ]]; then
-  log "Installing dependencies (npm install)"
-  npm install
-else
-  log "Installing dependencies (npm install, no lockfile)"
-  npm install
-fi
+log "Installing dependencies (npm install)"
+npm install
 
-log "Building API / shared (tsc)"
+log "Building API / shared (npm run build)"
 npm run build
 
-log "Building Next.js web"
+log "Building Next.js web (npm run web:build)"
 npm run web:build
 
-log "Applying database migrations"
+log "Applying database migrations (npm run db:migrate:prod)"
 npm run db:migrate:prod
 
 log "Restarting PM2 apps"

@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 # Quick production deploy — run on the VPS after pushing to GitHub.
-# Pulls, rebuilds API + web, restarts PM2. Skips npm ci and migrations.
+#
+# Already includes:
+#   git pull origin main (or BRANCH arg)
+#   npm run build          ← API + shared TypeScript (required for API code changes)
+#   npm run web:build      ← Next.js
+#   pm2 restart tours-api + tours-web
+#
+# Skips: npm install, db:migrate:prod
 # Use ./deploy.sh when package-lock or migrations change.
+#
 # Usage: ./deploy-quick.sh [branch]
 set -euo pipefail
 
@@ -24,7 +32,7 @@ if [[ ! -d .git ]]; then
   exit 1
 fi
 
-log "Quick deploy from origin/${BRANCH}"
+log "Quick deploy (origin/${BRANCH})"
 git fetch origin "$BRANCH"
 
 if git status --porcelain | grep -q 'apps/web/next-env.d.ts'; then
@@ -32,12 +40,13 @@ if git status --porcelain | grep -q 'apps/web/next-env.d.ts'; then
   git checkout -- apps/web/next-env.d.ts
 fi
 
+log "git pull origin ${BRANCH}"
 git pull --ff-only origin "$BRANCH"
 
-log "Building API / shared (tsc)"
+log "Building API / shared (npm run build)"
 npm run build
 
-log "Building Next.js web"
+log "Building Next.js web (npm run web:build)"
 npm run web:build
 
 log "Restarting PM2 apps (no migrate)"

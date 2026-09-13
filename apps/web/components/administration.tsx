@@ -1,13 +1,17 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus,
   Trash2,
   Check,
   X,
   ArrowRight,
+  Pencil,
+  Pause,
+  Play,
+  ListFilter,
   ShieldCheck,
   Building2,
   Globe2,
@@ -31,9 +35,11 @@ import type {
 import { availabilityModes, modeLabel, weekdayLabels } from "@/lib/types";
 import { COUNTRIES } from "@/lib/countries";
 import {
+  api,
   dateOnly,
   dateTime,
   digits,
+  formatMediumDateRange,
   label,
   minor,
   money,
@@ -59,13 +65,20 @@ import {
   Toggle,
 } from "./common";
 import { Integrations } from "./integrations";
+import { ScheduleFormDialog } from "./schedule-form-dialog";
+import { CatalogSchedulesPanel, SchedulesFilterButton } from "./catalog-schedules";
+import type { ScheduleListFilters } from "./catalog-schedules";
 
-function catalogTab(next: "products" | "availability") {
-  window.history.replaceState(
-    null,
-    "",
-    next === "availability" ? "/catalog?tab=availability" : "/catalog",
-  );
+function catalogTab(
+  router: { replace: (href: string, options?: { scroll?: boolean }) => void },
+  next: "products" | "schedules",
+  productId?: string,
+) {
+  const params = new URLSearchParams();
+  if (next === "schedules") params.set("tab", "schedules");
+  if (productId) params.set("product", productId);
+  const query = params.toString();
+  router.replace(query ? `/catalog?${query}` : "/catalog", { scroll: false });
 }
 const SETTINGS_TABS = new Set([
   "general",
@@ -109,31 +122,61 @@ function localWhen(
 }
 
 export function Catalog({ session }: { session: Session }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const today = tenantDay(session.tenant.timezone);
   const products = useResource<Product[]>("admin/v1/products"),
     rules = useResource<AvailabilityRule[]>("admin/v1/availability-rules"),
-    [view, setView] = useState<"products" | "availability">("products");
+    [scheduleModalOpen, setScheduleModalOpen] = useState(false),
+    [scheduleFilters, setScheduleFilters] = useState<ScheduleListFilters>({
+      search: "",
+      status: "all",
+      range: "any",
+      customFrom: today,
+      customTo: shiftDay(today, 13),
+    });
+  const tab = searchParams.get("tab");
+  const view =
+    tab === "schedules" || tab === "availability" ? "schedules" : "products";
+  const scheduleProductId = searchParams.get("product") ?? "";
   useEffect(() => {
-    if (
-      new URLSearchParams(window.location.search).get("tab") === "availability"
-    )
-      setView("availability");
-  }, []);
+    if (searchParams.get("new") !== "1") return;
+    setScheduleModalOpen(true);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("new");
+    const query = params.toString();
+    router.replace(query ? `/catalog?${query}` : "/catalog", { scroll: false });
+  }, [searchParams, router]);
   const canWrite = session.permissions.includes("catalog.write");
   const items = products.data ?? [];
   const active =
     products.data?.filter((p) => (p.status ?? "active") === "active").length ??
     0;
-  const scheduled =
-    rules.data?.reduce((sum, rule) => sum + rule.upcoming_departures, 0) ?? 0;
-  function show(next: "products" | "availability") {
-    setView(next);
-    catalogTab(next);
+  const scheduleRows = (rules.data ?? []).filter(
+    (rule) => !scheduleProductId || rule.product_id === scheduleProductId,
+  );
+  const scheduled = scheduleRows.reduce(
+    (sum, rule) => sum + rule.upcoming_departures,
+    0,
+  );
+  function show(next: "products" | "schedules") {
+    catalogTab(
+      router,
+      next,
+      next === "schedules" ? scheduleProductId || undefined : undefined,
+    );
+  }
+  function clearScheduleFilter() {
+    catalogTab(router, "schedules");
+  }
+  function setScheduleProductFilter(nextProductId: string) {
+    catalogTab(router, "schedules", nextProductId || undefined);
   }
   return (
     <>
       <Heading
         title="Catalog"
-        description="The experiences you sell, their published rates, and when they can be booked."
+        description="The experiences you sell, their published rates, and when they run."
       />
       <div className="catalog-metrics" aria-label="Catalog summary">
         <div>
@@ -146,7 +189,7 @@ export function Catalog({ session }: { session: Session }) {
         </div>
         <div>
           <strong>{rules.data ? rules.data.length : "—"}</strong>
-          <span>Availability rules</span>
+          <span>Schedules</span>
         </div>
         <div>
           <strong>{rules.data ? scheduled : "—"}</strong>
@@ -168,14 +211,14 @@ export function Catalog({ session }: { session: Session }) {
           </button>
           <button
             role="tab"
-            aria-selected={view === "availability"}
-            onClick={() => show("availability")}
+            aria-selected={view === "schedules"}
+            onClick={() => show("schedules")}
           >
-            Availability
+            Schedules
           </button>
         </div>
-        {canWrite &&
-          (view === "products" ? (
+        {view === "products" ? (
+          canWrite ? (
             <Link
               href="/catalog/new"
               className="button catalog-add-btn"
@@ -184,16 +227,31 @@ export function Catalog({ session }: { session: Session }) {
               <Plus size={17} />
               <span className="button-label">Add product</span>
             </Link>
-          ) : (
-            <Link
-              href="/catalog/availability/new"
-              className="button secondary catalog-add-btn"
-              aria-label="Add availability"
-            >
-              <Plus size={17} />
-              <span className="button-label">Add availability</span>
-            </Link>
-          ))}
+          ) : null
+        ) : (
+          <div className="catalog-view-actions departure-view-actions">
+            <SchedulesFilterButton
+              products={items}
+              productId={scheduleProductId}
+              filters={scheduleFilters}
+              timezone={session.tenant.timezone}
+              onFiltersChange={setScheduleFilters}
+              onProductFilter={setScheduleProductFilter}
+              onClearProductFilter={clearScheduleFilter}
+            />
+            {canWrite ? (
+              <button
+                type="button"
+                className="button catalog-add-btn"
+                aria-label="Add schedule"
+                onClick={() => setScheduleModalOpen(true)}
+              >
+                <Plus size={17} />
+                <span className="button-label">Add schedule</span>
+              </button>
+            ) : null}
+          </div>
+        )}
       </div>
       {products.error ? (
         <Notice error>{products.error}</Notice>
@@ -253,8 +311,8 @@ export function Catalog({ session }: { session: Session }) {
                         <small>
                           {p.availability_rule_count ?? 0}{" "}
                           {(p.availability_rule_count ?? 0) === 1
-                            ? "rule"
-                            : "rules"}
+                            ? "schedule"
+                            : "schedules"}
                         </small>
                       </div>
                       <div className="product-row-price">
@@ -273,7 +331,7 @@ export function Catalog({ session }: { session: Session }) {
                     {canWrite && scheduledProduct && (
                       <Link
                         className="product-row-action"
-                        href={"/catalog/availability/new?product=" + p.id}
+                        href={"/catalog?tab=schedules&product=" + p.id}
                       >
                         Schedule
                         <ArrowRight size={16} />
@@ -298,58 +356,36 @@ export function Catalog({ session }: { session: Session }) {
         <Notice error>{rules.error}</Notice>
       ) : !rules.data ? (
         <Loading />
-      ) : rules.data.length ? (
-        <section className="panel product-list">
-          {rules.data.map((rule) => (
-            <Link
-              key={rule.id}
-              href={`/catalog/availability/${rule.id}`}
-              className="product-row-main availability-item"
-            >
-              <div className="product-row-copy">
-                <div className="product-row-meta">
-                  <span className="kind-chip">{modeLabel(rule.mode)}</span>
-                  <Status state={rule.status} />
-                </div>
-                <h2>{rule.product_name}</h2>
-                <p>
-                  {rule.option_name} ·{" "}
-                  {rule.times.join(", ") || "Flexible time"}
-                </p>
-              </div>
-              <div className="product-row-when">
-                <span>Operating period</span>
-                <strong>
-                  {rule.start_date} — {rule.end_date}
-                </strong>
-                <small>
-                  {rule.weekdays
-                    .map((day) => weekdayLabels[day - 1])
-                    .join(" · ")}
-                </small>
-              </div>
-              <div className="product-row-price">
-                <span>Upcoming</span>
-                <strong>{rule.upcoming_departures}</strong>
-                <small>
-                  {rule.capacity == null
-                    ? "Rule based"
-                    : `${rule.capacity} seats`}
-                </small>
-              </div>
-            </Link>
-          ))}
-        </section>
       ) : (
-        <Empty title="No availability rules">
-          {canWrite && (
-            <Link href="/catalog/availability/new">Create availability</Link>
-          )}
-        </Empty>
+        <CatalogSchedulesPanel
+          session={session}
+          products={items}
+          rules={rules.data}
+          error={rules.error || undefined}
+          productId={scheduleProductId}
+          filters={scheduleFilters}
+          canWrite={canWrite}
+          onClearProductFilter={clearScheduleFilter}
+          onAdd={() => setScheduleModalOpen(true)}
+          onReload={() => rules.reload()}
+        />
+      )}
+      {canWrite && (
+        <ScheduleFormDialog
+          session={session}
+          open={scheduleModalOpen}
+          productId={scheduleProductId || undefined}
+          onClose={() => setScheduleModalOpen(false)}
+          onCreated={() => {
+            setScheduleModalOpen(false);
+            rules.reload();
+          }}
+        />
       )}
     </>
   );
 }
+
 function tenantDay(timezone: string) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: timezone,
@@ -362,35 +398,6 @@ function shiftDay(day: string, days: number) {
   const date = new Date(`${day}T12:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
-}
-function weekdayMon1(day: string) {
-  const js = new Date(`${day}T12:00:00Z`).getUTCDay();
-  return js === 0 ? 7 : js;
-}
-function plannedDates(
-  start: string,
-  end: string,
-  weekdays: number[],
-  blackouts: string[],
-) {
-  if (!start || !end || start > end) return [];
-  const dates: string[] = [];
-  for (let day = start; day <= end; day = shiftDay(day, 1)) {
-    if (weekdays.includes(weekdayMon1(day)) && !blackouts.includes(day))
-      dates.push(day);
-    if (dates.length > 400) break;
-  }
-  return dates;
-}
-function clockLabel(time: string, locale: string, timeFormat: "12h" | "24h") {
-  const [hour, minute] = time.split(":").map(Number);
-  if (hour == null || minute == null || Number.isNaN(hour)) return time;
-  return new Intl.DateTimeFormat(locale, {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: timeFormat === "12h",
-    timeZone: "UTC",
-  }).format(new Date(Date.UTC(2026, 0, 1, hour, minute)));
 }
 type CategoryDraft = {
   id: string;
@@ -513,37 +520,239 @@ function collectRates(
 }
 function PricingEditor({
   session,
+  productId,
   categories,
   periods,
   onCategories,
   onPeriods,
 }: {
   session: Session;
+  productId?: string;
   categories: CategoryDraft[];
   periods: PeriodDraft[];
   onCategories: (categories: CategoryDraft[]) => void;
   onPeriods: (periods: PeriodDraft[]) => void;
 }) {
   const currency = session.tenant.config.bookingCurrency;
-  function rename(index: number, label: string) {
-    const previous = categories[index]!.slug;
-    const slug = slugify(label);
-    const next = categories.map((category, i) =>
-      i === index ? { ...category, label, slug } : category,
-    );
-    onCategories(next);
+  const today = tenantDay(session.tenant.timezone);
+  const [categoryModal, setCategoryModal] = useState<
+    null | { mode: "add" } | { mode: "edit"; index: number }
+  >(null);
+  const [periodModal, setPeriodModal] = useState<
+    null | { mode: "add" } | { mode: "edit"; index: number }
+  >(null);
+  const [deletePeriod, setDeletePeriod] = useState<PeriodDraft | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [catLabel, setCatLabel] = useState("");
+  const [catSlug, setCatSlug] = useState("");
+  const [catSeats, setCatSeats] = useState(true);
+  const [catRate, setCatRate] = useState("");
+  const [periodStart, setPeriodStart] = useState(today);
+  const [periodEnd, setPeriodEnd] = useState(() => shiftDay(today, 364));
+  const [periodAmounts, setPeriodAmounts] = useState<Record<string, string>>(
+    {},
+  );
+  const [modalError, setModalError] = useState("");
+
+  function openAddCategory() {
+    setCatLabel("");
+    setCatSlug("");
+    setCatSeats(true);
+    setCatRate(zeroAmount(currency));
+    setModalError("");
+    setCategoryModal({ mode: "add" });
+  }
+  function openEditCategory(index: number) {
+    const category = categories[index]!;
+    setCatLabel(category.label);
+    setCatSlug(category.slug);
+    setCatSeats(category.countsTowardCapacity);
+    const sample = periods[0]?.amounts[category.slug];
+    setCatRate(sample ?? zeroAmount(currency));
+    setModalError("");
+    setCategoryModal({ mode: "edit", index });
+  }
+  function saveCategory() {
+    const labelValue = catLabel.trim();
+    const slugValue = catSlug.trim() || slugify(labelValue);
+    if (!labelValue || !/^[a-z][a-z0-9_-]{1,49}$/.test(slugValue)) {
+      setModalError("Enter a label and a valid identifier code.");
+      return;
+    }
+    if (
+      categories.some(
+        (category, i) =>
+          category.slug === slugValue &&
+          !(categoryModal?.mode === "edit" && categoryModal.index === i),
+      )
+    ) {
+      setModalError("That identifier is already used.");
+      return;
+    }
+    const rateValue = formatAmountDraft(catRate, currency);
+    if (categoryModal?.mode === "add") {
+      const added: CategoryDraft = {
+        id: categoryId(),
+        label: labelValue,
+        slug: slugValue,
+        countsTowardCapacity: catSeats,
+      };
+      const nextCategories = [...categories, added];
+      onCategories(nextCategories);
+      if (!periods.length) {
+        onPeriods([
+          {
+            id: periodId(),
+            startDate: today,
+            endDate: shiftDay(today, 364),
+            amounts: { [slugValue]: rateValue },
+          },
+        ]);
+      } else {
+        onPeriods(
+          periods.map((period) => ({
+            ...period,
+            amounts: {
+              ...emptyAmounts(nextCategories, period.amounts, currency),
+              [slugValue]: rateValue,
+            },
+          })),
+        );
+      }
+    } else if (categoryModal?.mode === "edit") {
+      const index = categoryModal.index;
+      const previous = categories[index]!.slug;
+      const nextCategories = categories.map((category, i) =>
+        i === index
+          ? {
+              ...category,
+              label: labelValue,
+              slug: slugValue,
+              countsTowardCapacity: catSeats,
+            }
+          : category,
+      );
+      onCategories(nextCategories);
+      onPeriods(
+        periods.map((period) => {
+          const amounts = emptyAmounts(nextCategories, period.amounts, currency);
+          amounts[slugValue] =
+            rateValue ||
+            period.amounts[previous] ||
+            amounts[slugValue] ||
+            zeroAmount(currency);
+          if (previous !== slugValue) delete amounts[previous];
+          return { ...period, amounts };
+        }),
+      );
+    }
+    setCategoryModal(null);
+  }
+  function removeCategory(index: number) {
+    if (categories.length <= 1) return;
+    const category = categories[index]!;
+    onCategories(categories.filter((_, i) => i !== index));
     onPeriods(
       periods.map((period) => {
-        const amounts = emptyAmounts(next, period.amounts, currency);
-        if (slug && previous !== slug) {
-          amounts[slug] =
-            period.amounts[previous] ?? amounts[slug] ?? zeroAmount(currency);
-          delete amounts[previous];
-        }
+        const amounts = { ...period.amounts };
+        delete amounts[category.slug];
         return { ...period, amounts };
       }),
     );
   }
+  function openAddPeriod() {
+    const last = periods[periods.length - 1];
+    setPeriodStart(
+      last ? shiftDay(last.endDate, 1) : tenantDay(session.tenant.timezone),
+    );
+    setPeriodEnd(
+      last
+        ? shiftDay(last.endDate, 181)
+        : shiftDay(tenantDay(session.tenant.timezone), 364),
+    );
+    setPeriodAmounts(emptyAmounts(categories, last?.amounts, currency));
+    setModalError("");
+    setPeriodModal({ mode: "add" });
+  }
+  function openEditPeriod(index: number) {
+    const period = periods[index]!;
+    setPeriodStart(period.startDate);
+    setPeriodEnd(period.endDate);
+    setPeriodAmounts(emptyAmounts(categories, period.amounts, currency));
+    setModalError("");
+    setPeriodModal({ mode: "edit", index });
+  }
+  function savePeriod() {
+    if (!periodStart || !periodEnd || periodEnd < periodStart) {
+      setModalError("Enter a valid date range.");
+      return;
+    }
+    const amounts = Object.fromEntries(
+      categories.map((category) => [
+        category.slug,
+        formatAmountDraft(
+          periodAmounts[category.slug] ?? zeroAmount(currency),
+          currency,
+        ),
+      ]),
+    );
+    if (periodModal?.mode === "add") {
+      onPeriods([
+        ...periods,
+        {
+          id: periodId(),
+          startDate: periodStart,
+          endDate: periodEnd,
+          amounts,
+        },
+      ]);
+    } else if (periodModal?.mode === "edit") {
+      onPeriods(
+        periods.map((period, i) =>
+          i === periodModal.index
+            ? {
+                ...period,
+                startDate: periodStart,
+                endDate: periodEnd,
+                amounts,
+              }
+            : period,
+        ),
+      );
+    }
+    setPeriodModal(null);
+  }
+  async function confirmDeletePeriod() {
+    if (!deletePeriod) return;
+    setDeleteBusy(true);
+    setDeleteError("");
+    try {
+      if (productId) {
+        const query = new URLSearchParams({
+          startDate: deletePeriod.startDate,
+          endDate: deletePeriod.endDate,
+        });
+        const usage = await api<{ holds: number; bookings: number }>(
+          `admin/v1/products/${productId}/rate-window-usage?${query}`,
+        );
+        if (usage.holds > 0 || usage.bookings > 0) {
+          setDeleteError(
+            `Cannot delete: ${usage.bookings} booking(s) and ${usage.holds} hold(s) use this window.`,
+          );
+          setDeleteBusy(false);
+          return;
+        }
+      }
+      onPeriods(periods.filter((period) => period.id !== deletePeriod.id));
+      setDeletePeriod(null);
+    } catch (error) {
+      setDeleteError((error as Error).message);
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
   return (
     <>
       <SectionHeading
@@ -554,250 +763,54 @@ function PricingEditor({
             type="button"
             className="button secondary"
             disabled={categories.length >= 10}
-            onClick={() => {
-              const added = {
-                id: categoryId(),
-                slug: "",
-                label: "",
-                countsTowardCapacity: true,
-              };
-              onCategories([...categories, added]);
-              onPeriods(
-                periods.map((period) => ({
-                  ...period,
-                  amounts: emptyAmounts(
-                    [...categories, added],
-                    period.amounts,
-                    currency,
-                  ),
-                })),
-              );
-            }}
+            onClick={openAddCategory}
           >
             <Plus size={16} />
             Add category
           </button>
         }
       />
-      <div className="category-list">
-        {categories.map((category, index) => (
-          <div className="category-row" key={category.id}>
-            <Field label="Category label">
-              <input
-                required
-                placeholder="e.g. Adult, Child"
-                value={category.label}
-                onChange={(e) => rename(index, e.target.value)}
-              />
-            </Field>
-            <Field label="Identifier code">
-              <input
-                required
-                className="mono-input"
-                placeholder="e.g. adult"
-                pattern="[a-z][a-z0-9_\-]{1,49}"
-                value={category.slug}
-                onChange={(e) => {
-                  const slug = e.target.value;
-                  const previous = categories[index]!.slug;
-                  onCategories(
-                    categories.map((item, i) =>
-                      i === index ? { ...item, slug } : item,
-                    ),
-                  );
-                  onPeriods(
-                    periods.map((period) => {
-                      const amounts = { ...period.amounts };
-                      amounts[slug] =
-                        amounts[previous] ??
-                        amounts[slug] ??
-                        zeroAmount(currency);
-                      if (previous !== slug) delete amounts[previous];
-                      return { ...period, amounts };
-                    }),
-                  );
-                }}
-              />
-            </Field>
-            <Toggle
-              className="toggle-inline category-capacity-toggle"
-              label="Counts toward seats"
-              checked={category.countsTowardCapacity}
-              onChange={(checked) =>
-                onCategories(
-                  categories.map((item, i) =>
-                    i === index
-                      ? { ...item, countsTowardCapacity: checked }
-                      : item,
-                  ),
-                )
-              }
-            />
-            <div className="category-remove-cell">
-              {categories.length > 1 ? (
-                <button
-                  type="button"
-                  className="icon-link danger"
-                  aria-label={"Remove " + (category.label || "category")}
-                  onClick={() => {
-                    onCategories(categories.filter((_, i) => i !== index));
-                    onPeriods(
-                      periods.map((period) => {
-                        const amounts = { ...period.amounts };
-                        delete amounts[category.slug];
-                        return { ...period, amounts };
-                      }),
-                    );
-                  }}
-                >
-                  <Trash2 size={16} />
-                </button>
-              ) : null}
-            </div>
-          </div>
-        ))}
-      </div>
-      <SectionHeading
-        title="Seasonal rates"
-        description="Future bookings use the period that covers the departure date. Confirmed reservations keep their frozen price."
-        action={
-          <button
-            type="button"
-            className="button secondary"
-            disabled={periods.length >= 20}
-            onClick={() => {
-              const last = periods[periods.length - 1];
-              onPeriods([
-                ...periods,
-                {
-                  id: periodId(),
-                  startDate: last
-                    ? shiftDay(last.endDate, 1)
-                    : tenantDay(session.tenant.timezone),
-                  endDate: last
-                    ? shiftDay(last.endDate, 181)
-                    : shiftDay(tenantDay(session.tenant.timezone), 364),
-                  amounts: emptyAmounts(categories, last?.amounts, currency),
-                },
-              ]);
-            }}
-          >
-            <Plus size={16} />
-            Add rate period
-          </button>
-        }
-      />
-      <div className="mobile-table-hint">
-        Scroll table horizontally to view and edit all category rates →
-      </div>
-      <div className="price-matrix-wrap">
-        <table className="price-matrix">
+      <div className="table-scroll">
+        <table className="data-table editor-data-table">
           <thead>
             <tr>
-              <th className="date-col">Period starts</th>
-              <th className="date-col">Period ends</th>
-              {categories.map((category) => (
-                <th key={category.id} className="amount-col">
-                  {category.label || "Category"}
-                  <span className="currency-pill">{currency}</span>
-                </th>
-              ))}
-              <th className="price-matrix-remove">
-                <span className="visually-hidden">Remove period</span>
+              <th>Label</th>
+              <th>Identifier</th>
+              <th>Seats</th>
+              <th>Default rate</th>
+              <th>
+                <span className="visually-hidden">Actions</span>
               </th>
             </tr>
           </thead>
           <tbody>
-            {periods.map((period, index) => (
-              <tr key={period.id}>
-                <td className="date-col">
-                  <TenantDateInput
-                    label="Period starts"
-                    value={period.startDate}
-                    max={period.endDate || undefined}
-                    onChange={(startDate) =>
-                      onPeriods(
-                        periods.map((item, i) =>
-                          i === index ? { ...item, startDate } : item,
-                        ),
-                      )
-                    }
-                    locale={session.tenant.config.locale}
-                    dateFormat={session.tenant.config.dateFormat}
-                  />
+            {categories.map((category, index) => (
+              <tr key={category.id}>
+                <td>{category.label || "—"}</td>
+                <td>
+                  <code>{category.slug || "—"}</code>
                 </td>
-                <td className="date-col">
-                  <TenantDateInput
-                    label="Period ends"
-                    value={period.endDate}
-                    min={period.startDate || undefined}
-                    onChange={(endDate) =>
-                      onPeriods(
-                        periods.map((item, i) =>
-                          i === index ? { ...item, endDate } : item,
-                        ),
-                      )
-                    }
-                    locale={session.tenant.config.locale}
-                    dateFormat={session.tenant.config.dateFormat}
-                  />
+                <td>{category.countsTowardCapacity ? "Yes" : "No"}</td>
+                <td>
+                  {periods[0]?.amounts[category.slug]
+                    ? `${periods[0].amounts[category.slug]} ${currency}`
+                    : "—"}
                 </td>
-                {categories.map((category) => (
-                  <td key={category.id} className="amount-col">
-                    <input
-                      required
-                      aria-label={`${category.label || "Category"} amount in ${currency}`}
-                      className="amount-input"
-                      inputMode="decimal"
-                      value={
-                        period.amounts[category.slug] ?? zeroAmount(currency)
-                      }
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) =>
-                        onPeriods(
-                          periods.map((item, i) =>
-                            i === index
-                              ? {
-                                  ...item,
-                                  amounts: {
-                                    ...item.amounts,
-                                    [category.slug]: e.target.value,
-                                  },
-                                }
-                              : item,
-                          ),
-                        )
-                      }
-                      onBlur={(e) =>
-                        onPeriods(
-                          periods.map((item, i) =>
-                            i === index
-                              ? {
-                                  ...item,
-                                  amounts: {
-                                    ...item.amounts,
-                                    [category.slug]: formatAmountDraft(
-                                      e.target.value,
-                                      currency,
-                                    ),
-                                  },
-                                }
-                              : item,
-                          ),
-                        )
-                      }
-                    />
-                  </td>
-                ))}
-                <td className="price-matrix-remove">
-                  {periods.length > 1 ? (
+                <td className="row-actions">
+                  <button
+                    type="button"
+                    className="icon-link"
+                    aria-label={`Edit ${category.label || "category"}`}
+                    onClick={() => openEditCategory(index)}
+                  >
+                    <Pencil size={16} />
+                  </button>
+                  {categories.length > 1 ? (
                     <button
                       type="button"
                       className="icon-link danger"
-                      aria-label={`Remove rate period ${index + 1}`}
-                      onClick={() =>
-                        onPeriods(periods.filter((_, i) => i !== index))
-                      }
+                      aria-label={`Remove ${category.label || "category"}`}
+                      onClick={() => removeCategory(index)}
                     >
                       <Trash2 size={16} />
                     </button>
@@ -808,9 +821,218 @@ function PricingEditor({
           </tbody>
         </table>
       </div>
+      <SectionHeading
+        title="Seasonal rates"
+        description="Special or seasonal prices for a date window. Future bookings use the period that covers the departure date."
+        action={
+          <button
+            type="button"
+            className="button secondary"
+            disabled={periods.length >= 20 || !categories.length}
+            onClick={openAddPeriod}
+          >
+            <Plus size={16} />
+            Add rate period
+          </button>
+        }
+      />
+      <div className="table-scroll">
+        <table className="data-table editor-data-table">
+          <thead>
+            <tr>
+              <th>Starts</th>
+              <th>Ends</th>
+              <th>Rates</th>
+              <th>
+                <span className="visually-hidden">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {periods.map((period, index) => (
+              <tr key={period.id}>
+                <td>
+                  {dateOnly(
+                    period.startDate,
+                    session.tenant.config.dateFormat,
+                    session.tenant.config.locale,
+                  )}
+                </td>
+                <td>
+                  {dateOnly(
+                    period.endDate,
+                    session.tenant.config.dateFormat,
+                    session.tenant.config.locale,
+                  )}
+                </td>
+                <td>
+                  {categories
+                    .map((category) => {
+                      const amount = period.amounts[category.slug];
+                      return amount
+                        ? `${category.label || category.slug} ${amount}`
+                        : null;
+                    })
+                    .filter(Boolean)
+                    .join(" · ") || "—"}
+                </td>
+                <td className="row-actions">
+                  <button
+                    type="button"
+                    className="icon-link"
+                    aria-label={`Edit rate period ${index + 1}`}
+                    onClick={() => openEditPeriod(index)}
+                  >
+                    <Pencil size={16} />
+                  </button>
+                  {periods.length > 1 ? (
+                    <button
+                      type="button"
+                      className="icon-link danger"
+                      aria-label={`Remove rate period ${index + 1}`}
+                      onClick={() => {
+                        setDeleteError("");
+                        setDeletePeriod(period);
+                      }}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <FormDialog
+        open={Boolean(categoryModal)}
+        title={
+          categoryModal?.mode === "edit" ? "Edit category" : "Add category"
+        }
+        description="Set who can be booked and a default rate for seasonal periods."
+        error={modalError}
+        submitLabel="Save category"
+        onClose={() => setCategoryModal(null)}
+        onSubmit={saveCategory}
+      >
+        <Field label="Category label">
+          <input
+            required
+            placeholder="e.g. Adult, Child"
+            value={catLabel}
+            onChange={(e) => {
+              setCatLabel(e.target.value);
+              if (categoryModal?.mode === "add")
+                setCatSlug(slugify(e.target.value));
+            }}
+          />
+        </Field>
+        <Field label="Identifier code">
+          <input
+            required
+            className="mono-input"
+            placeholder="e.g. adult"
+            pattern="[a-z][a-z0-9_\-]{1,49}"
+            value={catSlug}
+            onChange={(e) => setCatSlug(e.target.value)}
+          />
+        </Field>
+        <Toggle
+          className="toggle-inline"
+          label="Counts toward seats"
+          checked={catSeats}
+          onChange={setCatSeats}
+        />
+        <Field label={`Default rate (${currency})`}>
+          <input
+            required
+            className="amount-input"
+            inputMode="decimal"
+            value={catRate}
+            onFocus={(e) => e.target.select()}
+            onChange={(e) => setCatRate(e.target.value)}
+            onBlur={(e) =>
+              setCatRate(formatAmountDraft(e.target.value, currency))
+            }
+          />
+        </Field>
+      </FormDialog>
+      <FormDialog
+        open={Boolean(periodModal)}
+        title={
+          periodModal?.mode === "edit" ? "Edit rate period" : "Add rate period"
+        }
+        description="Prices apply to departures whose local date falls in this window."
+        error={modalError}
+        submitLabel="Save period"
+        onClose={() => setPeriodModal(null)}
+        onSubmit={savePeriod}
+      >
+        <div className="form-grid">
+          <TenantDateInput
+            label="Period starts"
+            value={periodStart}
+            max={periodEnd || undefined}
+            onChange={setPeriodStart}
+            locale={session.tenant.config.locale}
+            dateFormat={session.tenant.config.dateFormat}
+          />
+          <TenantDateInput
+            label="Period ends"
+            value={periodEnd}
+            min={periodStart || undefined}
+            onChange={setPeriodEnd}
+            locale={session.tenant.config.locale}
+            dateFormat={session.tenant.config.dateFormat}
+          />
+        </div>
+        {categories.map((category) => (
+          <Field
+            key={category.id}
+            label={`${category.label || category.slug} (${currency})`}
+          >
+            <input
+              required
+              className="amount-input"
+              inputMode="decimal"
+              value={
+                periodAmounts[category.slug] ?? zeroAmount(currency)
+              }
+              onFocus={(e) => e.target.select()}
+              onChange={(e) =>
+                setPeriodAmounts((current) => ({
+                  ...current,
+                  [category.slug]: e.target.value,
+                }))
+              }
+              onBlur={(e) =>
+                setPeriodAmounts((current) => ({
+                  ...current,
+                  [category.slug]: formatAmountDraft(
+                    e.target.value,
+                    currency,
+                  ),
+                }))
+              }
+            />
+          </Field>
+        ))}
+      </FormDialog>
+      <ConfirmDialog
+        open={Boolean(deletePeriod)}
+        title="Delete rate period?"
+        description="This removes the seasonal window from the product draft. Confirmed booking prices stay frozen. Delete is blocked if holds or bookings exist in this date range."
+        confirmLabel="Delete period"
+        danger
+        busy={deleteBusy}
+        error={deleteError}
+        onClose={() => setDeletePeriod(null)}
+        onConfirm={() => void confirmDeletePeriod()}
+      />
     </>
   );
 }
+
 export function NewProduct({ session }: { session: Session }) {
   const today = tenantDay(session.tenant.timezone);
   const [name, setName] = useState(""),
@@ -1145,383 +1367,25 @@ export function NewProduct({ session }: { session: Session }) {
   );
 }
 export function NewSchedule({ session }: { session: Session }) {
-  const today = tenantDay(session.tenant.timezone);
-  const products = useResource<Product[]>("admin/v1/products"),
-    rules = useResource<AvailabilityRule[]>("admin/v1/availability-rules"),
-    mutation = useMutation(),
-    router = useRouter();
-  const [product, setProduct] = useState(""),
-    [start, setStart] = useState(today),
-    [end, setEnd] = useState(() => shiftDay(today, 89)),
-    [time, setTime] = useState("09:00"),
-    [capacity, setCapacity] = useState(""),
-    [weekdays, setWeekdays] = useState([1, 2, 3, 4, 5, 6, 7]),
-    [blackouts, setBlackouts] = useState<string[]>([]),
-    [blackoutDraft, setBlackoutDraft] = useState("");
+  void session;
+  const router = useRouter();
   useEffect(() => {
-    setProduct(
-      new URLSearchParams(window.location.search).get("product") ?? "",
-    );
-  }, []);
-  const scheduledProducts =
-    products.data?.filter(
-      (item) =>
-        (item.availability_mode ?? "fixed_departure") === "fixed_departure" &&
-        (item.status ?? "active") === "active",
-    ) ?? [];
-  const selected = scheduledProducts.find((item) => item.id === product);
-  const requested = Boolean(product) && !selected;
-  useEffect(() => {
-    if (!product || capacity) return;
-    const existing = rules.data?.find(
-      (rule) => rule.product_id === product && rule.capacity,
-    );
-    if (existing?.capacity) setCapacity(String(existing.capacity));
-  }, [product, rules.data, capacity]);
-  const generated = plannedDates(start, end, weekdays, blackouts);
-  const spanDays =
-    start && end && end >= start
-      ? Math.round(
-          (new Date(`${end}T12:00:00Z`).getTime() -
-            new Date(`${start}T12:00:00Z`).getTime()) /
-            86400000,
-        )
-      : 0;
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    const result = await mutation.run("admin/v1/schedules", {
-      productId: product,
-      startDate: start,
-      endDate: end,
-      localTime: time,
-      capacity: Number(capacity),
-      weekdays,
-      blackoutDates: blackouts,
-    });
-    if (result)
-      router.push(
-        (result as { ruleId?: string }).ruleId
-          ? `/catalog/availability/${(result as { ruleId: string }).ruleId}`
-          : "/catalog?tab=availability",
-      );
-  }
-  function addBlackout() {
-    if (!blackoutDraft || blackouts.includes(blackoutDraft)) return;
-    setBlackouts([...blackouts, blackoutDraft].sort());
-    setBlackoutDraft("");
-  }
+    const product = new URLSearchParams(window.location.search).get("product");
+    const params = new URLSearchParams({ tab: "schedules", new: "1" });
+    if (product) params.set("product", product);
+    router.replace(`/catalog?${params}`);
+  }, [router]);
   return (
     <>
-      <Back href="/catalog?tab=availability">Catalog</Back>
       <Heading
-        title="Add scheduled availability"
-        description="Create one recurring local-time rule. Each matching day becomes an operational departure."
+        title="Add schedule"
+        description="Opening the schedule editor…"
       />
-      <form className="schedule-layout" onSubmit={submit}>
-        <div className="editor-section">
-          {products.error && <Notice error>{products.error}</Notice>}
-          {requested && (
-            <Notice>
-              That product is not sold from dated departures. Choose a scheduled
-              product, or keep it on request.
-            </Notice>
-          )}
-          <SectionHeading
-            title="Product"
-            description="Which experience gets this recurring local-time rule."
-          />
-          <Field label="Scheduled product">
-            <select
-              required
-              value={selected ? product : ""}
-              onChange={(e) => {
-                setProduct(e.target.value);
-                setCapacity("");
-              }}
-            >
-              <option value="">Choose a scheduled product</option>
-              {scheduledProducts.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.customer_title ?? item.name} ·{" "}
-                  {item.definition.optionName}
-                </option>
-              ))}
-            </select>
-          </Field>
-          {selected && (
-            <p className="muted">
-              {selected.definition.durationMinutes} minutes ·{" "}
-              {modeLabel(selected.availability_mode)}
-              {priceFromMinor(selected) != null
-                ? ` · from ${money(
-                    priceFromMinor(selected)!,
-                    session.tenant.config.bookingCurrency,
-                    session.tenant.config.locale,
-                  )}`
-                : ""}
-              . Add another rule later if you need a second start time.
-            </p>
-          )}
-          <SectionHeading
-            title="When it runs"
-            description={`Times are created in ${session.tenant.timezone}. The server rejects nonexistent or DST-ambiguous local times.`}
-          />
-          <div className="form-grid">
-            <TenantDateInput
-              label="First operating date"
-              value={start}
-              max={end || undefined}
-              onChange={setStart}
-              locale={session.tenant.config.locale}
-              dateFormat={session.tenant.config.dateFormat}
-            />
-            <TenantDateInput
-              label="Last operating date"
-              value={end}
-              min={start || undefined}
-              onChange={setEnd}
-              locale={session.tenant.config.locale}
-              dateFormat={session.tenant.config.dateFormat}
-            />
-            <Field
-              label="Local start time"
-              hint={clockLabel(
-                time,
-                session.tenant.config.locale,
-                session.tenant.config.timeFormat,
-              )}
-            >
-              <input
-                type="time"
-                required
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-              />
-            </Field>
-            <Field
-              label="Seat capacity"
-              hint="Copied from an existing rule when one exists. Confirm before saving."
-            >
-              <input
-                type="number"
-                required
-                min="1"
-                max="10000"
-                value={capacity}
-                onChange={(e) => setCapacity(e.target.value)}
-              />
-            </Field>
-          </div>
-          <fieldset className="weekdays">
-            <legend>Operating days</legend>
-            <div className="weekday-presets">
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => setWeekdays([1, 2, 3, 4, 5, 6, 7])}
-              >
-                Every day
-              </button>
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => setWeekdays([1, 2, 3, 4, 5])}
-              >
-                Weekdays
-              </button>
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => setWeekdays([6, 7])}
-              >
-                Weekend
-              </button>
-            </div>
-            {weekdayLabels.map((d, i) => (
-              <label
-                key={d}
-                className={weekdays.includes(i + 1) ? "selected" : ""}
-              >
-                <input
-                  type="checkbox"
-                  checked={weekdays.includes(i + 1)}
-                  onChange={(e) =>
-                    setWeekdays((v) =>
-                      e.target.checked
-                        ? [...v, i + 1]
-                        : v.filter((n) => n !== i + 1),
-                    )
-                  }
-                />
-                {d}
-              </label>
-            ))}
-          </fieldset>
-          <SectionHeading
-            title="Blackout dates"
-            description="Optional closed dates inside the operating period. These days will not generate a departure."
-          />
-          <div className="blackout-add">
-            <TenantDateInput
-              label="Add a blackout date"
-              value={blackoutDraft}
-              min={start || undefined}
-              max={end || undefined}
-              onChange={setBlackoutDraft}
-              locale={session.tenant.config.locale}
-              dateFormat={session.tenant.config.dateFormat}
-            />
-            <button
-              type="button"
-              className="button secondary"
-              disabled={!blackoutDraft}
-              onClick={addBlackout}
-            >
-              Add date
-            </button>
-          </div>
-          {blackouts.length > 0 && (
-            <ul className="blackout-list">
-              {blackouts.map((day) => (
-                <li key={day}>
-                  <span>
-                    {dateOnly(
-                      day,
-                      session.tenant.config.dateFormat,
-                      session.tenant.config.locale,
-                    )}
-                  </span>
-                  <button
-                    type="button"
-                    className="text-button"
-                    onClick={() =>
-                      setBlackouts((current) =>
-                        current.filter((item) => item !== day),
-                      )
-                    }
-                  >
-                    Remove
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {mutation.error && <Notice error>{mutation.error}</Notice>}
-          {spanDays > 365 && (
-            <Notice error>
-              A rule can cover at most 365 days. Shorten the operating period.
-            </Notice>
-          )}
-          {!generated.length && weekdays.length > 0 && start && end && (
-            <Notice>
-              This combination creates no departures. Change the days, dates, or
-              blackouts.
-            </Notice>
-          )}
-          <div className="form-actions">
-            <Link className="button secondary" href="/catalog?tab=availability">
-              Cancel
-            </Link>
-            <button
-              className="button"
-              disabled={
-                mutation.busy ||
-                !weekdays.length ||
-                !generated.length ||
-                spanDays > 365
-              }
-            >
-              {mutation.busy
-                ? "Creating…"
-                : `Create ${generated.length} ${generated.length === 1 ? "departure" : "departures"}`}
-              <Check size={17} />
-            </button>
-          </div>
-        </div>
-        <aside className="product-preview" aria-live="polite">
-          <div className="product-preview-card schedule-preview">
-            <span className="kind-chip">Preview</span>
-            <h2>
-              {generated.length}{" "}
-              {generated.length === 1 ? "departure" : "departures"}
-            </h2>
-            <p>
-              {selected
-                ? (selected.customer_title ?? selected.name)
-                : "Choose a scheduled product"}
-            </p>
-            <dl>
-              <div>
-                <dt>Timezone</dt>
-                <dd>{session.tenant.timezone}</dd>
-              </div>
-              <div>
-                <dt>Start time</dt>
-                <dd>
-                  {clockLabel(
-                    time,
-                    session.tenant.config.locale,
-                    session.tenant.config.timeFormat,
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt>Operating days</dt>
-                <dd>
-                  {weekdays.length
-                    ? weekdays
-                        .slice()
-                        .sort((a, b) => a - b)
-                        .map((day) => weekdayLabels[day - 1])
-                        .join(" · ")
-                    : "None selected"}
-                </dd>
-              </div>
-              <div>
-                <dt>Period</dt>
-                <dd>
-                  {start && end
-                    ? `${dateOnly(start, session.tenant.config.dateFormat, session.tenant.config.locale)} – ${dateOnly(end, session.tenant.config.dateFormat, session.tenant.config.locale)}`
-                    : "Set both dates"}
-                </dd>
-              </div>
-              <div>
-                <dt>Capacity</dt>
-                <dd>{capacity || "Required"}</dd>
-              </div>
-              <div>
-                <dt>Blackouts</dt>
-                <dd>
-                  {blackouts.length
-                    ? `${blackouts.length} closed ${blackouts.length === 1 ? "date" : "dates"}`
-                    : "None"}
-                </dd>
-              </div>
-            </dl>
-            {generated[0] && (
-              <p className="muted">
-                First departure{" "}
-                {dateOnly(
-                  generated[0],
-                  session.tenant.config.dateFormat,
-                  session.tenant.config.locale,
-                )}
-                {generated.length > 1
-                  ? ` · last ${dateOnly(
-                      generated[generated.length - 1]!,
-                      session.tenant.config.dateFormat,
-                      session.tenant.config.locale,
-                    )}`
-                  : ""}
-                .
-              </p>
-            )}
-          </div>
-        </aside>
-      </form>
+      <Loading />
     </>
   );
 }
+
 export function ProductDetail({
   session,
   productId,
@@ -1545,6 +1409,7 @@ export function ProductDetail({
   const [periods, setPeriods] = useState<PeriodDraft[]>([]);
   const [saved, setSaved] = useState("");
   const [error, setError] = useState("");
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   useEffect(() => {
     if (!product.data) return;
     const definition = product.data.definition;
@@ -1687,14 +1552,15 @@ export function ProductDetail({
             </div>
             <div className="product-header-actions">
               {canWrite && scheduled && (
-                <Link
-                  href={`/catalog/availability/new?product=${productId}`}
+                <button
+                  type="button"
                   className="button secondary"
-                  aria-label="Add availability"
+                  aria-label="Add schedule"
+                  onClick={() => setScheduleModalOpen(true)}
                 >
                   <Plus size={16} />
-                  <span className="button-label">Add availability</span>
-                </Link>
+                  <span className="button-label">Add schedule</span>
+                </button>
               )}
               {canWrite && (
                 <>
@@ -1860,6 +1726,7 @@ export function ProductDetail({
                 <section className="editor-section">
                   <PricingEditor
                     session={session}
+                    productId={productId}
                     categories={categories}
                     periods={periods}
                     onCategories={setCategories}
@@ -1868,17 +1735,18 @@ export function ProductDetail({
                 </section>
                 <section className="editor-section">
                   <SectionHeading
-                    title="Availability"
-                    description="When this product can be sold. Each rule creates operational departures."
+                    title="Schedules"
+                    description="When this product runs. Each schedule creates bookable departures."
                     action={
                       canWrite && scheduled ? (
-                        <Link
+                        <button
+                          type="button"
                           className="button secondary"
-                          href={`/catalog/availability/new?product=${productId}`}
+                          onClick={() => setScheduleModalOpen(true)}
                         >
                           <Plus size={16} />
-                          Add availability
-                        </Link>
+                          Add schedule
+                        </button>
                       ) : undefined
                     }
                   />
@@ -1887,48 +1755,61 @@ export function ProductDetail({
                   ) : !rules.data ? (
                     <Loading />
                   ) : linked.length ? (
-                    <div className="product-list inset">
-                      {linked.map((rule) => (
-                        <Link
-                          key={rule.id}
-                          href={`/catalog/availability/${rule.id}`}
-                          className="product-row-main availability-item"
-                        >
-                          <div className="product-row-copy">
-                            <div className="product-row-meta">
-                              <span className="kind-chip">
-                                {modeLabel(rule.mode)}
-                              </span>
-                              <Status state={rule.status} />
-                            </div>
-                            <h2>{rule.times.join(", ") || "Flexible time"}</h2>
-                            <p>
-                              {rule.start_date} — {rule.end_date}
-                            </p>
-                          </div>
-                          <div className="product-row-when">
-                            <span>Days</span>
-                            <strong>
-                              {rule.weekdays
-                                .map((day) => weekdayLabels[day - 1])
-                                .join(" · ")}
-                            </strong>
-                          </div>
-                          <div className="product-row-price">
-                            <span>Upcoming</span>
-                            <strong>{rule.upcoming_departures}</strong>
-                          </div>
-                        </Link>
-                      ))}
+                    <div className="table-scroll">
+                      <table className="data-table editor-data-table">
+                        <thead>
+                          <tr>
+                            <th>Name</th>
+                            <th>Period</th>
+                            <th>Times</th>
+                            <th>Status</th>
+                            <th>Upcoming</th>
+                            <th>
+                              <span className="visually-hidden">Actions</span>
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {linked.map((rule) => (
+                            <tr key={rule.id}>
+                              <td>{rule.name || rule.product_name}</td>
+                              <td>
+                                {rule.start_date} — {rule.end_date}
+                                <div className="muted">
+                                  {rule.weekdays
+                                    .map((day) => weekdayLabels[day - 1])
+                                    .join(" · ")}
+                                </div>
+                              </td>
+                              <td>{rule.times.join(", ") || "—"}</td>
+                              <td>
+                                <Status state={rule.status} />
+                              </td>
+                              <td>{rule.upcoming_departures}</td>
+                              <td className="row-actions">
+                                <Link
+                                  className="icon-link"
+                                  href={`/catalog/availability/${rule.id}`}
+                                  aria-label={`Open ${rule.name || "schedule"}`}
+                                >
+                                  <ArrowRight size={16} />
+                                </Link>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   ) : (
-                    <Empty title="No availability rules yet">
+                    <Empty title="No schedules yet">
                       {canWrite && scheduled && (
-                        <Link
-                          href={`/catalog/availability/new?product=${productId}`}
+                        <button
+                          type="button"
+                          className="text-button"
+                          onClick={() => setScheduleModalOpen(true)}
                         >
                           Create the first schedule
-                        </Link>
+                        </button>
                       )}
                     </Empty>
                   )}
@@ -2031,22 +1912,24 @@ export function ProductDetail({
                       </strong>
                     </li>
                     <li>
-                      <span>Availability rules</span>
+                      <span>Schedules</span>
                       <strong>
-                        {linked.length} {linked.length === 1 ? "rule" : "rules"}
+                        {linked.length}{" "}
+                        {linked.length === 1 ? "schedule" : "schedules"}
                       </strong>
                     </li>
                   </ul>
                   {scheduled && canWrite && (
                     <div style={{ marginTop: 18 }}>
-                      <Link
-                        href={`/catalog/availability/new?product=${productId}`}
+                      <button
+                        type="button"
                         className="button secondary"
                         style={{ width: "100%", justifyContent: "center" }}
+                        onClick={() => setScheduleModalOpen(true)}
                       >
                         <Plus size={15} />
-                        Add availability
-                      </Link>
+                        Add schedule
+                      </button>
                     </div>
                   )}
                 </div>
@@ -2086,50 +1969,44 @@ export function ProductDetail({
                 </section>
                 <section className="editor-section">
                   <SectionHeading
-                    title="Availability"
-                    description="When this product can be sold. Each rule creates operational departures."
+                    title="Schedules"
+                    description="When this product runs. Each schedule creates bookable departures."
                   />
                   {rules.error ? (
                     <Notice error>{rules.error}</Notice>
                   ) : !rules.data ? (
                     <Loading />
                   ) : linked.length ? (
-                    <div className="product-list inset">
-                      {linked.map((rule) => (
-                        <Link
-                          key={rule.id}
-                          href={`/catalog/availability/${rule.id}`}
-                          className="product-row-main availability-item"
-                        >
-                          <div className="product-row-copy">
-                            <div className="product-row-meta">
-                              <span className="kind-chip">
-                                {modeLabel(rule.mode)}
-                              </span>
-                              <Status state={rule.status} />
-                            </div>
-                            <h2>{rule.times.join(", ") || "Flexible time"}</h2>
-                            <p>
-                              {rule.start_date} — {rule.end_date}
-                            </p>
-                          </div>
-                          <div className="product-row-when">
-                            <span>Days</span>
-                            <strong>
-                              {rule.weekdays
-                                .map((day) => weekdayLabels[day - 1])
-                                .join(" · ")}
-                            </strong>
-                          </div>
-                          <div className="product-row-price">
-                            <span>Upcoming</span>
-                            <strong>{rule.upcoming_departures}</strong>
-                          </div>
-                        </Link>
-                      ))}
+                    <div className="table-scroll">
+                      <table className="data-table editor-data-table">
+                        <thead>
+                          <tr>
+                            <th>Name</th>
+                            <th>Period</th>
+                            <th>Times</th>
+                            <th>Status</th>
+                            <th>Upcoming</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {linked.map((rule) => (
+                            <tr key={rule.id}>
+                              <td>{rule.name || rule.product_name}</td>
+                              <td>
+                                {rule.start_date} — {rule.end_date}
+                              </td>
+                              <td>{rule.times.join(", ") || "—"}</td>
+                              <td>
+                                <Status state={rule.status} />
+                              </td>
+                              <td>{rule.upcoming_departures}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   ) : (
-                    <Empty title="No availability rules yet" />
+                    <Empty title="No schedules yet" />
                   )}
                 </section>
               </div>
@@ -2161,6 +2038,18 @@ export function ProductDetail({
           )}
         </>
       )}
+      {canWrite && (
+        <ScheduleFormDialog
+          session={session}
+          open={scheduleModalOpen}
+          productId={productId}
+          onClose={() => setScheduleModalOpen(false)}
+          onCreated={() => {
+            setScheduleModalOpen(false);
+            rules.reload();
+          }}
+        />
+      )}
     </>
   );
 }
@@ -2176,6 +2065,69 @@ export function AvailabilityDetail({
   );
   const mutation = useMutation();
   const canWrite = session.permissions.includes("catalog.write");
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [monthCursor, setMonthCursor] = useState("");
+  const filterRef = useRef<HTMLDivElement>(null);
+  const locale = session.tenant.config.locale;
+  const timezone = session.tenant.timezone;
+
+  useEffect(() => {
+    if (!filtersOpen) return;
+    function onPointer(event: MouseEvent) {
+      if (filterRef.current && !filterRef.current.contains(event.target as Node))
+        setFiltersOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setFiltersOpen(false);
+    }
+    document.addEventListener("mousedown", onPointer);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [filtersOpen]);
+
+  const departures = rule.data?.departures ?? [];
+  const filteredDepartures = departures.filter(
+    (item) => statusFilter === "all" || item.status === statusFilter,
+  );
+  const byDate = useMemo(() => {
+    const map = new Map<string, typeof filteredDepartures>();
+    for (const departure of filteredDepartures) {
+      const day = localDayFromInstant(departure.starts_at, timezone);
+      const list = map.get(day) ?? [];
+      list.push(departure);
+      map.set(day, list);
+    }
+    return map;
+  }, [filteredDepartures, timezone]);
+
+  useEffect(() => {
+    if (!rule.data || monthCursor) return;
+    const first = filteredDepartures[0]?.starts_at;
+    const seed = first
+      ? localDayFromInstant(first, timezone).slice(0, 7)
+      : rule.data.start_date.slice(0, 7);
+    setMonthCursor(seed);
+  }, [rule.data, filteredDepartures, monthCursor, timezone]);
+
+  const months = useMemo(() => {
+    if (!rule.data) return [] as string[];
+    const keys: string[] = [];
+    for (
+      let day = rule.data.start_date;
+      day <= rule.data.end_date;
+      day = shiftDay(day, 1)
+    ) {
+      const key = day.slice(0, 7);
+      if (!keys.includes(key)) keys.push(key);
+    }
+    return keys;
+  }, [rule.data]);
+
   async function setStatus(status: "active" | "paused") {
     if (!rule.data?.version) return;
     const result = await mutation.run(
@@ -2185,43 +2137,160 @@ export function AvailabilityDetail({
     );
     if (result) rule.reload();
   }
+
+  const activeFilters = statusFilter !== "all" ? 1 : 0;
+  const visibleMonth = monthCursor || months[0] || "";
+  const gridDays = monthGrid(visibleMonth);
+
   return (
     <>
-      <Back href="/catalog?tab=availability">Catalog</Back>
+      <Back href="/catalog?tab=schedules">Schedules</Back>
       {rule.error ? (
         <Notice error>{rule.error}</Notice>
       ) : !rule.data ? (
         <Loading />
       ) : (
         <>
-          <Heading
-            title={rule.data.product_name}
-            description={`${rule.data.option_name} · ${modeLabel(rule.data.mode)}`}
-            action={
-              canWrite &&
-              rule.data.product_availability_mode === "fixed_departure" && (
-                <Link
-                  href={`/catalog/availability/new?product=${rule.data.product_id}`}
-                  className="button secondary"
+          <div className="schedule-detail-header">
+            <div className="schedule-detail-copy">
+              <div className="schedule-detail-meta">
+                <Status state={rule.data.status} />
+                {rule.data.product_id ? (
+                  <Link
+                    className="text-button"
+                    href={`/catalog/${rule.data.product_id}`}
+                  >
+                    {rule.data.product_name}
+                  </Link>
+                ) : (
+                  <span className="muted">{rule.data.product_name}</span>
+                )}
+              </div>
+              <Heading title={rule.data.name || rule.data.product_name} />
+            </div>
+            <div className="catalog-view-actions departure-view-actions schedule-detail-actions">
+              <div className="filter-menu" ref={filterRef}>
+                <button
+                  type="button"
+                  className={
+                    "button secondary catalog-add-btn" +
+                    (filtersOpen || activeFilters ? " active-filter" : "")
+                  }
+                  aria-label="Filter upcoming departures"
+                  aria-expanded={filtersOpen}
+                  aria-haspopup="dialog"
+                  onClick={() => setFiltersOpen((open) => !open)}
                 >
-                  Add another rule
-                </Link>
-              )
-            }
-          />
-          <div className="catalog-metrics" aria-label="Availability summary">
+                  <ListFilter size={17} />
+                  <span className="button-label">Filter</span>
+                  {activeFilters > 0 && (
+                    <span className="filter-count">{activeFilters}</span>
+                  )}
+                </button>
+                {filtersOpen && (
+                  <div
+                    className="filter-popover"
+                    role="dialog"
+                    aria-label="Upcoming departure filters"
+                  >
+                    <div className="filter-popover-head">
+                      <strong>Filters</strong>
+                      <span>
+                        {activeFilters ? `${activeFilters} active` : "None"}
+                      </span>
+                    </div>
+                    <label className="compact-control">
+                      <span>Departure status</span>
+                      <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                      >
+                        <option value="all">All statuses</option>
+                        {[
+                          ...new Set(departures.map((item) => item.status)),
+                        ].map((status) => (
+                          <option key={status} value={status}>
+                            {label(status)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="filter-popover-actions">
+                      <button
+                        type="button"
+                        className="text-button"
+                        disabled={!activeFilters}
+                        onClick={() => setStatusFilter("all")}
+                      >
+                        Reset
+                      </button>
+                      <button
+                        type="button"
+                        className="button"
+                        onClick={() => setFiltersOpen(false)}
+                      >
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {canWrite && rule.data.status === "active" ? (
+                <button
+                  type="button"
+                  className="button secondary catalog-add-btn"
+                  aria-label="Pause schedule"
+                  disabled={mutation.busy}
+                  onClick={() => void setStatus("paused")}
+                >
+                  <Pause size={17} />
+                  <span className="button-label">Pause</span>
+                </button>
+              ) : null}
+              {canWrite && rule.data.status === "paused" ? (
+                <button
+                  type="button"
+                  className="button secondary catalog-add-btn"
+                  aria-label="Resume schedule"
+                  disabled={mutation.busy}
+                  onClick={() => void setStatus("active")}
+                >
+                  <Play size={17} />
+                  <span className="button-label">Resume</span>
+                </button>
+              ) : null}
+              {canWrite &&
+              rule.data.product_availability_mode === "fixed_departure" ? (
+                <button
+                  type="button"
+                  className="button catalog-add-btn"
+                  aria-label="Add schedule"
+                  onClick={() => setScheduleModalOpen(true)}
+                >
+                  <Plus size={17} />
+                  <span className="button-label">Add schedule</span>
+                </button>
+              ) : null}
+            </div>
+          </div>
+          {mutation.error && <Notice error>{mutation.error}</Notice>}
+          <div className="catalog-metrics" aria-label="Schedule summary">
             <div>
               <strong>
-                {rule.data.start_date} — {rule.data.end_date}
+                {formatMediumDateRange(
+                  rule.data.start_date,
+                  rule.data.end_date,
+                  locale,
+                )}
               </strong>
               <span>Operating period</span>
             </div>
             <div>
               <strong>{rule.data.times.join(", ") || "Flexible"}</strong>
-              <span>Local start times</span>
+              <span>Start times</span>
             </div>
             <div>
-              <strong>{rule.data.capacity ?? "Rule based"}</strong>
+              <strong>{rule.data.capacity ?? "—"}</strong>
               <span>Seat capacity</span>
             </div>
             <div>
@@ -2229,104 +2298,159 @@ export function AvailabilityDetail({
               <span>Upcoming departures</span>
             </div>
           </div>
-          <section className="panel form-panel">
-            <div className="panel-heading plain">
-              <h2>Rule</h2>
-              <Status state={rule.data.status} />
-            </div>
-            <p>
-              Operates{" "}
-              {rule.data.weekdays
-                .map((day) => weekdayLabels[day - 1])
-                .join(", ")}{" "}
-              in {rule.data.timezone}.
-            </p>
-            {rule.data.blackouts?.length ? (
-              <p className="muted">
-                Blackouts: {rule.data.blackouts.join(", ")}
-              </p>
-            ) : (
-              <p className="muted">No blackout dates on this rule.</p>
-            )}
-            <p className="muted">
-              Pausing stops this rule from looking current. It does not cancel
-              or rewrite generated departures that already have inventory.
-            </p>
-            {mutation.error && <Notice error>{mutation.error}</Notice>}
-            {canWrite && (
-              <div className="button-row">
-                {rule.data.status === "paused" ? (
-                  <button
-                    type="button"
-                    className="button"
-                    disabled={mutation.busy}
-                    onClick={() => void setStatus("active")}
-                  >
-                    Resume rule
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="button secondary"
-                    disabled={mutation.busy}
-                    onClick={() => void setStatus("paused")}
-                  >
-                    Pause rule
-                  </button>
-                )}
-                {rule.data.product_id && (
-                  <Link
-                    className="button secondary"
-                    href={`/catalog/${rule.data.product_id}`}
-                  >
-                    Open product
-                  </Link>
-                )}
-              </div>
-            )}
-          </section>
-          <section className="panel">
-            <div className="panel-heading plain">
+          <section className="panel schedule-detail-calendar-panel">
+            <div className="panel-heading">
               <h2>Upcoming departures</h2>
               <Link className="text-link" href="/departures">
                 Open departures <ArrowRight size={16} />
               </Link>
             </div>
-            {rule.data.departures?.length ? (
-              <div className="availability-list">
-                {rule.data.departures.map((departure) => (
-                  <Link
-                    key={departure.id}
-                    href={`/departures/${departure.id}/manifest`}
-                    className="availability-row"
+            {filteredDepartures.length ? (
+              <div className="rule-departure-calendar">
+                <div className="schedule-calendar-nav">
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={months.indexOf(visibleMonth) <= 0}
+                    onClick={() => {
+                      const i = months.indexOf(visibleMonth);
+                      if (i > 0) setMonthCursor(months[i - 1]!);
+                    }}
                   >
-                    <div>
-                      <strong>
-                        {dateTime(departure.starts_at, session.tenant.timezone)}
-                      </strong>
-                      <small>{label(departure.status)}</small>
-                    </div>
-                    <div>
-                      <span className="eyebrow">Booked</span>
-                      <strong>
-                        {departure.committed} / {departure.capacity}
-                      </strong>
-                    </div>
-                    <div>
-                      <span className="eyebrow">Available</span>
-                      <strong>{departure.available}</strong>
-                    </div>
-                  </Link>
-                ))}
+                    Previous
+                  </button>
+                  <strong>
+                    {visibleMonth
+                      ? new Date(`${visibleMonth}-01T12:00:00Z`).toLocaleString(
+                          locale,
+                          { month: "long", year: "numeric", timeZone: "UTC" },
+                        )
+                      : "—"}
+                  </strong>
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={
+                      months.indexOf(visibleMonth) >= months.length - 1
+                    }
+                    onClick={() => {
+                      const i = months.indexOf(visibleMonth);
+                      if (i >= 0 && i < months.length - 1)
+                        setMonthCursor(months[i + 1]!);
+                    }}
+                  >
+                    Next
+                  </button>
+                </div>
+                <div className="rule-departure-grid">
+                  {gridDays.map((day, index) => {
+                    if (!day)
+                      return <div key={`pad-${index}`} className="rule-day empty" />;
+                    const items = byDate.get(day) ?? [];
+                    const inPeriod =
+                      day >= rule.data!.start_date &&
+                      day <= rule.data!.end_date;
+                    return (
+                      <div
+                        key={day}
+                        className={
+                          "rule-day" +
+                          (items.length ? " has-departures" : "") +
+                          (inPeriod ? "" : " outside")
+                        }
+                      >
+                        <header>
+                          <span className="rule-day-num">
+                            {Number(day.slice(8))}
+                          </span>
+                          <span className="rule-day-dow">
+                            {weekdayLabels[(new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7]}
+                          </span>
+                        </header>
+                        <div className="rule-day-slots">
+                          {items.map((departure) => (
+                            <Link
+                              key={departure.id}
+                              href={`/departures/${departure.id}/manifest`}
+                              className="rule-day-slot"
+                              title={`${clockFromInstant(departure.starts_at, timezone, locale)} · ${departure.committed}/${departure.capacity}`}
+                            >
+                              <strong>
+                                {clockFromInstant(
+                                  departure.starts_at,
+                                  timezone,
+                                  locale,
+                                )}
+                              </strong>
+                              <span>
+                                {departure.committed}/{departure.capacity}
+                              </span>
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             ) : (
-              <Empty title="No upcoming departures from this rule" />
+              <Empty title="No upcoming departures from this schedule" />
             )}
           </section>
+          {canWrite &&
+            rule.data.product_availability_mode === "fixed_departure" && (
+              <ScheduleFormDialog
+                session={session}
+                open={scheduleModalOpen}
+                productId={rule.data.product_id}
+                onClose={() => setScheduleModalOpen(false)}
+                onCreated={(result) => {
+                  setScheduleModalOpen(false);
+                  if (result.ruleId)
+                    window.location.assign(
+                      `/catalog/availability/${result.ruleId}`,
+                    );
+                  else rule.reload();
+                }}
+              />
+            )}
         </>
       )}
     </>
   );
+}
+
+function localDayFromInstant(value: string, timezone: string) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(value));
+}
+
+function clockFromInstant(value: string, timezone: string, locale: string) {
+  return new Intl.DateTimeFormat(locale, {
+    timeZone: timezone,
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function monthGrid(monthKey: string) {
+  if (!monthKey) return [] as (string | null)[];
+  const [year, month] = monthKey.split("-").map(Number);
+  const first = new Date(Date.UTC(year!, month! - 1, 1));
+  const startPad = (first.getUTCDay() + 6) % 7;
+  const days: (string | null)[] = [];
+  for (let i = 0; i < startPad; i++) days.push(null);
+  for (let d = 1; d <= 31; d++) {
+    const day = `${monthKey}-${String(d).padStart(2, "0")}`;
+    if (Number.isNaN(Date.parse(`${day}T12:00:00Z`))) break;
+    if (day.slice(0, 7) !== monthKey) break;
+    days.push(day);
+  }
+  return days;
 }
 export function Settings({
   session,

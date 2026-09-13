@@ -11,6 +11,7 @@
 
 import * as nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
+import { parseCommunicationBody } from "./customer-booking-email.js";
 
 // ─── Singleton transporter ────────────────────────────────────────────────────
 
@@ -305,19 +306,24 @@ function customerLayout(tenantName: string, body: string): string {
 export async function sendCustomerMessage(d: {
   to: string;
   subject: string;
+  /** Plain text, HTML document, or JSON snapshot `{ v:1, text, html }`. */
   body: string;
   tenantName: string;
 }): Promise<{ messageId: string }> {
   if (!smtpConfigured()) {
     throw new Error("SMTP is not configured (SMTP_HOST / SMTP_USER / SMTP_PASS).");
   }
+  const parsed = parseCommunicationBody(d.body);
+  const text = parsed.text;
+  const html =
+    parsed.html ?? customerLayout(d.tenantName, text);
   const t = getTransporter();
   const info = await t.sendMail({
     from: FROM,
     to: d.to,
     subject: d.subject,
-    text: d.body,
-    html: customerLayout(d.tenantName, d.body),
+    text,
+    html,
   });
   console.log(`[Email] Sent customer message "${d.subject}" → ${d.to}`);
   return { messageId: String(info.messageId ?? "") };

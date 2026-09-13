@@ -19,3 +19,5 @@ Customer identity, booking snapshots and history: [reservations/customer-records
 Mode-aware New reservation discovery: [reservations/mode-aware-discovery.md](reservations/mode-aware-discovery.md).
 
 Track A operational and commercial read model: [reporting-minimum.md](reporting-minimum.md).
+
+Catalog Schedules IA and product editor tables/modals: [catalog-schedules-ia.md](catalog-schedules-ia.md).

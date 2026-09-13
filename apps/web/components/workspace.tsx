@@ -64,6 +64,16 @@ import { CrewWorkspace } from "./crew";
 let retainedSession: Session | null = null;
 let retainedTenants: DemoTenant[] = [];
 
+function clientRetainedSession() {
+  // Module retention is browser-only. Reading it during SSR leaks one request's
+  // session into the next and causes hydration mismatches after logout/refresh.
+  return typeof window !== "undefined" ? retainedSession : null;
+}
+
+function clientRetainedTenants() {
+  return typeof window !== "undefined" ? retainedTenants : [];
+}
+
 function normalizeBootstrap(value: Session | null): Session | null {
   if (!value) return null;
   return {
@@ -167,16 +177,23 @@ export function Workspace({
   initialTenants?: DemoTenant[];
 } = {}) {
   const [session, setSessionState] = useState<Session | null>(() => {
-    const seed = retainedSession ?? normalizeBootstrap(initialSession);
-    retainedSession = seed;
+    const seed =
+      clientRetainedSession() ?? normalizeBootstrap(initialSession);
+    if (typeof window !== "undefined") retainedSession = seed;
     return seed;
   }),
     [tenants, setTenantsState] = useState<DemoTenant[]>(() => {
-      const seed = retainedTenants.length ? retainedTenants : initialTenants;
-      retainedTenants = seed;
+      const retained = clientRetainedTenants();
+      const seed = retained.length ? retained : initialTenants;
+      if (typeof window !== "undefined") retainedTenants = seed;
       return seed;
     }),
-    [loading, setLoading] = useState(() => !Boolean(retainedSession ?? initialSession)),
+    [loading, setLoading] = useState(
+      () =>
+        !Boolean(
+          clientRetainedSession() ?? normalizeBootstrap(initialSession),
+        ),
+    ),
     [error, setError] = useState(""),
     [menu, setMenu] = useState(false),
     [accountMenu, setAccountMenu] = useState(false),
@@ -234,7 +251,9 @@ export function Workspace({
     }
   };
   useEffect(() => {
-    void load({ silent: Boolean(retainedSession ?? initialSession) });
+    void load({
+      silent: Boolean(clientRetainedSession() ?? initialSession),
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
@@ -339,6 +358,20 @@ export function Workspace({
         signIn={select}
       />
     );
+  // After sign-in, session is set before router.replace("/") settles. Avoid a
+  // one-frame "This page is not available" flash on /login and related routes.
+  if (
+    path === "/login" ||
+    path === "/activate" ||
+    path === "/forgot-password" ||
+    path === "/reset-password"
+  ) {
+    return (
+      <main className="workspace-boot" aria-busy="true">
+        <Loading />
+      </main>
+    );
+  }
   const can = (permission: string) =>
     permission === "authenticated" || session.permissions.includes(permission);
   const canOpen = (href: string, permission: string) => {

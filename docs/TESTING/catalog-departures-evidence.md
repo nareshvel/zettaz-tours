@@ -33,6 +33,22 @@
 - Departures defaults to the next 14 local days and exposes the existing date/product filters. Agenda rows open the manifest. Week view is a Monday–Sunday grid for the selected range, not a horizontal dump of occupied days. Phone list uses cards.
 - Catalog and Departures summaries show real zeros after load. Product cards show price-from and a shared mode label. Archived products are hidden from New reservation discovery.
 
+## Add schedule page redesign — 12 September 2026
+
+- `/catalog/availability/new` retitled **Add schedule** with plain-language sections (Tour → Dates & time → Days → Seats → Closed dates).
+- Desktop (≥1367): two-column form + sticky live preview with mirrored Create CTA. Narrower widths: summary strip under the heading; sticky Cancel/Create on phone.
+- Weekday presets are a segmented control; blackouts remain optional with an empty-state line.
+- Local browser checks: empty tour, filled form, closed dates (90→89), Create disabled at 0 days, `?product=` preselect, no horizontal overflow at 390 and 1440.
+
+## Catalog Schedules IA — 12 September 2026
+
+- Locked decisions: [catalog-schedules-ia.md](../FEATURES/catalog-schedules-ia.md).
+- Catalog tabs renamed to Products | Schedules; product Schedule action opens `/catalog?tab=schedules&product=:id`.
+- Product editor: passenger categories and seasonal rates use table + FormDialog; seasonal delete checks rate-window usage.
+- Schedule create uses FormDialog (name, multi start times, hybrid calendar). Full-page `/catalog/availability/new` redirects into the Schedules tab modal.
+- Migration 062 adds `availability_rules.name`; create accepts `localTimes[]`.
+- Schedules tab list polish: [schedules-tab.md](../MODULES/Catalog/schedules-tab.md) — search/product/status filters, desktop table + phone cards, pause/resume.
+
 ## Deliberate next increments
 
 The normalized model recognizes `opening_hours`, `open_dated`, `on_request`, and `resource_window`. Their booking engines and specialized availability editors remain separate bounded increments; the application does not silently treat them as fixed departures. Versioned rate/option editing, one-off departures, and resource-conflict enforcement remain subsequent Catalog increments.

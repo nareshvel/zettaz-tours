@@ -292,6 +292,8 @@ export function FormDialog({
   error,
   submitLabel = "Save",
   cancelLabel = "Cancel",
+  submitDisabled = false,
+  className,
   onSubmit,
   onClose,
 }: {
@@ -303,6 +305,8 @@ export function FormDialog({
   error?: string | null;
   submitLabel?: string;
   cancelLabel?: string;
+  submitDisabled?: boolean;
+  className?: string;
   onSubmit: () => void | Promise<void>;
   onClose: () => void;
 }) {
@@ -331,7 +335,10 @@ export function FormDialog({
         }}
       />
       <form
-        className="panel confirm-dialog-sheet form-dialog-sheet"
+        className={
+          "panel confirm-dialog-sheet form-dialog-sheet" +
+          (className ? ` ${className}` : "")
+        }
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -367,7 +374,11 @@ export function FormDialog({
             >
               {cancelLabel}
             </button>
-            <button type="submit" className="button" disabled={busy}>
+            <button
+              type="submit"
+              className="button"
+              disabled={busy || submitDisabled}
+            >
               {busy ? "Working…" : submitLabel}
             </button>
           </div>
@@ -454,6 +465,7 @@ export function TenantDateInput({
   min,
   max,
   compact,
+  disabled,
 }: {
   label: string;
   value: string;
@@ -463,11 +475,14 @@ export function TenantDateInput({
   min?: string;
   max?: string;
   compact?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <label
       className={
-        (compact ? "compact-control" : "field") + " tenant-date-control"
+        (compact ? "compact-control" : "field") +
+        " tenant-date-control" +
+        (disabled ? " is-disabled" : "")
       }
     >
       <span>{caption}</span>
@@ -478,6 +493,7 @@ export function TenantDateInput({
           value={value}
           min={min}
           max={max}
+          disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
         />
         <span aria-hidden="true">

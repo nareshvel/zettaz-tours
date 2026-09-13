@@ -310,6 +310,12 @@ const routes: [string, string, z.ZodType | null, string][] = [
   ],
   ["/admin/v1/products", "get", null, "List up to 100 products"],
   [
+    "/admin/v1/products/{id}/rate-window-usage",
+    "get",
+    null,
+    "Count open holds and non-cancelled bookings in a seasonal rate date window",
+  ],
+  [
     "/admin/v1/schedules",
     "post",
     scheduleSchema,

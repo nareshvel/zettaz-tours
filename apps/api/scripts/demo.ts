@@ -158,6 +158,7 @@ async function main() {
         timezone: "America/Antigua",
         ownerName: "Mock Owner",
         ownerEmail: `${slug}@example.invalid`,
+        country: "AG",
         config,
       });
       const token = await issueSession(admin, t.ownerId, t.tenantId);
@@ -169,10 +170,11 @@ async function main() {
         const product = await post("/admin/v1/products", token, input);
         const schedule = await post("/admin/v1/schedules", token, {
           productId: product.productId,
+          name: "Schedule",
           startDate: date,
           endDate: date,
           weekdays: [1, 2, 3, 4, 5, 6, 7],
-          localTime: `${String(9 + index).padStart(2, "0")}:00`,
+          localTimes: [`${String(9 + index).padStart(2, "0")}:00`],
           capacity: 18,
           blackoutDates: [],
         });

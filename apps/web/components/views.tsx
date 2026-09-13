@@ -522,14 +522,61 @@ function ReservationTable({
     </div>
   );
 }
+
+function tenantDay(timezone: string, date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+function shiftDay(day: string, days: number) {
+  const date = new Date(`${day}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+function mondayOf(day: string) {
+  const date = new Date(`${day}T12:00:00Z`);
+  const weekday = date.getUTCDay();
+  return shiftDay(day, weekday === 0 ? -6 : 1 - weekday);
+}
+function sundayOf(day: string) {
+  return shiftDay(mondayOf(day), 6);
+}
+function monthBounds(day: string): [string, string] {
+  const [year, month] = day.split("-").map(Number);
+  const start = `${year}-${String(month).padStart(2, "0")}-01`;
+  const last = new Date(Date.UTC(year!, month!, 0)).getUTCDate();
+  const end = `${year}-${String(month).padStart(2, "0")}-${String(last).padStart(2, "0")}`;
+  return [start, end];
+}
+type DateRangePreset = "today" | "week" | "month" | "custom";
+function rangeBounds(
+  preset: DateRangePreset,
+  today: string,
+  customFrom: string,
+  customTo: string,
+): [string, string] {
+  if (preset === "today") return [today, today];
+  if (preset === "week") return [mondayOf(today), sundayOf(today)];
+  if (preset === "month") return monthBounds(today);
+  return [customFrom || today, customTo || today];
+}
+
 export function Reservations({ session }: { session: Session }) {
+  const today = tenantDay(session.tenant.timezone);
+  const weekStart = mondayOf(today);
+  const weekEnd = sundayOf(today);
   const [search, setSearch] = useState("");
   const [state, setState] = useState("");
   const [source, setSource] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [range, setRange] = useState<DateRangePreset>("month");
+  const [customFrom, setCustomFrom] = useState(today);
+  const [customTo, setCustomTo] = useState(shiftDay(today, 13));
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
+  const [from, to] = rangeBounds(range, today, customFrom, customTo);
   const filters = { state, source, from, to };
   const list = usePaged<Reservation>(
     "staff/v1/workspace/reservations",
@@ -567,12 +614,29 @@ export function Reservations({ session }: { session: Session }) {
     0,
   );
   const currencies = [...new Set(list.items.map((item) => item.currency))];
-  const activeFilters = [state, source, from, to].filter(Boolean).length;
+  const activeFilters =
+    (state ? 1 : 0) + (source ? 1 : 0) + (range === "month" ? 0 : 1);
+  const rangeLabel =
+    range === "today"
+      ? "Today"
+      : range === "week"
+        ? "This week"
+        : range === "month"
+          ? "This month"
+          : "Custom range";
+  function selectRange(next: DateRangePreset) {
+    setRange(next);
+    if (next === "custom") {
+      setCustomFrom(from);
+      setCustomTo(to);
+    }
+  }
   const clearFilters = () => {
     setState("");
     setSource("");
-    setFrom("");
-    setTo("");
+    setRange("month");
+    setCustomFrom(today);
+    setCustomTo(shiftDay(today, 13));
   };
   const resetView = () => {
     setSearch("");
@@ -658,9 +722,10 @@ export function Reservations({ session }: { session: Session }) {
                   <div className="filter-popover-head">
                     <strong>Filters</strong>
                     <span>
+                      {rangeLabel}
                       {activeFilters
-                        ? `${activeFilters} active`
-                        : "None applied"}
+                        ? ` · ${activeFilters} active`
+                        : ""}
                     </span>
                   </div>
                   <label className="compact-control">
@@ -689,34 +754,76 @@ export function Reservations({ session }: { session: Session }) {
                             item !== "viator" && item !== "get_your_guide",
                         )
                         .map((item) => (
-                        <option key={item} value={item}>
-                          {item === "partner_reseller"
-                            ? "Partner / reseller"
-                            : label(item)}
-                        </option>
-                      ))}
+                          <option key={item} value={item}>
+                            {item === "partner_reseller"
+                              ? "Partner / reseller"
+                              : label(item)}
+                          </option>
+                        ))}
                     </select>
                   </label>
-                  <div className="filter-custom-range">
-                    <TenantDateInput
-                      label="From"
-                      value={from}
-                      max={to || undefined}
-                      onChange={setFrom}
-                      locale={session.tenant.config.locale}
-                      dateFormat={session.tenant.config.dateFormat}
-                      compact
-                    />
-                    <TenantDateInput
-                      label="To"
-                      value={to}
-                      min={from || undefined}
-                      onChange={setTo}
-                      locale={session.tenant.config.locale}
-                      dateFormat={session.tenant.config.dateFormat}
-                      compact
-                    />
+                  <div className="compact-control">
+                    <span>Date range</span>
+                    <div
+                      className="filter-range-options"
+                      role="radiogroup"
+                      aria-label="Date range"
+                    >
+                      {(
+                        [
+                          ["today", "Today"],
+                          ["week", "This week"],
+                          ["month", "This month"],
+                          ["custom", "Custom range"],
+                        ] as const
+                      ).map(([value, caption]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          role="radio"
+                          aria-checked={range === value}
+                          className={
+                            "filter-range-option" +
+                            (range === value ? " selected" : "")
+                          }
+                          onClick={() => selectRange(value)}
+                        >
+                          {caption}
+                        </button>
+                      ))}
+                    </div>
                   </div>
+                  {range === "custom" && (
+                    <div className="filter-custom-range">
+                      <TenantDateInput
+                        label="From"
+                        value={customFrom}
+                        max={customTo || undefined}
+                        onChange={setCustomFrom}
+                        locale={session.tenant.config.locale}
+                        dateFormat={session.tenant.config.dateFormat}
+                        compact
+                      />
+                      <TenantDateInput
+                        label="To"
+                        value={customTo}
+                        min={customFrom || undefined}
+                        onChange={setCustomTo}
+                        locale={session.tenant.config.locale}
+                        dateFormat={session.tenant.config.dateFormat}
+                        compact
+                      />
+                    </div>
+                  )}
+                  {range !== "custom" && (
+                    <p className="filter-range-hint muted">
+                      {range === "today"
+                        ? today
+                        : range === "week"
+                          ? `${weekStart} – ${weekEnd}`
+                          : `${monthBounds(today)[0]} – ${monthBounds(today)[1]}`}
+                    </p>
+                  )}
                   <div className="filter-popover-actions">
                     <button
                       type="button"
@@ -824,46 +931,6 @@ export function Reservations({ session }: { session: Session }) {
   );
 }
 
-function tenantDay(timezone: string, date = new Date()) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-}
-function shiftDay(day: string, days: number) {
-  const date = new Date(`${day}T12:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-function mondayOf(day: string) {
-  const date = new Date(`${day}T12:00:00Z`);
-  const weekday = date.getUTCDay();
-  return shiftDay(day, weekday === 0 ? -6 : 1 - weekday);
-}
-function sundayOf(day: string) {
-  return shiftDay(mondayOf(day), 6);
-}
-function monthBounds(day: string): [string, string] {
-  const [year, month] = day.split("-").map(Number);
-  const start = `${year}-${String(month).padStart(2, "0")}-01`;
-  const last = new Date(Date.UTC(year!, month!, 0)).getUTCDate();
-  const end = `${year}-${String(month).padStart(2, "0")}-${String(last).padStart(2, "0")}`;
-  return [start, end];
-}
-type DepartureRange = "today" | "week" | "month" | "custom";
-function rangeBounds(
-  preset: DepartureRange,
-  today: string,
-  customFrom: string,
-  customTo: string,
-): [string, string] {
-  if (preset === "today") return [today, today];
-  if (preset === "week") return [mondayOf(today), sundayOf(today)];
-  if (preset === "month") return monthBounds(today);
-  return [customFrom || today, customTo || today];
-}
 function departureClock(
   startsAt: string,
   timezone: string,
@@ -883,7 +950,7 @@ export function Departures({ session }: { session: Session }) {
   const weekStart = mondayOf(today);
   const weekEnd = sundayOf(today);
   const [productId, setProductId] = useState(""),
-    [range, setRange] = useState<DepartureRange>("today"),
+    [range, setRange] = useState<DateRangePreset>("today"),
     [customFrom, setCustomFrom] = useState(today),
     [customTo, setCustomTo] = useState(shiftDay(today, 13)),
     [filtersOpen, setFiltersOpen] = useState(false),
@@ -937,7 +1004,7 @@ export function Departures({ session }: { session: Session }) {
     setCustomTo(shiftDay(today, 13));
     setFiltersOpen(false);
   }
-  function selectRange(next: DepartureRange) {
+  function selectRange(next: DateRangePreset) {
     setRange(next);
     if (next === "custom") {
       setCustomFrom(from);

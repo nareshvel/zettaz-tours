@@ -10,9 +10,11 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from "@nestjs/common";
 import { DateTime } from "luxon";
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import {
   Actor,
   ProductInput,
@@ -26,6 +28,14 @@ import { Database, record, Tx } from "./database";
 import { LimitsService } from "./limits";
 import { Access, CurrentActor, keySchema, parse } from "./http";
 import { tenant } from "./tenant";
+
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const rateWindowUsageQuerySchema = z
+  .object({
+    startDate: day,
+    endDate: day,
+  })
+  .strict();
 
 const productSelect = `
 SELECT p.id,p.name,p.definition,p.version,p.internal_name,p.customer_title,
@@ -41,7 +51,7 @@ LEFT JOIN availability_rules a ON a.tenant_id=o.tenant_id AND a.option_id=o.id
 LEFT JOIN departures d ON d.tenant_id=o.tenant_id AND d.option_id=o.id`;
 
 const ruleSelect = `
-SELECT ar.id,ar.version,ar.mode,ar.status,to_char(ar.start_date,'YYYY-MM-DD') start_date,
+SELECT ar.id,ar.name,ar.version,ar.mode,ar.status,to_char(ar.start_date,'YYYY-MM-DD') start_date,
        to_char(ar.end_date,'YYYY-MM-DD') end_date,ar.weekdays,ar.capacity,
        ar.timezone,ar.minimum_notice_minutes,ar.cutoff_minutes,p.id product_id,
        p.name product_name,p.availability_mode product_availability_mode,
@@ -51,7 +61,8 @@ SELECT ar.id,ar.version,ar.mode,ar.status,to_char(ar.start_date,'YYYY-MM-DD') st
        COALESCE((SELECT array_agg(to_char(e.local_date,'YYYY-MM-DD') ORDER BY e.local_date)
          FROM availability_exceptions e WHERE e.tenant_id=ar.tenant_id AND e.rule_id=ar.id AND e.kind='closed'),'{}') blackouts,
        (SELECT count(*)::int FROM departures d WHERE d.tenant_id=ar.tenant_id
-         AND d.availability_rule_id=ar.id AND d.starts_at >= clock_timestamp()) upcoming_departures
+         AND d.availability_rule_id=ar.id AND d.starts_at >= clock_timestamp()
+         AND d.status='scheduled' AND d.operational_status='open') upcoming_departures
 FROM availability_rules ar
 JOIN product_options o ON o.tenant_id=ar.tenant_id AND o.id=ar.option_id
 JOIN products p ON p.tenant_id=o.tenant_id AND p.id=o.product_id`;
@@ -144,6 +155,7 @@ export class CatalogService {
     if (end < start || end.diff(start, "days").days > 365)
       throw new BadRequestException("Schedule must span 0–365 days");
     data.blackoutDates.forEach(validDay);
+    const localTimes = [...new Set(data.localTimes)];
     return this.db.command(actor, "schedule.create", key, data, async (tx) => {
       const settings = await tenant(tx, actor);
       const option = (await tx.query(
@@ -162,20 +174,32 @@ export class CatalogService {
         actor.tenantId,
         scheduleId,
         data.productId,
-        data,
+        { ...data, localTimes },
       ]);
       const ruleId = randomUUID();
       await tx.query(
         `INSERT INTO availability_rules
-           (tenant_id,id,option_id,schedule_id,mode,start_date,end_date,weekdays,capacity,timezone)
-         VALUES($1,$2,$3,$4,'fixed_departure',$5,$6,$7,$8,$9)`,
-        [actor.tenantId, ruleId, option.id, scheduleId, data.startDate, data.endDate, data.weekdays, data.capacity, settings.timezone],
+           (tenant_id,id,option_id,schedule_id,mode,start_date,end_date,weekdays,capacity,timezone,name)
+         VALUES($1,$2,$3,$4,'fixed_departure',$5,$6,$7,$8,$9,$10)`,
+        [
+          actor.tenantId,
+          ruleId,
+          option.id,
+          scheduleId,
+          data.startDate,
+          data.endDate,
+          data.weekdays,
+          data.capacity,
+          settings.timezone,
+          data.name,
+        ],
       );
-      await tx.query(
-        `INSERT INTO availability_rule_times(tenant_id,id,rule_id,local_time)
-         VALUES($1,$2,$3,$4)`,
-        [actor.tenantId, randomUUID(), ruleId, data.localTime],
-      );
+      for (const [sortOrder, localTime] of localTimes.entries())
+        await tx.query(
+          `INSERT INTO availability_rule_times(tenant_id,id,rule_id,local_time,sort_order)
+           VALUES($1,$2,$3,$4,$5)`,
+          [actor.tenantId, randomUUID(), ruleId, localTime, sortOrder],
+        );
       for (const date of data.blackoutDates)
         await tx.query(
           `INSERT INTO availability_exceptions(tenant_id,id,rule_id,local_date)
@@ -190,46 +214,83 @@ export class CatalogService {
           data.blackoutDates.includes(localDate)
         )
           continue;
-        const local = `${localDate}T${data.localTime}`;
-        const zoned = DateTime.fromISO(local, { zone: settings.timezone });
-        if (
-          !zoned.isValid ||
-          zoned.toFormat("yyyy-MM-dd'T'HH:mm") !== local ||
-          zoned.getPossibleOffsets().length !== 1
-        )
-          throw new BadRequestException(
-            "Ambiguous or nonexistent local departure time",
+        for (const localTime of localTimes) {
+          const local = `${localDate}T${localTime}`;
+          const zoned = DateTime.fromISO(local, { zone: settings.timezone });
+          if (
+            !zoned.isValid ||
+            zoned.toFormat("yyyy-MM-dd'T'HH:mm") !== local ||
+            zoned.getPossibleOffsets().length !== 1
+          )
+            throw new BadRequestException(
+              "Ambiguous or nonexistent local departure time",
+            );
+          const departureId = randomUUID(),
+            startsAt = zoned.toUTC().toISO()!;
+          await tx.query(
+            `INSERT INTO departures
+               (tenant_id,id,product_id,schedule_id,starts_at,local_date,capacity,option_id,availability_rule_id,ends_at)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$5::timestamptz + make_interval(mins => $10))`,
+            [
+              actor.tenantId,
+              departureId,
+              data.productId,
+              scheduleId,
+              startsAt,
+              localDate,
+              data.capacity,
+              option.id,
+              ruleId,
+              option.duration_minutes,
+            ],
           );
-        const departureId = randomUUID(),
-          startsAt = zoned.toUTC().toISO()!;
-        await tx.query(
-          `INSERT INTO departures
-             (tenant_id,id,product_id,schedule_id,starts_at,local_date,capacity,option_id,availability_rule_id,ends_at)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$5::timestamptz + make_interval(mins => $10))`,
-          [
-            actor.tenantId,
-            departureId,
-            data.productId,
-            scheduleId,
+          await record(tx, actor, "departure.created", departureId, null, {
+            productId: data.productId,
             startsAt,
-            localDate,
-            data.capacity,
-            option.id,
-            ruleId,
-            option.duration_minutes,
-          ],
-        );
-        await record(tx, actor, "departure.created", departureId, null, {
-          productId: data.productId,
-          startsAt,
-          capacity: data.capacity,
-        });
-        departures.push({ departureId, startsAt });
+            capacity: data.capacity,
+          });
+          departures.push({ departureId, startsAt });
+        }
       }
       if (!departures.length)
         throw new BadRequestException("Schedule generates no departures");
-      await record(tx, actor, "schedule.created", scheduleId, null, data);
+      await record(tx, actor, "schedule.created", scheduleId, null, {
+        ...data,
+        localTimes,
+      });
       return { scheduleId, ruleId, departures };
+    });
+  }
+  rateWindowUsage(actor: Actor, productId: string, startDate: string, endDate: string) {
+    validDay(startDate);
+    validDay(endDate);
+    if (startDate > endDate)
+      throw new BadRequestException("Rate window start must be on or before end");
+    return this.db.transaction(actor, async (tx) => {
+      const {
+        rows: [product],
+      } = await tx.query(
+        "SELECT id FROM products WHERE tenant_id=$1 AND id=$2",
+        [actor.tenantId, productId],
+      );
+      if (!product) throw new NotFoundException();
+      const {
+        rows: [row],
+      } = await tx.query(
+        `SELECT
+           (SELECT COUNT(*)::int FROM holds h
+              JOIN departures d ON d.tenant_id=h.tenant_id AND d.id=h.departure_id
+             WHERE d.tenant_id=$1 AND d.product_id=$2
+               AND d.local_date BETWEEN $3::date AND $4::date
+               AND NOT h.consumed AND h.expires_at>clock_timestamp()) AS holds,
+           (SELECT COUNT(*)::int FROM bookings b
+              JOIN departures d ON d.tenant_id=b.tenant_id AND d.id=b.departure_id
+             WHERE d.tenant_id=$1 AND d.product_id=$2
+               AND d.local_date BETWEEN $3::date AND $4::date
+               AND b.state <> 'cancelled') AS bookings`,
+        [actor.tenantId, productId, startDate, endDate],
+      );
+      return { holds: row?.holds ?? 0, bookings: row?.bookings ?? 0 };
     });
   }
   updateProduct(actor: Actor, productId: string, key: string, input: unknown) {
@@ -368,6 +429,20 @@ export class CatalogService {
   }
   updateRule(actor: Actor, ruleId: string, key: string, input: unknown) {
     const data = parse(availabilityRuleUpdateSchema, input);
+    const regenerating = Boolean(
+      data.startDate ||
+        data.endDate ||
+        data.weekdays ||
+        data.localTimes ||
+        data.capacity != null ||
+        data.blackoutDates,
+    );
+    if (data.startDate) validDay(data.startDate);
+    if (data.endDate) validDay(data.endDate);
+    data.blackoutDates?.forEach(validDay);
+    const localTimes = data.localTimes
+      ? [...new Set(data.localTimes)]
+      : undefined;
     return this.db.command(
       actor,
       "availability-rule.update",
@@ -378,25 +453,322 @@ export class CatalogService {
         const {
           rows: [before],
         } = await tx.query(
-          "SELECT id,status,version FROM availability_rules WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
+          `SELECT ar.id,ar.name,ar.status,ar.version,ar.schedule_id,ar.option_id,
+                  to_char(ar.start_date,'YYYY-MM-DD') start_date,
+                  to_char(ar.end_date,'YYYY-MM-DD') end_date,
+                  ar.weekdays,ar.capacity,ar.timezone,p.id product_id,
+                  o.duration_minutes
+             FROM availability_rules ar
+             JOIN product_options o ON o.tenant_id=ar.tenant_id AND o.id=ar.option_id
+             JOIN products p ON p.tenant_id=o.tenant_id AND p.id=o.product_id
+            WHERE ar.tenant_id=$1 AND ar.id=$2
+            FOR UPDATE OF ar`,
           [actor.tenantId, ruleId],
         );
         if (!before) throw new NotFoundException();
         if (before.version !== data.version)
           throw new ConflictException("Availability rule was updated by someone else");
+        if (data.status === "paused" && before.status !== "paused") {
+          const {
+            rows: [busy],
+          } = await tx.query(
+            `SELECT EXISTS (
+               SELECT 1
+                 FROM bookings b
+                 JOIN departures d
+                   ON d.tenant_id = b.tenant_id AND d.id = b.departure_id
+                WHERE d.tenant_id = $1
+                  AND d.availability_rule_id = $2
+                  AND d.starts_at >= clock_timestamp()
+                  AND d.status = 'scheduled'
+                  AND b.state IN ('held','pending_payment','confirmed','disputed')
+             ) AS has_active`,
+            [actor.tenantId, ruleId],
+          );
+          if (busy?.has_active)
+            throw new BadRequestException(
+              "Cannot pause this schedule while it has active bookings on upcoming departures.",
+            );
+        }
+
+        const {
+          rows: currentTimes,
+        } = await tx.query(
+          `SELECT to_char(local_time,'HH24:MI') AS local_time
+             FROM availability_rule_times
+            WHERE tenant_id=$1 AND rule_id=$2
+            ORDER BY sort_order`,
+          [actor.tenantId, ruleId],
+        );
+        const {
+          rows: currentBlackouts,
+        } = await tx.query(
+          `SELECT to_char(local_date,'YYYY-MM-DD') AS local_date
+             FROM availability_exceptions
+            WHERE tenant_id=$1 AND rule_id=$2 AND kind='closed'`,
+          [actor.tenantId, ruleId],
+        );
+
+        const nextName = data.name?.trim() || before.name;
+        const nextStart = data.startDate ?? before.start_date;
+        const nextEnd = data.endDate ?? before.end_date;
+        const nextWeekdays = (
+          data.weekdays ?? (before.weekdays as number[])
+        ).map(Number);
+        const nextCapacity = data.capacity ?? before.capacity;
+        const nextTimes =
+          localTimes ??
+          currentTimes.map((row: { local_time: string }) => row.local_time);
+        const nextBlackouts =
+          data.blackoutDates ??
+          currentBlackouts.map((row: { local_date: string }) => row.local_date);
+
+        const start = validDay(nextStart);
+        const end = validDay(nextEnd);
+        if (end < start || end.diff(start, "days").days > 365)
+          throw new BadRequestException("Schedule must span 0–365 days");
+        if (!nextTimes.length)
+          throw new BadRequestException("At least one start time is required");
+        if (!nextWeekdays.length)
+          throw new BadRequestException("At least one weekday is required");
+
+        let added = 0;
+        let cancelled = 0;
+        let capacityUpdated = 0;
+        let revived = 0;
+
+        if (regenerating) {
+          const desired = new Map<
+            string,
+            { localDate: string; localTime: string; startsAt: string }
+          >();
+          for (let date = start; date <= end; date = date.plus({ days: 1 })) {
+            const localDate = date.toISODate()!;
+            if (
+              !nextWeekdays.includes(date.weekday) ||
+              nextBlackouts.includes(localDate)
+            )
+              continue;
+            for (const localTime of nextTimes) {
+              const local = `${localDate}T${localTime}`;
+              const zoned = DateTime.fromISO(local, {
+                zone: before.timezone,
+              });
+              if (
+                !zoned.isValid ||
+                zoned.toFormat("yyyy-MM-dd'T'HH:mm") !== local ||
+                zoned.getPossibleOffsets().length !== 1
+              )
+                throw new BadRequestException(
+                  "Ambiguous or nonexistent local departure time",
+                );
+              const startsAt = new Date(zoned.toUTC().toISO()!).toISOString();
+              if (zoned.toUTC() < DateTime.utc()) continue;
+              desired.set(startsAt, { localDate, localTime, startsAt });
+            }
+          }
+          if (!desired.size)
+            throw new BadRequestException(
+              "Schedule generates no upcoming departures",
+            );
+
+          const { rows: existing } = await tx.query(
+            `SELECT d.id,d.starts_at,d.local_date,d.capacity,d.status,d.operational_status,
+                    (d.committed+d.overbooked)::int AS sold,
+                    EXISTS (
+                      SELECT 1 FROM bookings b
+                       WHERE b.tenant_id=d.tenant_id AND b.departure_id=d.id
+                         AND b.state IN ('held','pending_payment','confirmed','disputed')
+                    ) AS has_booking,
+                    EXISTS (
+                      SELECT 1 FROM holds h
+                       WHERE h.tenant_id=d.tenant_id AND h.departure_id=d.id
+                         AND NOT h.consumed AND h.expires_at>clock_timestamp()
+                    ) AS has_hold
+               FROM departures d
+              WHERE d.tenant_id=$1 AND d.availability_rule_id=$2
+                AND d.starts_at >= clock_timestamp()
+              FOR UPDATE`,
+            [actor.tenantId, ruleId],
+          );
+
+          const byStarts = new Map<string, (typeof existing)[number]>();
+          for (const dep of existing) {
+            byStarts.set(new Date(dep.starts_at).toISOString(), dep);
+          }
+
+          for (const dep of existing) {
+            const keyAt = new Date(dep.starts_at).toISOString();
+            if (desired.has(keyAt)) continue;
+            if (dep.status === "cancelled") continue;
+            if (dep.has_booking || dep.has_hold)
+              throw new BadRequestException(
+                "Cannot remove upcoming departures that still have active bookings or holds. Rebook or cancel those first.",
+              );
+            await tx.query(
+              `UPDATE departures
+                  SET status='cancelled',operational_status='closed'
+                WHERE tenant_id=$1 AND id=$2`,
+              [actor.tenantId, dep.id],
+            );
+            await record(tx, actor, "departure.cancelled", dep.id, dep, {
+              reason: "removed-from-schedule",
+              ruleId,
+            });
+            cancelled += 1;
+          }
+
+          const blockedCapacity = existing.filter(
+            (dep) =>
+              desired.has(new Date(dep.starts_at).toISOString()) &&
+              dep.status === "scheduled" &&
+              Number(dep.sold) > nextCapacity,
+          );
+          if (blockedCapacity.length)
+            throw new BadRequestException(
+              `Cannot lower seat capacity to ${nextCapacity}: ${blockedCapacity.length} upcoming departure(s) already have more committed seats.`,
+            );
+
+          for (const slot of desired.values()) {
+            const existingDep = byStarts.get(slot.startsAt);
+            if (existingDep) {
+              if (
+                existingDep.status === "cancelled" ||
+                existingDep.operational_status !== "open"
+              ) {
+                await tx.query(
+                  `UPDATE departures
+                      SET status='scheduled',operational_status='open',capacity=$3,
+                          local_date=$4
+                    WHERE tenant_id=$1 AND id=$2`,
+                  [
+                    actor.tenantId,
+                    existingDep.id,
+                    nextCapacity,
+                    slot.localDate,
+                  ],
+                );
+                revived += 1;
+                continue;
+              }
+              if (Number(existingDep.capacity) !== nextCapacity) {
+                await tx.query(
+                  `UPDATE departures
+                      SET capacity=$3
+                    WHERE tenant_id=$1 AND id=$2`,
+                  [actor.tenantId, existingDep.id, nextCapacity],
+                );
+                capacityUpdated += 1;
+              }
+              continue;
+            }
+            const departureId = randomUUID();
+            await tx.query(
+              `INSERT INTO departures
+                 (tenant_id,id,product_id,schedule_id,starts_at,local_date,capacity,option_id,availability_rule_id,ends_at)
+               VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$5::timestamptz + make_interval(mins => $10))`,
+              [
+                actor.tenantId,
+                departureId,
+                before.product_id,
+                before.schedule_id,
+                slot.startsAt,
+                slot.localDate,
+                nextCapacity,
+                before.option_id,
+                ruleId,
+                before.duration_minutes,
+              ],
+            );
+            await record(tx, actor, "departure.created", departureId, null, {
+              productId: before.product_id,
+              startsAt: slot.startsAt,
+              capacity: nextCapacity,
+              ruleId,
+            });
+            added += 1;
+          }
+
+          await tx.query(
+            `DELETE FROM availability_rule_times WHERE tenant_id=$1 AND rule_id=$2`,
+            [actor.tenantId, ruleId],
+          );
+          for (const [sortOrder, localTime] of nextTimes.entries())
+            await tx.query(
+              `INSERT INTO availability_rule_times(tenant_id,id,rule_id,local_time,sort_order)
+               VALUES($1,$2,$3,$4,$5)`,
+              [actor.tenantId, randomUUID(), ruleId, localTime, sortOrder],
+            );
+          await tx.query(
+            `DELETE FROM availability_exceptions WHERE tenant_id=$1 AND rule_id=$2 AND kind='closed'`,
+            [actor.tenantId, ruleId],
+          );
+          for (const date of nextBlackouts)
+            await tx.query(
+              `INSERT INTO availability_exceptions(tenant_id,id,rule_id,local_date)
+               VALUES($1,$2,$3,$4)`,
+              [actor.tenantId, randomUUID(), ruleId, date],
+            );
+          await tx.query(
+            `UPDATE schedules
+                SET definition=$3
+              WHERE tenant_id=$1 AND id=$2`,
+            [
+              actor.tenantId,
+              before.schedule_id,
+              {
+                productId: before.product_id,
+                name: nextName,
+                startDate: nextStart,
+                endDate: nextEnd,
+                weekdays: nextWeekdays,
+                localTimes: nextTimes,
+                capacity: nextCapacity,
+                blackoutDates: nextBlackouts,
+              },
+            ],
+          );
+        }
+
         const {
           rows: [row],
         } = await tx.query(
           `UPDATE availability_rules
-              SET status=$3,version=version+1,updated_at=clock_timestamp()
+              SET status=$3,
+                  name=$5,
+                  start_date=$6,
+                  end_date=$7,
+                  weekdays=$8,
+                  capacity=$9,
+                  version=version+1,
+                  updated_at=clock_timestamp()
             WHERE tenant_id=$1 AND id=$2 AND version=$4
-          RETURNING id,status,version`,
-          [actor.tenantId, ruleId, data.status, data.version],
+          RETURNING id,name,status,version,
+                    to_char(start_date,'YYYY-MM-DD') start_date,
+                    to_char(end_date,'YYYY-MM-DD') end_date,
+                    weekdays,capacity`,
+          [
+            actor.tenantId,
+            ruleId,
+            data.status,
+            data.version,
+            nextName,
+            nextStart,
+            nextEnd,
+            nextWeekdays,
+            nextCapacity,
+          ],
         );
         if (!row)
           throw new ConflictException("Availability rule was updated by someone else");
-        await record(tx, actor, "availability-rule.updated", ruleId, before, data);
-        return row;
+        await record(tx, actor, "availability-rule.updated", ruleId, before, {
+          ...data,
+          impact: { added, cancelled, capacityUpdated, revived },
+        });
+        return {
+          ...row,
+          impact: { added, cancelled, capacityUpdated, revived },
+        };
       },
     );
   }
@@ -442,6 +814,17 @@ export class CatalogController {
           )
         ).rows,
     );
+  }
+  @Get("products/:id/rate-window-usage")
+  @Access("catalog.read")
+  rateWindowUsage(
+    @CurrentActor() a: Actor,
+    @Param("id") value: string,
+    @Query() query: unknown,
+  ) {
+    const productId = parse(id, value);
+    const { startDate, endDate } = parse(rateWindowUsageQuerySchema, query);
+    return this.service.rateWindowUsage(a, productId, startDate, endDate);
   }
   @Get("products/:id")
   @Access("catalog.read")
@@ -512,7 +895,9 @@ export class CatalogController {
                     AND NOT h.consumed AND h.expires_at>clock_timestamp()
                 ),0))::int AS available
          FROM departures d
-         WHERE d.tenant_id=$1 AND d.availability_rule_id=$2 AND d.starts_at >= clock_timestamp()
+         WHERE d.tenant_id=$1 AND d.availability_rule_id=$2
+           AND d.starts_at >= clock_timestamp()
+           AND d.status='scheduled'
          ORDER BY d.starts_at LIMIT 50`,
         [a.tenantId, ruleId],
       );

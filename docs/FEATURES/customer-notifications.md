@@ -4,6 +4,8 @@
 
 The application stores tenant-scoped, auditable email requests for booking confirmations, payment requests, waiver requests, and cancellations. A request captures the booking recipient, locale, subject, and rendered body at the time it is prepared. This preserves exactly what staff intended to communicate even if the booking or tenant profile later changes.
 
+Rendered bodies are rich HTML + plain-text snapshots (`{ "v": 1, "text", "html" }` in `notification_messages.body`) that include tour, departure time (tenant timezone), guests, status, pickup/stay when set, totals/paid/balance, and a QR code encoding the full booking UUID with a short reference display.
+
 Delivery uses the platform **SMTP_*** settings from `.env.development` / `.env.production` (same adapter as verification and recovery mail):
 
 | Status | Meaning |

@@ -392,7 +392,7 @@ async function main() {
       if (!owner) throw new Error(`Sample tenant ${seed.slug} has no owner`);
       if (seed.rockDemo) {
         await admin.query(
-          "UPDATE staff_users SET name='Rock Adventures Demo Owner',email='cloudadmin@zettaz.com' WHERE id=$1",
+          "UPDATE staff_users SET name='Rock Adventures Demo Owner',email='cloudadmin@zettaz.com',email_verified_at=COALESCE(email_verified_at,clock_timestamp()),signup_completed_at=COALESCE(signup_completed_at,clock_timestamp()) WHERE id=$1",
           [owner.actor_id],
         );
       }
@@ -530,10 +530,11 @@ async function main() {
         )
           await catalog.schedule(actor, key(), {
             productId: product.id,
+            name: "Schedule",
             startDate: day.toISODate(),
             endDate: day.plus({ days: 14 }).toISODate(),
             weekdays: [1, 2, 3, 4, 5, 6, 7],
-            localTime: `${String(9 + index * 2).padStart(2, "0")}:00`,
+            localTimes: [`${String(9 + index * 2).padStart(2, "0")}:00`],
             capacity: 18,
             blackoutDates: [],
           });
@@ -1043,6 +1044,14 @@ async function main() {
          SELECT actor_id,$2 FROM memberships WHERE tenant_id=$1
          ON CONFLICT(user_id) DO UPDATE SET password_hash=EXCLUDED.password_hash`,
         [tenantId, passwordHash],
+      );
+      // Demo staff must be loginable under email-verification gate.
+      await admin.query(
+        `UPDATE staff_users
+         SET email_verified_at = COALESCE(email_verified_at, clock_timestamp()),
+             signup_completed_at = COALESCE(signup_completed_at, clock_timestamp())
+         WHERE id IN (SELECT actor_id FROM memberships WHERE tenant_id=$1)`,
+        [tenantId],
       );
       const summary = (
         await admin.query(

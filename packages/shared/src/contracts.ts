@@ -330,19 +330,28 @@ export const productUpdateSchema = productSchema
     status: z.enum(["active", "archived"]),
   })
   .strict();
+const localTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 export const availabilityRuleUpdateSchema = z
   .object({
     version: z.number().int().positive(),
     status: z.enum(["active", "paused"]),
+    name: label.optional(),
+    startDate: day.optional(),
+    endDate: day.optional(),
+    weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7).optional(),
+    localTimes: z.array(localTime).min(1).max(12).optional(),
+    capacity: z.number().int().min(1).max(10000).optional(),
+    blackoutDates: z.array(day).max(366).optional(),
   })
   .strict();
 export const scheduleSchema = z
   .object({
     productId: id,
+    name: label,
     startDate: day,
     endDate: day,
     weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7),
-    localTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+    localTimes: z.array(localTime).min(1).max(12),
     capacity: z.number().int().min(1).max(10000),
     blackoutDates: z.array(day).max(366),
   })

@@ -205,6 +205,23 @@ export function dateOnly(
     .replace("MM", part("month"))
     .replace("YYYY", part("year"));
 }
+/** e.g. Sep 01, 2026 — for schedule periods and readable ranges */
+export function formatMediumDate(value: string, locale = "en") {
+  const date = new Date(value.length === 10 ? `${value}T12:00:00Z` : value);
+  return new Intl.DateTimeFormat(locale, {
+    timeZone: "UTC",
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+export function formatMediumDateRange(
+  start: string,
+  end: string,
+  locale = "en",
+) {
+  return `${formatMediumDate(start, locale)} - ${formatMediumDate(end, locale)}`;
+}
 export function digits(currency: string) {
   return (
     new Intl.NumberFormat("en", {

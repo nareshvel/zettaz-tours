@@ -58,6 +58,32 @@ Departure: 09:00 shared coastal tour. Seat capacity 18. Requirement: one 18-seat
 
 Unauthorized overbooking is confirming 19 seats against capacity 18 with no override. That is a launch-blocking defect. Confirming 19 with an authorized, reasoned audit event is allowed and is not a success-metric failure.
 
+## Fleet size vs seat capacity (open revisit)
+
+Operators often confuse **how many vehicles they own** with **how many seats a departure can sell**.
+
+Example: Tuk-Tuk Rainforest & Beach Hopping with **18 tuk-tuks** in the yard and **one shared product**.
+
+| Concept | Where it lives | What it controls |
+| --- | --- | --- |
+| Seat / party capacity on the schedule | Catalog → Schedules (`Departure.capacity`) | How many guest units multiple bookings can buy on that departure |
+| Fleet of tuk-tuks / boats / vans | Team & resources | Which assets can be assigned so the trip can run |
+
+**Track A rule of thumb**
+
+- One shared product + one departure time is enough for **many bookings**. Capacity is the seat pool; bookings decrement seats until the pool is exhausted.
+- The 18 vehicles are **resources**, not 18 products. Assign them on the departure for readiness.
+- Set schedule capacity to **total sellable guest units** for that departure (e.g. seats per tuk-tuk × tuk-tuks you will run), not automatically “18” just because there are 18 vehicles—unless the sellable unit is literally one vehicle-slot.
+- **One booking = one exclusive tuk-tuk** is a different inventory primitive (private / resource-window). Do not fake it as a shared tour with capacity `1`. That path stays Track B unless promoted.
+
+**Revisit when**
+
+- A real tenant needs multi-vehicle seat pools that sell-block when vehicles are exhausted (not only readiness).
+- A product must sell exclusive vehicles rather than shared seats.
+- Capacity must auto-derive from assigned resource capacities.
+
+Standing pointer: [../MODULES/Catalog/shared-capacity-vs-fleet.md](../MODULES/Catalog/shared-capacity-vs-fleet.md).
+
 ## Phase 1 pricing (Track A)
 
 v1.1 listed retail, child, infant, group, private, seasonal, channel, contract/net, promotion, add-on, pickup, and fee in the same breath. That is a multi-quarter engine. Track A implements only:

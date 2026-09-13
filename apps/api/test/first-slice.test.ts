@@ -55,6 +55,7 @@ async function setupTenant(slug: string, config = mockConfig) {
     timezone: "America/Antigua",
     ownerName: "Mock Owner",
     ownerEmail: `${slug}@example.invalid`,
+    country: "AG",
     config,
   });
   assert.equal(res.status, 201, JSON.stringify(res.body));
@@ -75,10 +76,11 @@ async function departure(
   const date = DateTime.utc().plus({ days: 10 }).toISODate();
   const s = await post("/admin/v1/schedules", token, {
     productId: p.body.productId,
+    name: "Schedule",
     startDate: date,
     endDate: date,
     weekdays: [1, 2, 3, 4, 5, 6, 7],
-    localTime: "09:00",
+    localTimes: ["09:00"],
     capacity,
     blackoutDates: [],
     ...overrides,
@@ -1313,10 +1315,11 @@ test("strict validation rejects unknown fields, bad rates, empty parties and dup
   const d = DateTime.utc().plus({ days: 20 }).toISODate(),
     body = {
       productId: dep.productId,
+      name: "Schedule",
       startDate: d,
       endDate: d,
       weekdays: [1, 2, 3, 4, 5, 6, 7],
-      localTime: "10:00",
+      localTimes: ["10:00"],
       capacity: 5,
       blackoutDates: [],
     },
@@ -1371,10 +1374,11 @@ test("catalog creation normalizes options, passenger units, rates and availabili
   assert.equal(requested.status, 201, JSON.stringify(requested.body));
   const fixedEditor = await post("/admin/v1/schedules", a.token, {
     productId: requested.body.productId,
+    name: "Schedule",
     startDate: DateTime.utc().plus({ days: 20 }).toISODate(),
     endDate: DateTime.utc().plus({ days: 21 }).toISODate(),
     weekdays: [1, 2, 3, 4, 5, 6, 7],
-    localTime: "10:00",
+    localTimes: ["10:00"],
     capacity: 1,
     blackoutDates: [],
   });
@@ -1491,9 +1495,81 @@ test("catalog product and availability rule can be opened and updated", async ()
   });
   assert.equal(paused.status, 200, JSON.stringify(paused.body));
   assert.equal(paused.body.status, "paused");
+  const resumed = await patch(`/admin/v1/availability-rules/${rule.id}`, a.token, {
+    version: paused.body.version,
+    status: "active",
+  });
+  assert.equal(resumed.status, 200, JSON.stringify(resumed.body));
+  await heldBooking(created.departureId);
+  const blocked = await patch(`/admin/v1/availability-rules/${rule.id}`, a.token, {
+    version: resumed.body.version,
+    status: "paused",
+  });
+  assert.equal(blocked.status, 400, JSON.stringify(blocked.body));
+  assert.match(
+    String(blocked.body.message ?? blocked.body.error ?? JSON.stringify(blocked.body)),
+    /active bookings/i,
+  );
   assert.equal(
     (await get(`/admin/v1/availability-rules/${rule.id}`, b.token)).status,
     404,
+  );
+});
+
+test("availability rule edit regenerates capacity and end date safely", async () => {
+  const created = await departure(a.token, 8);
+  const rules = await get("/admin/v1/availability-rules", a.token);
+  const rule = rules.body.find(
+    (item: { product_id: string }) => item.product_id === created.productId,
+  );
+  assert.ok(rule);
+  const detail = await get(`/admin/v1/availability-rules/${rule.id}`, a.token);
+  assert.equal(detail.status, 200, JSON.stringify(detail.body));
+  const longerEnd = DateTime.fromISO(detail.body.end_date, { zone: "UTC" })
+    .plus({ days: 3 })
+    .toISODate()!;
+  const extended = await patch(
+    `/admin/v1/availability-rules/${rule.id}`,
+    a.token,
+    {
+      version: detail.body.version,
+      status: "active",
+      name: detail.body.name,
+      startDate: detail.body.start_date,
+      endDate: longerEnd,
+      weekdays: detail.body.weekdays,
+      localTimes: detail.body.times,
+      capacity: 12,
+      blackoutDates: detail.body.blackouts ?? [],
+    },
+  );
+  assert.equal(extended.status, 200, JSON.stringify(extended.body));
+  assert.equal(extended.body.capacity, 12);
+  assert.equal(extended.body.end_date, longerEnd);
+  assert.ok(extended.body.impact.added >= 1);
+  assert.ok(extended.body.impact.capacityUpdated >= 1);
+
+  await heldBooking(created.departureId);
+  const onlyNewDay = longerEnd;
+  const blocked = await patch(
+    `/admin/v1/availability-rules/${rule.id}`,
+    a.token,
+    {
+      version: extended.body.version,
+      status: "active",
+      name: extended.body.name,
+      startDate: onlyNewDay,
+      endDate: onlyNewDay,
+      weekdays: extended.body.weekdays,
+      localTimes: extended.body.times,
+      capacity: 12,
+      blackoutDates: extended.body.blackouts ?? [],
+    },
+  );
+  assert.equal(blocked.status, 400, JSON.stringify(blocked.body));
+  assert.match(
+    String(blocked.body.message ?? JSON.stringify(blocked.body)),
+    /active bookings|holds/i,
   );
 });
 
@@ -1560,6 +1636,7 @@ test("recurring schedules reject DST gaps/ambiguities and honor blackout dates",
     timezone: "America/New_York",
     ownerName: "Mock Owner",
     ownerEmail: "dst@example.invalid",
+    country: "US",
     config: mockConfig,
   });
   assert.equal(ny.status, 201);
@@ -1575,9 +1652,10 @@ test("recurring schedules reject DST gaps/ambiguities and honor blackout dates",
     (
       await post("/admin/v1/schedules", token, {
         ...base,
+        name: "Schedule",
         startDate: "2030-03-10",
         endDate: "2030-03-10",
-        localTime: "02:30",
+        localTimes: ["02:30"],
       })
     ).status,
     400,
@@ -1586,9 +1664,10 @@ test("recurring schedules reject DST gaps/ambiguities and honor blackout dates",
     (
       await post("/admin/v1/schedules", token, {
         ...base,
+        name: "Schedule",
         startDate: "2030-11-03",
         endDate: "2030-11-03",
-        localTime: "01:30",
+        localTimes: ["01:30"],
       })
     ).status,
     400,
@@ -1597,18 +1676,20 @@ test("recurring schedules reject DST gaps/ambiguities and honor blackout dates",
     (
       await post("/admin/v1/schedules", token, {
         ...base,
+        name: "Schedule",
         startDate: "2030-02-30",
         endDate: "2030-02-30",
-        localTime: "09:00",
+        localTimes: ["09:00"],
       })
     ).status,
     400,
   );
   const valid = await post("/admin/v1/schedules", token, {
     ...base,
+    name: "Schedule",
     startDate: "2030-03-10",
     endDate: "2030-03-12",
-    localTime: "09:00",
+    localTimes: ["09:00"],
     blackoutDates: ["2030-03-11"],
   });
   assert.equal(valid.status, 201);
@@ -2092,10 +2173,11 @@ test("closure recovery previews affected bookings and reports each capacity-safe
   const travelDate = DateTime.utc().plus({ days: 11 }).toISODate();
   const targetSchedule = await post("/admin/v1/schedules", a.token, {
     productId: source.productId,
+    name: "Schedule",
     startDate: travelDate,
     endDate: travelDate,
     weekdays: [1, 2, 3, 4, 5, 6, 7],
-    localTime: "09:00",
+    localTimes: ["09:00"],
     capacity: 1,
     blackoutDates: [],
   });

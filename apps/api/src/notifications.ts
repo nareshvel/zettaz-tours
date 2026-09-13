@@ -12,6 +12,10 @@ import {
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Actor } from "../../../packages/shared/src/contracts";
+import {
+  renderCustomerBookingEmail,
+  type CustomerNotificationKind,
+} from "./customer-booking-email.js";
 import { Database, record } from "./database";
 import { sendCustomerMessage, smtpConfigured } from "./email";
 import { Access, CurrentActor, keySchema, parse } from "./http";
@@ -73,8 +77,25 @@ export class NotificationService {
       input,
       async (tx) => {
         const { rows: bookings } = await tx.query(
-          `SELECT b.id,b.lead_name,b.lead_email,b.state,t.name AS tenant_name,t.config
-           FROM bookings b JOIN tenants t ON t.id=b.tenant_id WHERE b.tenant_id=$1 AND b.id=$2`,
+          `SELECT b.id,b.lead_name,b.lead_email,b.state,b.pickup,b.stay,
+                  t.name AS tenant_name,t.config,
+                  p.name AS product_name,d.starts_at,
+                  h.party,h.quote->>'currency' AS currency,
+                  COALESCE((h.quote->>'totalMinor')::bigint,0)::bigint AS total_minor,
+                  COALESCE((
+                    SELECT SUM(pay.amount_minor) FROM payments pay
+                    WHERE pay.tenant_id=b.tenant_id AND pay.booking_id=b.id AND pay.status='settled'
+                      AND NOT EXISTS(
+                        SELECT 1 FROM payment_adjustments a
+                        WHERE a.tenant_id=pay.tenant_id AND a.payment_id=pay.id
+                      )
+                  ),0)::bigint AS paid_minor
+           FROM bookings b
+           JOIN tenants t ON t.id=b.tenant_id
+           JOIN departures d ON d.tenant_id=b.tenant_id AND d.id=b.departure_id
+           JOIN products p ON p.tenant_id=b.tenant_id AND p.id=d.product_id
+           JOIN holds h ON h.tenant_id=b.tenant_id AND h.id=b.hold_id
+           WHERE b.tenant_id=$1 AND b.id=$2`,
           [actor.tenantId, bookingId],
         );
         const booking = bookings[0];
@@ -84,24 +105,37 @@ export class NotificationService {
             "Booking has no guest email address for delivery.",
           );
         const locale = booking.config.locale ?? "en";
-        const copy = {
-          booking_confirmation: {
-            subject: `Booking confirmation from ${booking.tenant_name}`,
-            body: `Hello ${booking.lead_name}, your booking reference ${booking.id} is confirmed.`,
+        const timezone = booking.config.timezone ?? "UTC";
+        const email = await renderCustomerBookingEmail({
+          kind: input.kind as CustomerNotificationKind,
+          tenantName: booking.tenant_name as string,
+          timezone,
+          locale,
+          bookingId: booking.id as string,
+          state: booking.state as string,
+          leadName: booking.lead_name as string,
+          productName: booking.product_name as string,
+          startsAt: booking.starts_at as string | Date,
+          party: (booking.party ?? {}) as Record<string, number>,
+          currency: (booking.currency as string) || "USD",
+          totalMinor: Number(booking.total_minor ?? 0),
+          paidMinor: Number(booking.paid_minor ?? 0),
+          pickup: (booking.pickup ?? { kind: "none" }) as {
+            kind: string;
+            location?: string;
+            note?: string;
+            instructions?: string;
           },
-          payment_request: {
-            subject: `Payment request from ${booking.tenant_name}`,
-            body: `Hello ${booking.lead_name}, payment is requested for booking ${booking.id}. Please contact ${booking.tenant_name} for approved payment instructions.`,
+          stay: (booking.stay ?? { kind: "none" }) as {
+            kind: string;
+            vesselName?: string;
+            cabinNumber?: string;
+            hotelName?: string;
+            roomNumber?: string;
+            propertyName?: string;
+            address?: string;
           },
-          waiver_request: {
-            subject: `Waiver request from ${booking.tenant_name}`,
-            body: `Hello ${booking.lead_name}, please contact ${booking.tenant_name} to complete the waiver for booking ${booking.id}.`,
-          },
-          cancellation: {
-            subject: `Booking cancellation from ${booking.tenant_name}`,
-            body: `Hello ${booking.lead_name}, booking ${booking.id} has been cancelled. Please contact ${booking.tenant_name} with questions.`,
-          },
-        }[input.kind];
+        });
         const configured = smtpConfigured();
         const status = configured ? "queued" : "held_provider";
         const failureDetail = configured
@@ -114,7 +148,8 @@ export class NotificationService {
           channel: "email",
           recipient: booking.lead_email,
           locale,
-          ...copy,
+          subject: email.subject,
+          body: email.body,
           status,
           failure_detail: failureDetail,
           tenant_name: booking.tenant_name as string,

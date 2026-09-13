@@ -22,6 +22,8 @@ Keep under 200 lines. Update after sessions that change standing decisions.
 - **Three state machines.** Booking never means boarded. [../ARCHITECTURE/domain-and-states.md](../ARCHITECTURE/domain-and-states.md) wins on states.
 - **Track A pricing** is passenger category + seasonal calendar + one add-on + channel/contract override. Freeze `PriceSnapshot` on confirm.
 - **Shared tours first.** Do not fake private charters or transfers as shared-tour departures.
+- **Seat capacity ≠ fleet size.** Schedule capacity is the sellable seat pool for multiple bookings; tuk-tuks/boats live under Team & resources for assignment. See [../MODULES/Catalog/shared-capacity-vs-fleet.md](../MODULES/Catalog/shared-capacity-vs-fleet.md). Revisit only for exclusive-per-vehicle or sell-blocking multi-vehicle pools.
+- **Schedule edit regenerates upcoming departures** with booking/hold guards. See [../MODULES/Catalog/schedule-regenerate-on-edit.md](../MODULES/Catalog/schedule-regenerate-on-edit.md).
 - **Development data may be redesigned/reset.** No production tenants or bookings exist. Schema, migrations, and seeded demo bookings may be transformed or reset when a stronger tenant-neutral model or UX justifies it, provided migrations, seeds, tests, and docs move together. Freeze a non-destructive production baseline before onboarding. See [ADR 017](../DECISIONS/017-development-schema-reset-policy.md).
 - **WP Travel Engine stays** the public booking site through Track A.
 - **Payments never last-write-wins** on offline sync. Check-in events append. Assignments are server-authoritative.

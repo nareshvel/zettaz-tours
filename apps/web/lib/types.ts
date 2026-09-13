@@ -58,6 +58,7 @@ export type Product = {
 };
 export type AvailabilityRule = {
   id: string;
+  name?: string;
   version?: number;
   mode: string;
   status: string;

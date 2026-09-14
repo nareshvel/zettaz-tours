@@ -315,6 +315,11 @@ export type Manifest = {
     starts_at: string;
     capacity: number;
     product_name?: string;
+    trip_run_state?: string | null;
+    operational_status?: "open" | "weather_hold" | "closed";
+    operational_reason?: string;
+    operational_version?: number;
+    plan_version?: number | null;
   };
   itinerary: {
     id: string;
@@ -362,11 +367,15 @@ export type DispatchRow = {
   product_name: string;
   confirmed_bookings: number;
   confirmed_guests: number;
+  boarded_guests: number;
+  no_show_guests: number;
+  boarding_pending: number;
   pickup_required: number;
   pickup_planned: number;
   pickup_unresolved: number;
   plan_version: number | null;
   plan_notes: string | null;
+  trip_run_state: string | null;
   operational_status: "open" | "weather_hold" | "closed";
   operational_reason: string;
   operational_version: number;
@@ -413,6 +422,7 @@ export type PickupLocation = {
   active: boolean;
 };
 export type PickupPlan = {
+  departure: { id: string; starts_at: string; product_name: string };
   plan: { version: number; notes: string; updated_at: string } | null;
   stops: {
     booking_id: string;
@@ -428,6 +438,12 @@ export type PickupPlan = {
     booking_id: string;
     lead_name: string;
     pickup: Pickup;
+    party_size: number;
+  }[];
+  exceptions: {
+    booking_id: string;
+    lead_name: string;
+    pickup_kind: "selected" | "unresolved";
     party_size: number;
   }[];
 };

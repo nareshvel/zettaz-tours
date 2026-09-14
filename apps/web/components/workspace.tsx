@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   LayoutDashboard,
   Tickets,
@@ -208,7 +208,8 @@ export function Workspace({
     [showWelcome, setShowWelcome] = useState(false),
     [topbarDate, setTopbarDate] = useState("");
   const path = usePathname(),
-    router = useRouter();
+    router = useRouter(),
+    searchParams = useSearchParams();
   const setSession = (value: Session | null) => {
     retainedSession = value;
     setSessionState(value);
@@ -431,6 +432,29 @@ export function Workspace({
   );
   const segments = path.split("/").filter(Boolean),
     area = segments[0] ?? "overview";
+  const fromDayBoardManifest =
+    area === "departures" &&
+    segments[2] === "manifest" &&
+    searchParams.get("from") === "operations";
+  const operationsLeaf =
+    area === "operations" && segments[2] === "pickups"
+      ? "Plan pickups"
+      : area === "operations" && segments[2] === "pickup-list"
+        ? "Pickup list"
+        : area === "operations" && segments[2] === "rebook"
+          ? "Recovery"
+          : null;
+  const breadcrumbHref = fromDayBoardManifest
+    ? "/operations"
+    : operationsLeaf
+      ? "/operations"
+      : "/" + area;
+  const breadcrumbLabel = fromDayBoardManifest
+    ? "Day Board"
+    : operationsLeaf
+      ? "Day Board"
+      : (navigation.find((n) => n.href === "/" + area)?.name ?? "Overview");
+  const breadcrumbCurrent = operationsLeaf;
   let content: React.ReactNode;
   let permission = "bookings.read";
   if (
@@ -724,10 +748,17 @@ export function Workspace({
             <span>Workspace</span>
             <span>/</span>
             {segments.length > 1 && area !== "overview" ? (
-              <Link className="breadcrumb-link" href={"/" + area}>
-                {navigation.find((n) => n.href === "/" + area)?.name ??
-                  "Overview"}
-              </Link>
+              <>
+                <Link className="breadcrumb-link" href={breadcrumbHref}>
+                  {breadcrumbLabel}
+                </Link>
+                {breadcrumbCurrent ? (
+                  <>
+                    <span>/</span>
+                    <strong>{breadcrumbCurrent}</strong>
+                  </>
+                ) : null}
+              </>
             ) : (
               <strong>
                 {navigation.find((n) => n.href === "/" + area)?.name ??

@@ -2,7 +2,7 @@
 
 Keep under 200 lines. Update after sessions that change standing decisions.
 
-**Last updated:** 2026-09-12
+**Last updated:** 2026-09-14
 
 ## Standing decisions
 
@@ -57,11 +57,19 @@ See [../STRATEGY/delivery.md](../STRATEGY/delivery.md).
 - Confirm without guest payment for partner invoice/collect modes; boarding clearance matches that policy.
 - Web manifest: balance amount badge, Pay sheet for guest remainders, Waiver action after partner-settled arrival, returnTo from departures Book → confirm.
 - Next UI focus: finish **Subscription** messaging polish (row 17 — responsive plan grid + profile embedding done 11 September 2026). Profile polish + responsive flush follow-up implemented; short owner visual passes remaining for Profile, Subscription remainder, Tenant settings, and other polished surfaces.
-- **Nav IA (11 September 2026):** Operations group order is Day Board → Departures → Reservations → Catalog. Customers sits under Insights (read history for now). Guest check-in lives only on the Manifest; Day Board’s primary trip action is Board guests.
-- **Day Board polish (11 September 2026):** Weather hold / Close / Reopen and recovery apply use in-app `ConfirmDialog` (reason required for operational status). Day Board labels are Plan pickups vs Print pickup list; locations use FormDialog add/edit and ConfirmDialog delete; print list polished. Owner acceptance recorded in `docs/TESTING/day-board-polish-evidence.md`.
+- **Nav IA (11 September 2026):** Operations group order is Day Board → Departures → Reservations → Catalog. Customers sits under Insights (read history for now). Guest check-in lives only on the Manifest; Day Board trip actions are **View / Board** + **Start trip** (weather/close/pickups moved to Manifest Options, 14 September 2026).
+- **Day Board polish (11 September 2026):** Weather hold / Close / Reopen and recovery apply use in-app `ConfirmDialog` (reason required for operational status). Plan pickups vs Print pickup list labels; locations use FormDialog add/edit and ConfirmDialog delete; print list polished. Owner acceptance recorded in `docs/TESTING/day-board-polish-evidence.md`.
 - **Reservation detail polish (11 September 2026):** Always-visible money strip; Amend/Cancel as full buttons; cancel confirm dialog; sticky amend/cancel actions; tablet single-column booking grid; denser change history. Pay/confirm/quote contracts unchanged.
 - **Refresh flash fix (11 September 2026):** Hard refresh no longer flashes the public landing page. Pages SSR-bootstrap the session cookie via `loadWorkspaceBootstrap`; while session is unknown the app shows a neutral boot loader instead of Entry/landing.
 - **Manifest polish (11 September 2026):** Day Board return link, Board guests hierarchy on tablet/phone, balance-due metric, print/PDF kept on mobile. Boarding money contracts unchanged.
+- **Manifest gate toolbar (14 September 2026):** Three setup cards replaced with Search + Scan + Crew. Camera QR via `BarcodeDetector` when available; paste/search always work. Crew readiness is read-only. Pickup locations and itinerary edit stay off Manifest. See [../FEATURES/operations/manifest-boarding-toolbar.md](../FEATURES/operations/manifest-boarding-toolbar.md).
+- **Day Board copy (14 September 2026):** Removed the Plan pickups / Print / Manifest explainer notice on Day Board. **Close** stays sellability (weather/closed); do not replace with Start. Trip **Start** / no-show rules: [../FEATURES/operations/departure-start-and-no-shows.md](../FEATURES/operations/departure-start-and-no-shows.md).
+- **Start trip (14 September 2026):** `POST /ops/v1/departures/{id}/start` records trip-run `departed`, optionally marks remaining passengers no-show. Day Board CTA switches View / Board ↔ Start trip from boarding counts; Manifest header also offers Start. Evidence: [../TESTING/departure-start-evidence.md](../TESTING/departure-start-evidence.md).
+- **Day Board / Manifest IA (14 September 2026):** Status filter is one dropdown beside the date control. Trip card keeps **View / Board** + **Start trip** only. Manifest **Options** holds Weather hold / Close / Reopen, Pickup list, Plan pickups, and Recovery. Print/Download are icon-only across doc toolbars.
+- **Plan pickups Phase 1 (14 September 2026):** Header shows product + departure time + readiness metrics; Needs attention strip for unresolved / not-in-plan; smart Add (match selected location, seed times); Add all; reorder; per-stop notes; unsaved badge + print confirm. GET pickups now returns `departure` + `exceptions`.
+- **Pickup IA (14 September 2026):** Location CRUD moved to Settings → Pickup locations; Plan pickups is sequencing-only. Day Board drops redundant eyebrow; no Pickup Plans card button. Mental model: [../FEATURES/operations/pickup-disposition-and-plans.md](../FEATURES/operations/pickup-disposition-and-plans.md). Shared multi-product van runs deferred.
+- **Pickup location modal (14 September 2026):** Settings pickups/resellers tabs render outside the tenant-config `<form>`; FormDialog/ConfirmDialog portal to `document.body` (fixes nested-form hydration). Modal sections Identity / Location / Operations; hyphenated codes; Open in Maps + fill map URL from coords; **Leaflet pin preview on Esri World Street Map** (no API key; click to place). Places/routing deferred (ADR 012).
+- **Print pickup list (14 September 2026):** Matches Plan pickups header/metrics/Needs attention; driver sequence cards (no duplicate desktop table). Seed creates four planned stops plus unresolved + not-in-plan guests on the rolling demo day.
 - **Finance polish (11 September 2026):** Partner collections metrics, accept/reject confirm dialog, currency tags, mobile statement cards. Claim decision API unchanged.
 - **Reports polish (11 September 2026):** Departure-date presets, currency/timezone basis copy, exception emphasis, mobile daily cards. Report API unchanged.
 - **Team & resources polish (11 September 2026):** Tabbed Crew/Resources/Documents/Assignments layout (Catalog view-action-bar pattern); metrics + expiry callout; FormDialog create/edit; ConfirmDialog remove; override only when a document is expired.

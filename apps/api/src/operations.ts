@@ -67,9 +67,12 @@ export class OperationsController {
       const {
         rows: [departure],
       } = await tx.query(
-        `SELECT d.id,d.starts_at,d.capacity,p.name AS product_name
+        `SELECT d.id,d.starts_at,d.capacity,d.operational_status,d.operational_reason,d.operational_version,
+          p.name AS product_name,tr.state AS trip_run_state,plan.version AS plan_version
          FROM departures d
          JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id
+         LEFT JOIN trip_runs tr ON tr.tenant_id=d.tenant_id AND tr.departure_id=d.id
+         LEFT JOIN departure_pickup_plans plan ON plan.tenant_id=d.tenant_id AND plan.departure_id=d.id
          WHERE d.tenant_id=$1 AND d.id=$2`,
         [actor.tenantId, departureId],
       );

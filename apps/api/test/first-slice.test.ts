@@ -488,6 +488,8 @@ test("operations board and pickup plans stay scoped, versioned and aligned with 
   assert.equal(board.body.items.length, 1);
   assert.equal(board.body.items[0].pickup_required, 1);
   assert.equal(board.body.items[0].pickup_planned, 0);
+  assert.equal(board.body.items[0].boarding_pending >= 1, true);
+  assert.equal(board.body.items[0].trip_run_state, null);
   const planPath = `/ops/v1/departures/${dep.departureId}/pickups`;
   const planInput = {
     notes: "Mock route order",
@@ -512,6 +514,8 @@ test("operations board and pickup plans stay scoped, versioned and aligned with 
   const plan = await get(planPath, a.token);
   assert.equal(plan.body.stops.length, 1);
   assert.equal(plan.body.stops[0].lead_name, "Mock Traveler");
+  assert.equal(typeof plan.body.departure.product_name, "string");
+  assert.ok(Array.isArray(plan.body.exceptions));
   const printablePath = `/ops/v1/departures/${dep.departureId}/pickup-list`;
   const printable = await get(printablePath, a.token);
   assert.equal(printable.status, 200, JSON.stringify(printable.body));
@@ -620,6 +624,97 @@ test("operations board and pickup plans stay scoped, versioned and aligned with 
   );
   assert.equal((await get(planPath, b.token)).status, 404);
   assert.equal((await get(printablePath, b.token)).status, 404);
+});
+
+test("ops start trip marks remaining guests no-show and records departed", async () => {
+  const dep = await departure(a.token, 8);
+  const booking = await heldBooking(dep.departureId, a.token, { adult: 2 });
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${booking.bookingId}/passengers`,
+        a.token,
+        {
+          passengers: [
+            { name: "Mock Traveler", category: "adult", isMinor: false },
+            { name: "Mock Companion", category: "adult", isMinor: false },
+          ],
+        },
+      )
+    ).status,
+    201,
+  );
+  const { rows: quoteRows } = await admin.query(
+    "SELECT (quote->>'totalMinor')::int AS total_minor FROM holds WHERE tenant_id=$1 AND id=$2",
+    [a.tenantId, booking.holdId],
+  );
+  assert.equal(
+    (await pay(booking.bookingId, quoteRows[0].total_minor)).status,
+    201,
+  );
+  assert.equal(
+    (
+      await post(`/staff/v1/bookings/${booking.bookingId}/confirm`, a.token, {
+        version: 1,
+      })
+    ).status,
+    201,
+  );
+  const {
+    rows: [dayRow],
+  } = await admin.query(
+    "SELECT local_date::text AS day FROM departures WHERE id=$1",
+    [dep.departureId],
+  );
+  const boardBefore = await get(`/ops/v1/board?date=${dayRow.day}`, a.token);
+  assert.equal(boardBefore.status, 200, JSON.stringify(boardBefore.body));
+  const row = boardBefore.body.items.find(
+    (item: { id: string }) => item.id === dep.departureId,
+  );
+  assert.ok(row, JSON.stringify(boardBefore.body));
+  assert.equal(row.boarding_pending, 2);
+  assert.equal(row.trip_run_state, null);
+  assert.equal(
+    (
+      await post(`/ops/v1/departures/${dep.departureId}/start`, a.token, {
+        markRemainingNoShow: false,
+      })
+    ).status,
+    400,
+  );
+  const started = await post(
+    `/ops/v1/departures/${dep.departureId}/start`,
+    a.token,
+    {
+      markRemainingNoShow: true,
+      reason: "Guests did not arrive before departure",
+    },
+  );
+  assert.equal(started.status, 201, JSON.stringify(started.body));
+  assert.equal(started.body.state, "departed");
+  assert.equal(started.body.markedNoShow.length, 2);
+  const boardAfter = await get(`/ops/v1/board?date=${dayRow.day}`, a.token);
+  const after = boardAfter.body.items.find(
+    (item: { id: string }) => item.id === dep.departureId,
+  );
+  assert.equal(after.boarding_pending, 0);
+  assert.equal(after.no_show_guests, 2);
+  assert.equal(after.trip_run_state, "departed");
+  const manifest = await get(
+    `/ops/v1/departures/${dep.departureId}/manifest`,
+    a.token,
+  );
+  assert.equal(manifest.status, 200);
+  assert.equal(manifest.body.departure.trip_run_state, "departed");
+  assert.equal(
+    (
+      await post(`/ops/v1/departures/${dep.departureId}/start`, a.token, {
+        markRemainingNoShow: true,
+        reason: "Second start must fail",
+      })
+    ).status,
+    400,
+  );
 });
 
 before(async () => {

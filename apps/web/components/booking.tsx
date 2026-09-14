@@ -2757,7 +2757,7 @@ export function BookingDetail({
           <div className="doc-actions booking-print-actions no-print">
             <button
               type="button"
-              className="button secondary"
+              className="button secondary icon-only-action"
               disabled={printJob.busy}
               onClick={() => void printReservation()}
               aria-label="Print reservation"
@@ -2770,7 +2770,7 @@ export function BookingDetail({
             </button>
             <button
               type="button"
-              className="button secondary"
+              className="button secondary icon-only-action"
               disabled={printJob.busy}
               onClick={() => void downloadReservationPdf()}
               aria-label="Download PDF"

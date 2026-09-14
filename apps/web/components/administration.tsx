@@ -76,7 +76,12 @@ import { Integrations } from "./integrations";
 import { ScheduleFormDialog } from "./schedule-form-dialog";
 import { CatalogSchedulesPanel, SchedulesFilterButton } from "./catalog-schedules";
 import type { ScheduleListFilters } from "./catalog-schedules";
-import { CatalogAssignmentsPanel } from "./catalog-assignments";
+import {
+  CatalogAssignmentsPanel,
+  AssignmentsFilterButton,
+  type AssignmentListFilters,
+} from "./catalog-assignments";
+import { PickupLocationsSettings } from "./pickup-locations";
 import {
   type ComplianceDocument,
   type LibraryUsage,
@@ -103,17 +108,23 @@ const SETTINGS_TABS = new Set([
   "commercial",
   "printers",
   "stays",
+  "pickups",
   "resellers",
   "payments",
   "waivers",
   "integrations",
   "security",
 ]);
-function settingsTab(next: string) {
-  const url = new URL(window.location.href);
-  if (next === "general") url.searchParams.delete("tab");
-  else url.searchParams.set("tab", next);
-  window.history.replaceState(null, "", url.pathname + url.search);
+function settingsTab(
+  router: { replace: (href: string, opts?: { scroll?: boolean }) => void },
+  searchParams: URLSearchParams,
+  next: string,
+) {
+  const params = new URLSearchParams(searchParams.toString());
+  if (next === "general") params.delete("tab");
+  else params.set("tab", next);
+  const query = params.toString();
+  router.replace(query ? `/settings?${query}` : "/settings", { scroll: false });
 }
 function durationHint(minutes: string) {
   const value = Number(minutes);
@@ -151,7 +162,14 @@ export function Catalog({ session }: { session: Session }) {
       range: "any",
       customFrom: today,
       customTo: shiftDay(today, 13),
-    });
+    }),
+    [assignmentFilters, setAssignmentFilters] = useState<AssignmentListFilters>({
+      range: "week",
+      customFrom: today,
+      customTo: shiftDay(today, 6),
+      productId: "",
+    }),
+    [assignmentPlannerRequest, setAssignmentPlannerRequest] = useState(0);
   const tab = searchParams.get("tab");
   const view =
     tab === "schedules" || tab === "availability"
@@ -283,7 +301,29 @@ export function Catalog({ session }: { session: Session }) {
                 <span className="button-label">Add schedule</span>
               </button>
             ) : null}
-      </div>
+          </div>
+        ) : view === "assignments" ? (
+          <div className="catalog-view-actions departure-view-actions">
+            <AssignmentsFilterButton
+              products={items}
+              filters={assignmentFilters}
+              timezone={session.tenant.timezone}
+              locale={session.tenant.config.locale}
+              dateFormat={session.tenant.config.dateFormat}
+              onFiltersChange={setAssignmentFilters}
+            />
+            <button
+              type="button"
+              className="button catalog-add-btn"
+              aria-label="Add assignment"
+              onClick={() =>
+                setAssignmentPlannerRequest((value) => value + 1)
+              }
+            >
+              <Plus size={17} />
+              <span className="button-label">Add assignment</span>
+            </button>
+          </div>
         ) : null}
       </div>
       {products.error ? (
@@ -386,7 +426,13 @@ export function Catalog({ session }: { session: Session }) {
           )}
         </>
       ) : view === "assignments" ? (
-        <CatalogAssignmentsPanel session={session} products={items} />
+        <CatalogAssignmentsPanel
+          session={session}
+          products={items}
+          filters={assignmentFilters}
+          onFiltersChange={setAssignmentFilters}
+          openPlannerRequest={assignmentPlannerRequest}
+        />
       ) : rules.error ? (
         <Notice error>{rules.error}</Notice>
       ) : !rules.data ? (
@@ -1267,7 +1313,7 @@ export function NewProduct({ session }: { session: Session }) {
                     </option>
                   ))}
                 </select>
-              </Field>
+          </Field>
           <Field label="Pricing model">
                 <select
                   value={pricingModel}
@@ -2494,6 +2540,11 @@ export function Settings({
   session: Session;
   refresh: () => Promise<void>;
 }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const tab =
+    tabParam && SETTINGS_TABS.has(tabParam) ? tabParam : "general";
   const [config, setConfig] = useState({
       ...session.tenant.config,
       documentStorage: session.tenant.config.documentStorage ?? {
@@ -2507,11 +2558,6 @@ export function Settings({
     [logoError, setLogoError] = useState(""),
     [logoBusy, setLogoBusy] = useState(false),
     [logoUnavailable, setLogoUnavailable] = useState(false),
-    [tab, setTab] = useState(() => {
-      if (typeof window === "undefined") return "general";
-      const value = new URLSearchParams(window.location.search).get("tab");
-      return value && SETTINGS_TABS.has(value) ? value : "general";
-    }),
     [profile, setProfile] = useState(
       session.tenant.business_profile ?? {
         displayName: session.tenant.name,
@@ -2610,8 +2656,7 @@ export function Settings({
       !session.permissions.includes("integration.manage")
     )
       return;
-    setTab(next);
-    settingsTab(next);
+    settingsTab(router, searchParams, next);
   }
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -2812,6 +2857,15 @@ export function Settings({
               <span className="settings-nav-label">Guest stays & cruise calls</span>
               <span className="settings-nav-label-short">Stays</span>
             </button>
+            <button
+              className={tab === "pickups" ? "active" : ""}
+              type="button"
+              onClick={() => selectTab("pickups")}
+            >
+              <MapPin size={16} />
+              <span className="settings-nav-label">Pickup locations</span>
+              <span className="settings-nav-label-short">Pickups</span>
+            </button>
             {session.permissions.includes("partner.manage") && (
               <button
                 className={tab === "resellers" ? "active" : ""}
@@ -2867,6 +2921,15 @@ export function Settings({
         {tab === "integrations" ? (
           <div className="settings-tab-content">
             <Integrations embedded />
+          </div>
+        ) : tab === "pickups" ? (
+          <div className="panel form-panel settings-tab-content">
+            <PickupLocationsSettings session={session} />
+          </div>
+        ) : tab === "resellers" &&
+          session.permissions.includes("partner.manage") ? (
+          <div className="panel form-panel settings-tab-content">
+            <PartnersResellersSettings />
           </div>
         ) : (
           <form className="panel form-panel" onSubmit={submit}>
@@ -3610,9 +3673,6 @@ export function Settings({
                   </Notice>
                 )}
               </section>
-            )}
-            {tab === "resellers" && session.permissions.includes("partner.manage") && (
-              <PartnersResellersSettings />
             )}
           {tab === "payments" && (
             <section className="settings-future">

@@ -1,22 +1,22 @@
 ---
-description: Mobile icon-only Print/Download (and similar doc toolbar) actions
+description: Icon-only Print/Download document toolbar actions
 globs: apps/web/**/*.{tsx,css}
 alwaysApply: false
 ---
 
 # Document toolbar actions (Print / Download)
 
-On small screens, Print, Download PDF, and similar document/tool actions in page headings must be **icon-only**. Desktop keeps icon + short label.
+Print and Download PDF actions are **icon-only at all breakpoints**. Use `aria-label` and `title` for accessibility and tooltips.
 
 ## Markup
 
-Wrap the action group in `doc-actions` (add page-specific class only if needed):
+Wrap the action group in `doc-actions` (add page-specific class only if needed). Mark Print/Download with `icon-only-action`:
 
 ```tsx
 <div className="button-row no-print doc-actions">
   <button
     type="button"
-    className="button secondary"
+    className="button secondary icon-only-action"
     aria-label="Print"
     title="Print"
   >
@@ -25,7 +25,7 @@ Wrap the action group in `doc-actions` (add page-specific class only if needed):
   </button>
   <button
     type="button"
-    className="button"
+    className="button icon-only-action"
     aria-label="Download PDF"
     title="Download PDF"
   >
@@ -37,16 +37,16 @@ Wrap the action group in `doc-actions` (add page-specific class only if needed):
 
 ## Required
 
-- Put visible text in `<span className="button-label">…</span>` so CSS can hide it ≤680px.
-- Always set `aria-label` and `title` (tooltips matter when labels hide).
+- Add `icon-only-action` on Print/Download controls (buttons or links).
+- Keep label text in `<span className="button-label">…</span>` (hidden by CSS; useful for screen readers that ignore aria inconsistently, and for future toggles).
+- Always set `aria-label` and `title`.
 - Mark decorative icons `aria-hidden="true"`.
-- Prefer short labels on desktop (`Print`, `PDF`) not long phrases in tight headers.
 
 ## Do not
 
-- Put Print/Download label text as a bare text node next to the icon (mobile cannot hide it cleanly).
-- Use icon-only on desktop for these primary doc actions unless the control is already a row `icon-button` (e.g. document library tables).
+- Put Print/Download label text as a bare text node next to the icon.
+- Apply `icon-only-action` to non-doc actions (Options, Start trip, Plan pickups, Scan, Crew).
 
 ## CSS
 
-Shared rules live in `apps/web/app/globals.css` under `.doc-actions` (and aliases `.boarding-doc-actions`, `.booking-print-actions`, `.pickup-print-actions`). Reuse those; do not invent per-page mobile hide hacks.
+Shared rules live in `apps/web/app/globals.css` under `.doc-actions .button.icon-only-action`. Reuse those; do not invent per-page hide hacks.

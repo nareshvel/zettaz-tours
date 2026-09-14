@@ -34,7 +34,7 @@ flowchart LR
   Departures["Departures\ncalendar + capacity"]
   Reservations["Reservations\nbooking record + money"]
   DayBoard["Day Board\npickup + weather"]
-  Manifest["Manifest\narrive / pay / waiver / board"]
+  Manifest["Manifest\nsearch / scan / board"]
   Resources["Team and resources\ncrew + assets + assign"]
 
   Catalog --> Departures
@@ -53,7 +53,7 @@ flowchart LR
 | [Departures](apps/web/components/views.tsx) | Sellable trip instances, capacity, open Manifest | Yes (bound to that trip) | Via Manifest link |
 | [Reservations](apps/web/components/views.tsx) / [booking.tsx](apps/web/components/booking.tsx) | Find, hold, confirm, amend, money, party, pickup kind | Yes (search-first) | No |
 | [Day Board](apps/web/components/dispatch.tsx) (`/operations`) | Today’s trips: pickup readiness, weather, path to board | No | Via **Board guests** → Manifest |
-| Manifest | Only guest engagement: Arrived → Pay → Waiver → Board | No | Yes |
+| Manifest | Only guest engagement: Search/Scan → Arrived → Pay → Waiver → Board (Crew readiness read-only) | No | Yes |
 | Team & resources | People, assets, docs, assign to a departure | No | Readiness only |
 
 Authority: [admin-navigation.md](docs/ARCHITECTURE/admin-navigation.md), [ADR 012](docs/DECISIONS/012-operations-pickup-planning.md), backlog item 1 in [implementation-backlog.md](docs/STRATEGY/implementation-backlog.md).

@@ -39,7 +39,7 @@ When these conflict, the authority table in `docs/README.md` wins.
 
 The page-by-page UI sequence is tracked in `docs/STRATEGY/ui-waiver-launch-task-list.md`. As of this handoff:
 
-- Complete or owner-accepted foundations: shared responsive baseline, global shell/aside, Overview, Day Board / Plan pickups / Print pickup list (owner-accepted), Reservations list, Catalog, Departures, New reservation discovery (including Departures Book lock), web boarding Pay and partner clearance.
+- Complete or owner-accepted foundations: shared responsive baseline, global shell/aside, Overview, Day Board / Plan pickups / Print pickup list (owner-accepted), Reservations list, Catalog, Departures, New reservation discovery (including Departures Book lock), web boarding Pay and partner clearance. Manifest gate toolbar (Search/Scan/Crew) implemented 14 September 2026 — see `docs/FEATURES/operations/manifest-boarding-toolbar.md`.
 - **Next executable task (owner direction):** finish **Subscription** polish — billing-cycle and failed-payment/grace messaging (phone/tablet/desktop). Responsive plan grid + profile embedding already shipped; see `docs/TESTING/subscription-polish-evidence.md`.
 - Profile polish + responsive flush follow-up are implemented; short owner visual pass can run in parallel. Tenant settings polish + country/tax/currency follow-up is implemented; short owner visual pass can run in parallel. Other polished surfaces still need owner visual passes (see UI task list rows marked “needs owner visual pass”).
 - Continue after Subscription with Audit, then any deferred Customers polish.

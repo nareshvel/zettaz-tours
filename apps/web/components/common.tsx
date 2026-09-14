@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useId, useState } from "react";
+import { createPortal } from "react-dom";
 import { ArrowLeft, Search, X } from "lucide-react";
 import Link from "next/link";
 import { dateOnly, label } from "@/lib/client";
@@ -158,7 +159,7 @@ export function ConfirmDialog({
 }: {
   open: boolean;
   title: string;
-  description?: string;
+  description?: React.ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
   danger?: boolean;
@@ -203,7 +204,9 @@ export function ConfirmDialog({
     await onConfirm(trimmed);
   }
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <div className="confirm-dialog-root" role="presentation">
       <div className="confirm-dialog-scrim" aria-hidden="true" />
       <form
@@ -216,7 +219,9 @@ export function ConfirmDialog({
         <header className="confirm-dialog-head">
           <div>
             <h2 id={titleId}>{title}</h2>
-            {description && <p className="muted">{description}</p>}
+            {description ? (
+              <div className="muted confirm-dialog-desc">{description}</div>
+            ) : null}
           </div>
           <button
             type="button"
@@ -270,7 +275,8 @@ export function ConfirmDialog({
           </div>
         </div>
       </form>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -317,8 +323,9 @@ export function FormDialog({
   }, [open, busy, onClose]);
 
   if (!open) return null;
+  if (typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div className="confirm-dialog-root" role="presentation">
       <div className="confirm-dialog-scrim" aria-hidden="true" />
       <form
@@ -337,7 +344,9 @@ export function FormDialog({
         <header className="confirm-dialog-head">
           <div>
             <h2 id={titleId}>{title}</h2>
-            {description && <p className="muted">{description}</p>}
+            {description ? (
+              <div className="muted confirm-dialog-desc">{description}</div>
+            ) : null}
           </div>
           <button
             type="button"
@@ -376,7 +385,8 @@ export function FormDialog({
           ) : null}
         </div>
       </form>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

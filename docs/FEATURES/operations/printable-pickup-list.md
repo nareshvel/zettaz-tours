@@ -12,8 +12,11 @@ Provide a paper-safe, day-of view of a tenant's saved pickup plan. It supports c
 - Exceptions identify confirmed bookings whose pickup is unresolved or whose selected pickup has not been included in the saved plan.
 - The browser's native print dialog provides paper output. An auditable print job can also stream a deterministic server-produced PDF. No generated document is stored.
 - The web Print pickup list surface shows a departure masthead, numbered stop sequence on phone/print, and a denser table on desktop, with Plan pickups as the edit path.
+- Plan pickups (Phase 1 polish): trip header + readiness metrics, Needs attention for unresolved / not-in-plan, smart Add (match selected location + seeded times), Add all, reorder, per-stop notes, unsaved/print hygiene. GET `/ops/v1/departures/{id}/pickups` returns `departure` and `exceptions`.
 
-Operational locations may include a tenant-supplied address, coordinate pair and map reference. Coordinates support dispatch context; they do not activate live GPS or route optimization. Staff manage controlled pickup locations from Plan pickups via modal create/edit and confirmed deactivate (blocked while referenced by a saved stop).
+Operational locations may include a tenant-supplied address, coordinate pair and map reference. Coordinates support dispatch context; they do not activate live GPS or route optimization. Staff manage controlled pickup locations from **Tenant settings → Pickup locations** (not on Plan pickups). Plan pickups only sequences stops from that library.
+
+Mental model (booking disposition vs per-departure plan vs print list): [pickup-disposition-and-plans.md](./pickup-disposition-and-plans.md).
 
 ## Data minimization
 

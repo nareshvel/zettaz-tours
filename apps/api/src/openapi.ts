@@ -101,6 +101,12 @@ const routes: [string, string, z.ZodType | null, string][] = [
     "Append an assigned crew member's trip-run event",
   ],
   ["/ops/v1/board", "get", null, "Read the day operations board"],
+  [
+    "/ops/v1/departures/{id}/start",
+    "post",
+    null,
+    "Start a departure trip-run, optionally marking remaining guests no-show",
+  ],
   ["/ops/v1/print-templates", "get", null, "List published print templates"],
   [
     "/ops/v1/print-templates",
@@ -229,7 +235,7 @@ const routes: [string, string, z.ZodType | null, string][] = [
     "/ops/v1/departures/{id}/pickups",
     "get",
     null,
-    "Read an ordered pickup plan",
+    "Read an ordered pickup plan with departure context and exceptions",
   ],
   [
     "/ops/v1/departures/{id}/pickups",

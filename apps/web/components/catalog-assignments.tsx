@@ -10,9 +10,9 @@ import {
 } from "react";
 import Link from "next/link";
 import {
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ListFilter,
   Plus,
   Ship,
   Trash2,
@@ -39,6 +39,13 @@ import {
 } from "./common";
 
 type RangePreset = "today" | "week" | "month" | "custom";
+
+export type AssignmentListFilters = {
+  range: RangePreset;
+  customFrom: string;
+  customTo: string;
+  productId: string;
+};
 
 type Crew = {
   actor_id: string;
@@ -143,6 +150,222 @@ function rangeBounds(
   return [customFrom || today, customTo || today];
 }
 
+export function assignmentFilterCount(filters: AssignmentListFilters) {
+  return (
+    (filters.range !== "week" ? 1 : 0) + (filters.productId ? 1 : 0)
+  );
+}
+
+export function AssignmentsFilterButton({
+  products,
+  filters,
+  timezone,
+  locale,
+  dateFormat,
+  onFiltersChange,
+}: {
+  products: Product[];
+  filters: AssignmentListFilters;
+  timezone: string;
+  locale: string;
+  dateFormat: "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD";
+  onFiltersChange: (next: AssignmentListFilters) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const today = tenantDay(timezone);
+  const count = assignmentFilterCount(filters);
+  const [from, to] = rangeBounds(
+    filters.range,
+    today,
+    filters.customFrom,
+    filters.customTo,
+  );
+  const scheduledProducts = products.filter(
+    (product) =>
+      (product.availability_mode ?? "fixed_departure") === "fixed_departure",
+  );
+  const rangeLabel =
+    filters.range === "today"
+      ? "Today"
+      : filters.range === "week"
+        ? "This week"
+        : filters.range === "month"
+          ? "This month"
+          : "Custom range";
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointer(event: MouseEvent) {
+      if (!ref.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onPointer);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  function selectRange(next: RangePreset) {
+    if (next === "custom") {
+      onFiltersChange({
+        ...filters,
+        range: next,
+        customFrom: from,
+        customTo: to,
+      });
+      return;
+    }
+    onFiltersChange({ ...filters, range: next });
+  }
+
+  function clearAll() {
+    onFiltersChange({
+      range: "week",
+      customFrom: today,
+      customTo: shiftDay(today, 6),
+      productId: "",
+    });
+  }
+
+  return (
+    <div className="filter-menu" ref={ref}>
+      <button
+        type="button"
+        className={
+          "button secondary catalog-add-btn" +
+          (open || count ? " active-filter" : "")
+        }
+        aria-label="Filter assignments"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <ListFilter size={17} />
+        <span className="button-label">Filter</span>
+        {count > 0 && <span className="filter-count">{count}</span>}
+      </button>
+      {open && (
+        <div
+          className="filter-popover"
+          role="dialog"
+          aria-label="Assignment filters"
+        >
+          <div className="filter-popover-head">
+            <strong>Filters</strong>
+            <span>{count ? `${count} active` : "None"}</span>
+          </div>
+          <label className="compact-control">
+            <span>Tour</span>
+            <select
+              value={filters.productId}
+              onChange={(e) =>
+                onFiltersChange({ ...filters, productId: e.target.value })
+              }
+            >
+              <option value="">All products</option>
+              {scheduledProducts.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.customer_title ?? product.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="compact-control">
+            <span>Departure dates</span>
+            <div
+              className="filter-range-options"
+              role="radiogroup"
+              aria-label="Departure date range"
+            >
+              {(
+                [
+                  ["today", "Today"],
+                  ["week", "This week"],
+                  ["month", "This month"],
+                  ["custom", "Custom range"],
+                ] as const
+              ).map(([value, caption]) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={filters.range === value}
+                  className={
+                    "filter-range-option" +
+                    (filters.range === value ? " selected" : "")
+                  }
+                  onClick={() => selectRange(value)}
+                >
+                  {caption}
+                </button>
+              ))}
+            </div>
+          </div>
+          {filters.range === "custom" && (
+            <div className="filter-custom-range">
+              <TenantDateInput
+                label="From"
+                compact
+                value={filters.customFrom}
+                max={filters.customTo || undefined}
+                onChange={(customFrom) =>
+                  onFiltersChange({ ...filters, customFrom })
+                }
+                locale={locale}
+                dateFormat={dateFormat}
+              />
+              <TenantDateInput
+                label="To"
+                compact
+                value={filters.customTo}
+                min={filters.customFrom || undefined}
+                onChange={(customTo) =>
+                  onFiltersChange({ ...filters, customTo })
+                }
+                locale={locale}
+                dateFormat={dateFormat}
+              />
+            </div>
+          )}
+          {filters.range !== "custom" ? (
+            <p className="filter-range-hint muted">
+              Showing {rangeLabel.toLowerCase()}
+              {filters.range === "week" || filters.range === "month"
+                ? ` · ${formatMediumDateRange(from, to, locale)}`
+                : filters.range === "today"
+                  ? ` · ${formatMediumDate(from, locale)}`
+                  : ""}
+              .
+            </p>
+          ) : null}
+          <div className="filter-popover-actions">
+            <button
+              type="button"
+              className="text-button"
+              onClick={clearAll}
+              disabled={!count}
+            >
+              Reset
+            </button>
+            <button
+              type="button"
+              className="button"
+              onClick={() => setOpen(false)}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function localDateFromInstant(value: string, timezone: string) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: timezone,
@@ -186,9 +409,15 @@ function tourTintIndex(key: string) {
 export function CatalogAssignmentsPanel({
   session,
   products,
+  filters,
+  onFiltersChange,
+  openPlannerRequest = 0,
 }: {
   session: Session;
   products: Product[];
+  filters: AssignmentListFilters;
+  onFiltersChange?: (next: AssignmentListFilters) => void;
+  openPlannerRequest?: number;
 }) {
   const canAssign = session.permissions.includes("assignments.write");
   const canOverride = session.permissions.includes(
@@ -200,12 +429,10 @@ export function CatalogAssignmentsPanel({
   );
 
   const today = tenantDay(session.tenant.timezone);
-  const [range, setRange] = useState<RangePreset>("week");
-  const [customFrom, setCustomFrom] = useState(today);
-  const [customTo, setCustomTo] = useState(shiftDay(today, 6));
-  const [productId, setProductId] = useState("");
-  const [rangeMenuOpen, setRangeMenuOpen] = useState(false);
-  const rangeMenuRef = useRef<HTMLDivElement>(null);
+  const range = filters.range;
+  const customFrom = filters.customFrom;
+  const customTo = filters.customTo;
+  const productId = filters.productId;
   const [plannerOpen, setPlannerOpen] = useState(false);
   const [focusDepartureId, setFocusDepartureId] = useState<string | null>(null);
   const [plannerWeekStart, setPlannerWeekStart] = useState(() =>
@@ -401,6 +628,18 @@ export function CatalogAssignmentsPanel({
     setPlannerOpen(true);
   }
 
+  useEffect(() => {
+    if (!openPlannerRequest) return;
+    setPlannerError(null);
+    setPendingOverride(null);
+    setOverrideReason("");
+    setSelectedSubject(null);
+    setSubjectSearch("");
+    setFocusDepartureId(null);
+    setPlannerWeekStart(mondayOf(today));
+    setPlannerOpen(true);
+  }, [openPlannerRequest, today]);
+
   function closePlanner() {
     if (save.busy) return;
     setPlannerOpen(false);
@@ -493,37 +732,6 @@ export function CatalogAssignmentsPanel({
     }
   }
 
-  function selectRange(next: RangePreset) {
-    setRange(next);
-    if (next === "custom") {
-      setCustomFrom(from);
-      setCustomTo(to);
-      return;
-    }
-    setRangeMenuOpen(false);
-  }
-
-  useEffect(() => {
-    if (!rangeMenuOpen) return;
-    function onPointer(event: MouseEvent) {
-      if (
-        rangeMenuRef.current &&
-        !rangeMenuRef.current.contains(event.target as Node)
-      ) {
-        setRangeMenuOpen(false);
-      }
-    }
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") setRangeMenuOpen(false);
-    }
-    document.addEventListener("mousedown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [rangeMenuOpen]);
-
   function onSubjectDragStart(event: DragEvent, subject: SubjectRef) {
     const payload = JSON.stringify(subject);
     event.dataTransfer.setData(SUBJECT_MIME, payload);
@@ -570,144 +778,6 @@ export function CatalogAssignmentsPanel({
 
   return (
     <>
-      <div className="catalog-assignments-toolbar">
-        <div className="catalog-assignments-toolbar-actions">
-          <div
-            className={
-              "filter-menu catalog-assignments-range-menu" +
-              (rangeMenuOpen ? " is-open" : "")
-            }
-            ref={rangeMenuRef}
-          >
-            <div className="compact-control">
-              <span>Dates</span>
-              <button
-                type="button"
-                className={
-                  "button secondary catalog-assignments-range-btn" +
-                  (rangeMenuOpen || range !== "week" ? " active-filter" : "")
-                }
-                aria-label="Departure date range"
-                aria-expanded={rangeMenuOpen}
-                aria-haspopup="listbox"
-                onClick={() => setRangeMenuOpen((open) => !open)}
-              >
-                <span className="button-label">{rangeLabel}</span>
-                <ChevronDown size={16} aria-hidden="true" />
-              </button>
-            </div>
-            {rangeMenuOpen && (
-              <div
-                className="filter-popover catalog-assignments-range-popover"
-                role="listbox"
-                aria-label="Departure date range"
-              >
-                <div className="filter-popover-head">
-                  <strong>Departure dates</strong>
-                  <span>
-                    {range === "custom"
-                      ? formatMediumDateRange(
-                          from,
-                          to,
-                          session.tenant.config.locale,
-                        )
-                      : rangeLabel}
-                  </span>
-                </div>
-                <div
-                  className="filter-range-options"
-                  role="radiogroup"
-                  aria-label="Departure date range options"
-                >
-                  {(
-                    [
-                      ["today", "Today"],
-                      ["week", "This week"],
-                      ["month", "This month"],
-                      ["custom", "Custom range"],
-                    ] as const
-                  ).map(([value, caption]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      role="radio"
-                      aria-checked={range === value}
-                      className={
-                        "filter-range-option" +
-                        (range === value ? " selected" : "")
-                      }
-                      onClick={() => selectRange(value)}
-                    >
-                      {caption}
-                    </button>
-                  ))}
-                </div>
-                {range === "custom" && (
-                  <div className="filter-custom-range">
-                    <TenantDateInput
-                      label="From"
-                      compact
-                      value={customFrom}
-                      max={customTo || undefined}
-                      onChange={setCustomFrom}
-                      locale={session.tenant.config.locale}
-                      dateFormat={session.tenant.config.dateFormat}
-                    />
-                    <TenantDateInput
-                      label="To"
-                      compact
-                      value={customTo}
-                      min={customFrom || undefined}
-                      onChange={setCustomTo}
-                      locale={session.tenant.config.locale}
-                      dateFormat={session.tenant.config.dateFormat}
-                    />
-                  </div>
-                )}
-                <div className="filter-popover-actions">
-                  <button
-                    type="button"
-                    className="button"
-                    onClick={() => setRangeMenuOpen(false)}
-                  >
-                    Done
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-          <label className="compact-control">
-            <span>Product</span>
-            <select
-              value={productId}
-              onChange={(e) => setProductId(e.target.value)}
-              aria-label="Filter by product"
-            >
-              <option value="">All products</option>
-              {scheduledProducts.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="compact-control catalog-assignments-add-control">
-            <span className="catalog-assignments-control-spacer" aria-hidden>
-              Action
-            </span>
-            <button
-              type="button"
-              className="button catalog-add-btn"
-              aria-label="Add assignment"
-              onClick={() => openPlanner()}
-            >
-              <Plus size={17} />
-              <span className="button-label">Add assignment</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
       {(departures.error || assignments.error) && (
         <Notice error>{departures.error || assignments.error}</Notice>
       )}
@@ -839,7 +909,9 @@ export function CatalogAssignmentsPanel({
           loadError={plannerDepartures.error}
           products={scheduledProducts}
           productId={productId}
-          onProductIdChange={setProductId}
+          onProductIdChange={(next) =>
+            onFiltersChange?.({ ...filters, productId: next })
+          }
           subjectKind={subjectKind}
           onSubjectKindChange={(next) => {
             setSubjectKind(next);

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   Plus,
   ArrowUpRight,
@@ -14,10 +14,6 @@ import {
   Activity,
   AlertTriangle,
   ListFilter,
-  MapPin,
-  QrCode,
-  ScanLine,
-  ShieldCheck,
   FileText,
   Users,
 } from "lucide-react";
@@ -41,7 +37,6 @@ import {
   useResource,
 } from "@/lib/client";
 import {
-  Back,
   Empty,
   Heading,
   Loading,
@@ -54,6 +49,9 @@ import {
 } from "./common";
 import { BoardingPaymentModal } from "./boarding-payment";
 import { BoardingWaiverModal } from "./boarding-waiver";
+import { BoardingGateToolbar } from "./boarding-gate-toolbar";
+import { StartTripButton } from "./start-trip";
+import { DepartureOptionsMenu } from "./dispatch";
 
 export function Overview({ session }: { session: Session }) {
   const can = (permission: string) => session.permissions.includes(permission);
@@ -1568,11 +1566,10 @@ export function ManifestView({
   session: Session;
   departureId: string;
 }) {
+  const router = useRouter();
   const { data, error, reload } = useResource<Manifest>(
     `ops/v1/departures/${departureId}/manifest`,
   );
-  const searchParams = useSearchParams();
-  const fromDayBoard = searchParams.get("from") === "operations";
   const assignments = useResource<{
     readiness: "unassigned" | "ready" | "blocked";
     items: {
@@ -1589,15 +1586,8 @@ export function ManifestView({
   }>(`ops/v1/departures/${departureId}/assignments`);
   const checkin = useMutation();
   const printJob = useMutation();
-  const itineraryMutation = useMutation();
   const [checkinMessage, setCheckinMessage] = useState("");
-  const [scanToken, setScanToken] = useState("");
-  const [scanResult, setScanResult] = useState<{
-    passengerId: string;
-    name: string;
-    category: string;
-  } | null>(null);
-  const [addingItinerary, setAddingItinerary] = useState(false);
+  const [guestSearch, setGuestSearch] = useState("");
   const [waiverTarget, setWaiverTarget] = useState<{
     booking: Manifest["bookings"][number];
     passenger: Manifest["bookings"][number]["passengers"][number];
@@ -1607,18 +1597,51 @@ export function ManifestView({
     booking: Manifest["bookings"][number];
     passenger?: Manifest["bookings"][number]["passengers"][number];
   } | null>(null);
-  const [itineraryPoint, setItineraryPoint] = useState({
-    name: "",
-    address: "",
-    directions: "",
-    latitude: "",
-    longitude: "",
-    mapUrl: "",
-    visibility: "internal" as "internal" | "guest",
-  });
+  const [rosterBookingId, setRosterBookingId] = useState<string | null>(null);
+  const [rosterDrafts, setRosterDrafts] = useState<
+    Array<{ name: string; category: string; isMinor: boolean }>
+  >([]);
+  const rosterSave = useMutation();
   const canCheckin = session.permissions.includes("checkin.write");
   const canPay = session.permissions.includes("payment.write");
-  const canOps = session.permissions.includes("operations.write");
+
+  function draftRoster(booking: Manifest["bookings"][number]) {
+    const drafts: Array<{ name: string; category: string; isMinor: boolean }> =
+      [];
+    for (const [category, count] of Object.entries(booking.party)) {
+      for (let index = 0; index < count; index += 1) {
+        drafts.push({
+          name:
+            drafts.length === 0
+              ? booking.lead_name
+              : `${booking.lead_name} · ${label(category)} ${index + 1}`,
+          category,
+          isMinor: category !== "adult",
+        });
+      }
+    }
+    setRosterBookingId(booking.booking_id);
+    setRosterDrafts(drafts);
+  }
+
+  async function saveBoardingRoster(booking: Manifest["bookings"][number]) {
+    const result = await rosterSave.run(
+      `staff/v1/bookings/${booking.booking_id}/boarding-roster`,
+      {
+        passengers: rosterDrafts.map((passenger) => ({
+          name: passenger.name.trim(),
+          category: passenger.category,
+          isMinor: passenger.isMinor,
+        })),
+      },
+    );
+    if (result) {
+      setRosterBookingId(null);
+      setRosterDrafts([]);
+      setCheckinMessage(`${booking.lead_name}: guest names recorded.`);
+      reload();
+    }
+  }
 
   function guestBalanceMinor(booking: Manifest["bookings"][number]) {
     return booking.guest_balance_minor ?? 0;
@@ -1637,8 +1660,22 @@ export function ManifestView({
         </span>
       );
     }
-    if (state === "balance_pending")
-      return <Status state="arrived" />;
+    return null;
+  }
+
+  /** Avoid dead “Waiver pending” chips when the next button is Waiver / Board / Arrived. */
+  function passengerStatus(state: string) {
+    if (
+      canCheckin &&
+      [
+        "not_arrived",
+        "arrived",
+        "waiver_pending",
+        "balance_pending",
+        "cleared_to_board",
+      ].includes(state)
+    )
+      return null;
     return <Status state={state} />;
   }
 
@@ -1733,15 +1770,37 @@ export function ManifestView({
       );
   }
 
-  async function resolveScan(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const result = await checkin.run<{
-      passengerId: string;
-      name: string;
-      category: string;
-    }>("staff/v1/crew/checkin-token/resolve", { token: scanToken });
-    if (result) setScanResult(result);
+  async function handleScanArrived(hit: {
+    passengerId: string;
+    name: string;
+    category: string;
+  }) {
+    const booking = data?.bookings.find((row) =>
+      row.passengers.some((passenger) => passenger.id === hit.passengerId),
+    );
+    const passenger = booking?.passengers.find(
+      (row) => row.id === hit.passengerId,
+    );
+    if (!booking || !passenger) {
+      setCheckinMessage(
+        "Passenger found, but not on this departure manifest.",
+      );
+      return;
+    }
+    await recordPassengerCheckin(booking, passenger, "arrived");
   }
+
+  const guestQuery = guestSearch.trim().toLowerCase();
+  const visibleBookings =
+    data?.bookings.filter((booking) => {
+      if (!guestQuery) return true;
+      const ref = booking.booking_id.toLowerCase();
+      const lead = booking.lead_name.toLowerCase();
+      if (ref.includes(guestQuery) || lead.includes(guestQuery)) return true;
+      return booking.passengers.some((passenger) =>
+        passenger.name.toLowerCase().includes(guestQuery),
+      );
+    }) ?? [];
 
   const guestTotal =
     data?.bookings.reduce((sum, booking) => sum + booking.party_size, 0) ?? 0;
@@ -1786,6 +1845,18 @@ export function ManifestView({
           ),
         ),
     ).length ?? 0;
+  const pendingStartGuests =
+    data?.bookings.flatMap((booking) =>
+      booking.passengers
+        .filter(
+          (passenger) =>
+            !["boarded", "no_show"].includes(passenger.checkin_state ?? ""),
+        )
+        .map((passenger) => ({ id: passenger.id, name: passenger.name })),
+    ) ?? [];
+  const tripStarted = ["departed", "completed", "cancelled"].includes(
+    data?.departure.trip_run_state ?? "",
+  );
 
   function passengerActions(
     booking: Manifest["bookings"][number],
@@ -1888,22 +1959,21 @@ export function ManifestView({
 
   return (
     <div className="boarding-page">
-      <Back href={fromDayBoard ? "/operations" : "/departures"}>
-        {fromDayBoard ? "Day Board" : "Departures"}
-      </Back>
-      <Heading
-        eyebrow="BOARDING"
-        title={data?.departure.product_name ?? "Departure manifest"}
-        description={
-          data
-            ? `${dateTime(data.departure.starts_at, session.tenant.timezone)} · Arrive → Pay if needed → Waiver → Board`
-            : undefined
-        }
-        action={
+      <div className="boarding-page-header">
+        <p className="eyebrow">BOARDING</p>
+        <div className="boarding-page-title-row">
+          <h1>{data?.departure.product_name ?? "Departure manifest"}</h1>
+          <span className="boarding-when-badge">
+            {data
+              ? dateTime(data.departure.starts_at, session.tenant.timezone)
+              : "Loading departure…"}
+          </span>
+        </div>
+        <div className="boarding-page-meta-row">
           <div className="button-row no-print doc-actions boarding-doc-actions">
             <button
               type="button"
-              className="button secondary"
+              className="button secondary icon-only-action"
               aria-label="Print manifest"
               title="Print"
               onClick={() => void printManifest()}
@@ -1914,7 +1984,7 @@ export function ManifestView({
             </button>
             <button
               type="button"
-              className="button"
+              className="button secondary icon-only-action"
               aria-label="Download PDF"
               title={printJob.busy ? "Preparing PDF" : "Download PDF"}
               onClick={() => void downloadManifest()}
@@ -1925,9 +1995,58 @@ export function ManifestView({
                 {printJob.busy ? "Preparing…" : "PDF"}
               </span>
             </button>
+            {data && (
+              <>
+                <DepartureOptionsMenu
+                  departure={{
+                    id: data.departure.id,
+                    operational_status:
+                      data.departure.operational_status ?? "open",
+                    operational_version:
+                      data.departure.operational_version ?? 1,
+                    plan_version: data.departure.plan_version,
+                  }}
+                  session={session}
+                  reload={reload}
+                  confirmedBookings={data.bookings.length}
+                />
+                <StartTripButton
+                  departureId={data.departure.id}
+                  pendingGuests={pendingStartGuests}
+                  readiness={{
+                    confirmedGuests: guestTotal,
+                    boardedGuests: boardedCount,
+                    noShowGuests:
+                      data.bookings.reduce(
+                        (sum, booking) =>
+                          sum +
+                          booking.passengers.filter(
+                            (passenger) =>
+                              passenger.checkin_state === "no_show",
+                          ).length,
+                        0,
+                      ),
+                    boardingPending: pendingStartGuests.length,
+                    pickupRequired: 0,
+                    pickupPlanned: 0,
+                    pickupUnresolved: 0,
+                    operationalStatus:
+                      data.departure.operational_status ?? "open",
+                  }}
+                  tripRunState={data.departure.trip_run_state}
+                  canStart={canCheckin}
+                  variant={
+                    tripStarted || pendingStartGuests.length > 0
+                      ? "secondary"
+                      : "primary"
+                  }
+                  onStarted={() => router.push("/operations")}
+                />
+              </>
+            )}
           </div>
-        }
-      />
+        </div>
+      </div>
       <div className="print-only">
         {session.tenant.name} · Mock data · {session.tenant.timezone}
       </div>
@@ -1957,307 +2076,13 @@ export function ManifestView({
         </div>
       )}
 
-      <div className="boarding-ops no-print">
-        {assignments.data && (
-          <section className="panel boarding-ops-card">
-            <div className="boarding-ops-head">
-              <span className="boarding-ops-icon">
-                <ShieldCheck size={18} />
-              </span>
-              <div>
-                <h2>Operational readiness</h2>
-                <span className={`status ${assignments.data.readiness}`}>
-                  {assignments.data.readiness}
-                </span>
-              </div>
-            </div>
-            {assignments.data.expiredDocuments.length ? (
-              <Notice error>
-                Blocked by expired documents:{" "}
-                {assignments.data.expiredDocuments
-                  .map((item) => item.document_type)
-                  .join(", ")}
-                .
-              </Notice>
-            ) : assignments.data.items.length ? (
-              <ul className="boarding-ops-list">
-                {assignments.data.items.map((item) => (
-                  <li key={item.id}>
-                    <strong>{label(item.assignment_role)}</strong>
-                    <span>{item.resource_name ?? item.crew_name}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="muted">No crew or resources assigned yet.</p>
-            )}
-          </section>
-        )}
-
-        <section className="panel boarding-ops-card">
-          <div className="boarding-ops-head">
-            <span className="boarding-ops-icon">
-              <MapPin size={18} />
-            </span>
-            <div>
-              <h2>Itinerary & locations</h2>
-              <span className="muted">
-                {(data?.itinerary.length ?? 0) || "No"} route{" "}
-                {(data?.itinerary.length ?? 0) === 1 ? "point" : "points"}
-              </span>
-            </div>
-            {canOps && (
-              <button
-                className="button secondary"
-                type="button"
-                onClick={() => setAddingItinerary((value) => !value)}
-              >
-                <Plus size={16} /> Add
-              </button>
-            )}
-          </div>
-          {data?.itinerary.length ? (
-            <ol className="boarding-itinerary">
-              {data.itinerary.map((point) => (
-                <li key={point.id}>
-                  <div>
-                    <strong>
-                      {point.sequence}. {point.name}
-                    </strong>
-                    <small>
-                      {[point.address, point.directions]
-                        .filter(Boolean)
-                        .join(" · ") || "Directions not recorded"}
-                    </small>
-                  </div>
-                  {point.map_url && (
-                    <a
-                      className="text-link"
-                      target="_blank"
-                      rel="noreferrer"
-                      href={point.map_url}
-                    >
-                      Map <ArrowUpRight size={14} />
-                    </a>
-                  )}
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <p className="muted">
-              Add meeting point and route notes for tablet/mobile boarding.
-            </p>
-          )}
-        </section>
-
-        {canCheckin && (
-          <section className="panel boarding-ops-card boarding-scan-card">
-            <div className="boarding-ops-head">
-              <span className="boarding-ops-icon">
-                <ScanLine size={18} />
-              </span>
-              <div>
-                <h2>Scan or enter check-in code</h2>
-                <span className="muted">QR token or paste code</span>
-              </div>
-            </div>
-            <form onSubmit={resolveScan} className="boarding-scan-form">
-              <input
-                aria-label="Check-in token"
-                required
-                value={scanToken}
-                onChange={(event) => setScanToken(event.target.value)}
-                placeholder="Scan QR or paste token"
-                autoComplete="off"
-              />
-              <button className="button" disabled={checkin.busy}>
-                <QrCode size={16} /> Find
-              </button>
-            </form>
-            {scanResult && (
-              <div className="boarding-scan-hit">
-                <div>
-                  <strong>{scanResult.name}</strong>
-                  <small>{label(scanResult.category)}</small>
-                </div>
-                <button
-                  className="button"
-                  type="button"
-                  disabled={checkin.busy}
-                  onClick={() => {
-                    const booking = data?.bookings.find((row) =>
-                      row.passengers.some(
-                        (passenger) => passenger.id === scanResult.passengerId,
-                      ),
-                    );
-                    const passenger = booking?.passengers.find(
-                      (row) => row.id === scanResult.passengerId,
-                    );
-                    if (!booking || !passenger) {
-                      setCheckinMessage(
-                        "Passenger found, but not on this departure manifest.",
-                      );
-                      return;
-                    }
-                    void recordPassengerCheckin(booking, passenger, "arrived");
-                  }}
-                >
-                  Arrived
-                </button>
-              </div>
-            )}
-          </section>
-        )}
-      </div>
-
-      {addingItinerary && canOps && (
-        <section className="panel form-panel no-print boarding-setup-form">
-          <h2>Add itinerary point</h2>
-          <form
-            onSubmit={async (event) => {
-              event.preventDefault();
-              const result = await itineraryMutation.run(
-                `ops/v1/departures/${departureId}/itinerary`,
-                {
-                  ...itineraryPoint,
-                  sequence: (data?.itinerary.length ?? 0) + 1,
-                  latitude: itineraryPoint.latitude
-                    ? Number(itineraryPoint.latitude)
-                    : null,
-                  longitude: itineraryPoint.longitude
-                    ? Number(itineraryPoint.longitude)
-                    : null,
-                },
-              );
-              if (result) {
-                setAddingItinerary(false);
-                setItineraryPoint({
-                  name: "",
-                  address: "",
-                  directions: "",
-                  latitude: "",
-                  longitude: "",
-                  mapUrl: "",
-                  visibility: "internal",
-                });
-                reload();
-              }
-            }}
-          >
-            <div className="form-grid three">
-              <label className="field">
-                <span>Name</span>
-                <input
-                  required
-                  value={itineraryPoint.name}
-                  onChange={(e) =>
-                    setItineraryPoint({
-                      ...itineraryPoint,
-                      name: e.target.value,
-                    })
-                  }
-                />
-              </label>
-              <label className="field">
-                <span>Address</span>
-                <input
-                  value={itineraryPoint.address}
-                  onChange={(e) =>
-                    setItineraryPoint({
-                      ...itineraryPoint,
-                      address: e.target.value,
-                    })
-                  }
-                />
-              </label>
-              <label className="field">
-                <span>Map link</span>
-                <input
-                  type="url"
-                  value={itineraryPoint.mapUrl}
-                  onChange={(e) =>
-                    setItineraryPoint({
-                      ...itineraryPoint,
-                      mapUrl: e.target.value,
-                    })
-                  }
-                />
-              </label>
-              <label className="field">
-                <span>Latitude</span>
-                <input
-                  type="number"
-                  step="any"
-                  value={itineraryPoint.latitude}
-                  onChange={(e) =>
-                    setItineraryPoint({
-                      ...itineraryPoint,
-                      latitude: e.target.value,
-                    })
-                  }
-                />
-              </label>
-              <label className="field">
-                <span>Longitude</span>
-                <input
-                  type="number"
-                  step="any"
-                  value={itineraryPoint.longitude}
-                  onChange={(e) =>
-                    setItineraryPoint({
-                      ...itineraryPoint,
-                      longitude: e.target.value,
-                    })
-                  }
-                />
-              </label>
-              <label className="field">
-                <span>Visibility</span>
-                <select
-                  value={itineraryPoint.visibility}
-                  onChange={(e) =>
-                    setItineraryPoint({
-                      ...itineraryPoint,
-                      visibility: e.target.value as "internal" | "guest",
-                    })
-                  }
-                >
-                  <option value="internal">Internal</option>
-                  <option value="guest">Guest-visible</option>
-                </select>
-              </label>
-            </div>
-            <label className="field">
-              <span>Directions</span>
-              <textarea
-                rows={3}
-                value={itineraryPoint.directions}
-                onChange={(e) =>
-                  setItineraryPoint({
-                    ...itineraryPoint,
-                    directions: e.target.value,
-                  })
-                }
-              />
-            </label>
-            {itineraryMutation.error && (
-              <Notice error>{itineraryMutation.error}</Notice>
-            )}
-            <div className="form-actions">
-              <button className="button" disabled={itineraryMutation.busy}>
-                {itineraryMutation.busy ? "Saving…" : "Save point"}
-              </button>
-              <button
-                type="button"
-                className="button secondary"
-                onClick={() => setAddingItinerary(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </section>
-      )}
+      <BoardingGateToolbar
+        canCheckin={canCheckin}
+        assignments={assignments.data}
+        search={guestSearch}
+        onSearchChange={setGuestSearch}
+        onScanArrived={(hit) => void handleScanArrived(hit)}
+      />
 
       {error ? (
         <Notice error>{error}</Notice>
@@ -2272,14 +2097,17 @@ export function ManifestView({
                 <Users size={18} /> Board guests
               </h2>
               <p className="muted">
-                Arrive → Pay if needed → Waiver → Board. One action per guest.
+                Arrive → Pay if needed → Waiver → Board.
               </p>
             </div>
-            <span className="status confirmed">{guestTotal} guests</span>
           </div>
           {!data.bookings.length ? (
             <Empty title="No confirmed bookings yet">
               <p>Held reservations appear here only after confirmation.</p>
+            </Empty>
+          ) : !visibleBookings.length ? (
+            <Empty title="No guests match this search">
+              <p>Clear the search to see everyone on this departure.</p>
             </Empty>
           ) : (
             <>
@@ -2289,7 +2117,7 @@ export function ManifestView({
                 </Notice>
               )}
               <div className="boarding-guest-list">
-                {data.bookings.map((booking) => (
+                {visibleBookings.map((booking) => (
                   <article className="boarding-party" key={booking.booking_id}>
                     <header className="boarding-party-head">
                       <div>
@@ -2300,7 +2128,11 @@ export function ManifestView({
                         </small>
                       </div>
                       <div className="boarding-party-meta">
-                        <Status state={booking.checkin_state ?? "not_arrived"} />
+                        {booking.passengers.length
+                          ? null
+                          : passengerStatus(
+                              booking.checkin_state ?? "not_arrived",
+                            )}
                         <span className="boarding-party-count">
                           {booking.party_size}{" "}
                           {booking.party_size === 1 ? "guest" : "guests"}
@@ -2352,6 +2184,9 @@ export function ManifestView({
                                 booking,
                                 passenger.checkin_state ?? "not_arrived",
                               )}
+                              {passengerStatus(
+                                passenger.checkin_state ?? "not_arrived",
+                              )}
                               {passengerActions(booking, passenger)}
                             </div>
                           </li>
@@ -2366,15 +2201,93 @@ export function ManifestView({
                             .map(([key, value]) => `${value} ${label(key)}`)
                             .join(", ")}
                         </p>
-                        {canCheckin && (
+                        {canCheckin &&
+                          rosterBookingId === booking.booking_id && (
+                            <div className="boarding-roster-form no-print">
+                              {rosterDrafts.map((draft, index) => (
+                                <label
+                                  className="field"
+                                  key={`${draft.category}-${index}`}
+                                >
+                                  <span>
+                                    {label(draft.category)}
+                                    {draft.isMinor ? " · minor" : ""}
+                                  </span>
+                                  <input
+                                    value={draft.name}
+                                    onChange={(event) =>
+                                      setRosterDrafts((rows) =>
+                                        rows.map((row, rowIndex) =>
+                                          rowIndex === index
+                                            ? {
+                                                ...row,
+                                                name: event.target.value,
+                                              }
+                                            : row,
+                                        ),
+                                      )
+                                    }
+                                  />
+                                </label>
+                              ))}
+                              {(rosterSave.error || checkinMessage) &&
+                                rosterBookingId === booking.booking_id && (
+                                  <Notice error={Boolean(rosterSave.error)}>
+                                    {rosterSave.error || checkinMessage}
+                                  </Notice>
+                                )}
+                              <div className="row-actions">
+                                <button
+                                  type="button"
+                                  className="button secondary"
+                                  disabled={rosterSave.busy}
+                                  onClick={() => {
+                                    setRosterBookingId(null);
+                                    setRosterDrafts([]);
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  className="button"
+                                  disabled={
+                                    rosterSave.busy ||
+                                    rosterDrafts.some(
+                                      (draft) => !draft.name.trim(),
+                                    )
+                                  }
+                                  onClick={() =>
+                                    void saveBoardingRoster(booking)
+                                  }
+                                >
+                                  {rosterSave.busy
+                                    ? "Saving…"
+                                    : "Save guest names"}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        {canCheckin &&
+                          rosterBookingId !== booking.booking_id && (
                           <div className="row-actions no-print">
                             {balanceBadge(
                               booking,
                               booking.checkin_state ?? "not_arrived",
                             )}
+                            {passengerStatus(
+                              booking.checkin_state ?? "not_arrived",
+                            )}
+                            <button
+                              type="button"
+                              className="button"
+                              onClick={() => draftRoster(booking)}
+                            >
+                              Add guest names
+                            </button>
                             {booking.checkin_state === "cleared_to_board" ? (
                               <button
-                                className="button"
+                                className="button secondary"
                                 disabled={checkin.busy}
                                 onClick={() =>
                                   void recordCheckin(booking, "boarded")
@@ -2400,7 +2313,7 @@ export function ManifestView({
                               canPay &&
                               guestBalanceMinor(booking) > 0 ? (
                               <button
-                                className="button"
+                                className="button secondary"
                                 type="button"
                                 onClick={() => setPaymentTarget({ booking })}
                               >
@@ -2408,14 +2321,9 @@ export function ManifestView({
                               </button>
                             ) : booking.checkin_state === "arrived" ||
                               booking.checkin_state === "waiver_pending" ||
-                              booking.checkin_state === "balance_pending" ? (
-                              <span className="muted">
-                                Record passenger roster to complete waiver and
-                                board
-                              </span>
-                            ) : (
+                              booking.checkin_state === "balance_pending" ? null : (
                               <button
-                                className="button"
+                                className="button secondary"
                                 disabled={checkin.busy}
                                 onClick={() =>
                                   void recordCheckin(booking, "arrived")

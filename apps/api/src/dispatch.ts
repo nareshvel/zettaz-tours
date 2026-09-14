@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   ConflictException,
   Controller,
@@ -71,6 +72,17 @@ const operationalStatusSchema = z
     reason: z.string().trim().min(1).max(500),
   })
   .strict();
+const startTripSchema = z
+  .object({
+    markRemainingNoShow: z.boolean().default(false),
+    reason: z.string().trim().min(3).max(500).optional(),
+  })
+  .strict();
+const unstartTripSchema = z
+  .object({
+    reason: z.string().trim().min(3).max(500),
+  })
+  .strict();
 
 @Injectable()
 export class DispatchService {
@@ -88,14 +100,66 @@ export class DispatchService {
         COUNT(b.id) FILTER(WHERE b.state='confirmed' AND b.pickup->>'kind'='selected')::int AS pickup_required,
         COUNT(s.id)::int AS pickup_planned,
         COUNT(b.id) FILTER(WHERE b.state='confirmed' AND b.pickup->>'kind'='unresolved')::int AS pickup_unresolved,
-        plan.version AS plan_version,plan.notes AS plan_notes
+        plan.version AS plan_version,plan.notes AS plan_notes,
+        tr.state AS trip_run_state,
+        COALESCE((
+          SELECT COUNT(*)::int FROM booking_passengers bp
+          JOIN bookings bx ON bx.tenant_id=bp.tenant_id AND bx.id=bp.booking_id
+          LEFT JOIN LATERAL (
+            SELECT state FROM passenger_checkins x
+            WHERE x.tenant_id=bp.tenant_id AND x.passenger_id=bp.id
+            ORDER BY occurred_at DESC,id DESC LIMIT 1
+          ) latest ON true
+          WHERE bp.tenant_id=d.tenant_id AND bx.departure_id=d.id AND bx.state='confirmed'
+            AND bp.superseded_at IS NULL
+            AND COALESCE(latest.state,'not_arrived')='boarded'
+        ),0)::int AS boarded_guests,
+        COALESCE((
+          SELECT COUNT(*)::int FROM booking_passengers bp
+          JOIN bookings bx ON bx.tenant_id=bp.tenant_id AND bx.id=bp.booking_id
+          LEFT JOIN LATERAL (
+            SELECT state FROM passenger_checkins x
+            WHERE x.tenant_id=bp.tenant_id AND x.passenger_id=bp.id
+            ORDER BY occurred_at DESC,id DESC LIMIT 1
+          ) latest ON true
+          WHERE bp.tenant_id=d.tenant_id AND bx.departure_id=d.id AND bx.state='confirmed'
+            AND bp.superseded_at IS NULL
+            AND COALESCE(latest.state,'not_arrived')='no_show'
+        ),0)::int AS no_show_guests,
+        (
+          COALESCE((
+            SELECT COUNT(*)::int FROM booking_passengers bp
+            JOIN bookings bx ON bx.tenant_id=bp.tenant_id AND bx.id=bp.booking_id
+            LEFT JOIN LATERAL (
+              SELECT state FROM passenger_checkins x
+              WHERE x.tenant_id=bp.tenant_id AND x.passenger_id=bp.id
+              ORDER BY occurred_at DESC,id DESC LIMIT 1
+            ) latest ON true
+            WHERE bp.tenant_id=d.tenant_id AND bx.departure_id=d.id AND bx.state='confirmed'
+              AND bp.superseded_at IS NULL
+              AND COALESCE(latest.state,'not_arrived') NOT IN ('boarded','no_show')
+          ),0)
+          + COALESCE((
+            SELECT COALESCE(SUM(party_size),0)::int FROM (
+              SELECT (SELECT SUM(value::int) FROM jsonb_each_text(hx.party))::int AS party_size
+              FROM bookings bx
+              JOIN holds hx ON hx.tenant_id=bx.tenant_id AND hx.id=bx.hold_id
+              WHERE bx.tenant_id=d.tenant_id AND bx.departure_id=d.id AND bx.state='confirmed'
+                AND NOT EXISTS (
+                  SELECT 1 FROM booking_passengers bp
+                  WHERE bp.tenant_id=bx.tenant_id AND bp.booking_id=bx.id AND bp.superseded_at IS NULL
+                )
+            ) missing_roster
+          ),0)
+        )::int AS boarding_pending
         FROM departures d JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id
         LEFT JOIN bookings b ON b.tenant_id=d.tenant_id AND b.departure_id=d.id
         LEFT JOIN holds h ON h.tenant_id=b.tenant_id AND h.id=b.hold_id
         LEFT JOIN pickup_stops s ON s.tenant_id=b.tenant_id AND s.booking_id=b.id
         LEFT JOIN departure_pickup_plans plan ON plan.tenant_id=d.tenant_id AND plan.departure_id=d.id
+        LEFT JOIN trip_runs tr ON tr.tenant_id=d.tenant_id AND tr.departure_id=d.id
         WHERE d.tenant_id=$1 AND d.local_date=$2
-        GROUP BY d.id,d.starts_at,d.capacity,d.committed,d.overbooked,d.operational_status,d.operational_reason,d.operational_version,p.name,plan.version,plan.notes ORDER BY d.starts_at,d.id`,
+        GROUP BY d.tenant_id,d.id,d.starts_at,d.capacity,d.committed,d.overbooked,d.operational_status,d.operational_reason,d.operational_version,p.name,plan.version,plan.notes,tr.state ORDER BY d.starts_at,d.id`,
         [actor.tenantId, query.date],
       );
       return { date: query.date, items: rows };
@@ -359,7 +423,13 @@ export class DispatchService {
   }
   plan(actor: Actor, departureId: string) {
     return this.db.transaction(actor, async (tx) => {
-      await this.inventory.departure(tx, actor, departureId);
+      const departure = await this.inventory.departure(tx, actor, departureId);
+      const {
+        rows: [product],
+      } = await tx.query(
+        "SELECT p.name FROM departures d JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id WHERE d.tenant_id=$1 AND d.id=$2",
+        [actor.tenantId, departureId],
+      );
       const {
         rows: [plan],
       } = await tx.query(
@@ -378,7 +448,30 @@ export class DispatchService {
         FROM bookings b JOIN holds h ON h.tenant_id=b.tenant_id AND h.id=b.hold_id WHERE b.tenant_id=$1 AND b.departure_id=$2 AND b.state='confirmed' AND b.pickup->>'kind'='selected' ORDER BY b.id`,
         [actor.tenantId, departureId],
       );
-      return { plan: plan ?? null, stops, eligible };
+      const { rows: exceptions } = await tx.query(
+        `SELECT b.id AS booking_id,b.lead_name,b.pickup->>'kind' AS pickup_kind,
+        (SELECT SUM(value::int) FROM jsonb_each_text(h.party))::int AS party_size
+        FROM bookings b JOIN holds h ON h.tenant_id=b.tenant_id AND h.id=b.hold_id
+        WHERE b.tenant_id=$1 AND b.departure_id=$2 AND b.state='confirmed' AND (
+          b.pickup->>'kind'='unresolved' OR (
+            b.pickup->>'kind'='selected' AND NOT EXISTS (
+              SELECT 1 FROM pickup_stops s WHERE s.tenant_id=b.tenant_id AND s.departure_id=b.departure_id AND s.booking_id=b.id
+            )
+          )
+        ) ORDER BY b.pickup->>'kind',b.lead_name,b.id`,
+        [actor.tenantId, departureId],
+      );
+      return {
+        departure: {
+          id: departure.id,
+          starts_at: departure.starts_at,
+          product_name: product?.name ?? "Departure",
+        },
+        plan: plan ?? null,
+        stops,
+        eligible,
+        exceptions,
+      };
     });
   }
   printableList(actor: Actor, departureId: string) {
@@ -475,6 +568,256 @@ export class DispatchService {
       },
     );
   }
+  startTrip(actor: Actor, departureId: string, key: string, raw: unknown) {
+    const input = parse(startTripSchema, raw);
+    return this.db.command(
+      actor,
+      `trip.run.start:${departureId}`,
+      key,
+      input,
+      async (tx) => {
+        const departure = (
+          await tx.query(
+            "SELECT id,operational_status FROM departures WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
+            [actor.tenantId, departureId],
+          )
+        ).rows[0] as
+          | { id: string; operational_status: string }
+          | undefined;
+        if (!departure) throw new NotFoundException();
+        if (["guide", "driver"].includes(actor.role)) {
+          const assigned = await tx.query(
+            "SELECT 1 FROM departure_assignments WHERE tenant_id=$1 AND crew_actor_id=$2 AND departure_id=$3 AND status='active'",
+            [actor.tenantId, actor.actorId, departureId],
+          );
+          if (!assigned.rowCount)
+            throw new BadRequestException(
+              "Crew can start only an assigned departure",
+            );
+        }
+        const prior = (
+          await tx.query(
+            "SELECT state,version FROM trip_runs WHERE tenant_id=$1 AND departure_id=$2 FOR UPDATE",
+            [actor.tenantId, departureId],
+          )
+        ).rows[0] as { state: string; version: number } | undefined;
+        if (["departed", "completed", "cancelled"].includes(prior?.state ?? ""))
+          throw new BadRequestException(
+            prior?.state === "departed"
+              ? "Trip already started"
+              : "Completed or cancelled trip runs cannot be started",
+          );
+        const {
+          rows: [guestCounts],
+        } = await tx.query(
+          `SELECT
+            COALESCE(SUM((SELECT SUM(value::int) FROM jsonb_each_text(h.party))),0)::int AS confirmed_guests,
+            COALESCE((
+              SELECT COUNT(*)::int FROM booking_passengers bp
+              JOIN bookings bx ON bx.tenant_id=bp.tenant_id AND bx.id=bp.booking_id
+              LEFT JOIN LATERAL (
+                SELECT state FROM passenger_checkins x
+                WHERE x.tenant_id=bp.tenant_id AND x.passenger_id=bp.id
+                ORDER BY occurred_at DESC,id DESC LIMIT 1
+              ) latest ON true
+              WHERE bp.tenant_id=$1 AND bx.departure_id=$2 AND bx.state='confirmed'
+                AND bp.superseded_at IS NULL
+                AND COALESCE(latest.state,'not_arrived')='boarded'
+            ),0)::int AS boarded_guests
+           FROM bookings b
+           JOIN holds h ON h.tenant_id=b.tenant_id AND h.id=b.hold_id
+           WHERE b.tenant_id=$1 AND b.departure_id=$2 AND b.state='confirmed'`,
+          [actor.tenantId, departureId],
+        );
+        const confirmedGuests = Number(guestCounts?.confirmed_guests ?? 0);
+        const boardedGuests = Number(guestCounts?.boarded_guests ?? 0);
+        if (confirmedGuests <= 0)
+          throw new BadRequestException(
+            "Cannot start a departure with no confirmed guests",
+          );
+        if (
+          departure.operational_status !== "open" &&
+          boardedGuests <= 0
+        )
+          throw new BadRequestException(
+            "Cannot start a weather-held or closed departure with nobody boarded",
+          );
+        const missingRoster = await tx.query(
+          `SELECT b.id FROM bookings b
+           WHERE b.tenant_id=$1 AND b.departure_id=$2 AND b.state='confirmed'
+             AND NOT EXISTS (
+               SELECT 1 FROM booking_passengers bp
+               WHERE bp.tenant_id=b.tenant_id AND bp.booking_id=b.id AND bp.superseded_at IS NULL
+             )
+           LIMIT 1`,
+          [actor.tenantId, departureId],
+        );
+        if (missingRoster.rowCount)
+          throw new BadRequestException(
+            "Record passenger names on the manifest before starting this trip",
+          );
+        const { rows: pending } = await tx.query(
+          `SELECT bp.id,bp.name,bp.booking_id
+           FROM booking_passengers bp
+           JOIN bookings b ON b.tenant_id=bp.tenant_id AND b.id=bp.booking_id
+           LEFT JOIN LATERAL (
+             SELECT state FROM passenger_checkins x
+             WHERE x.tenant_id=bp.tenant_id AND x.passenger_id=bp.id
+             ORDER BY occurred_at DESC,id DESC LIMIT 1
+           ) latest ON true
+           WHERE bp.tenant_id=$1 AND b.departure_id=$2 AND b.state='confirmed'
+             AND bp.superseded_at IS NULL
+             AND COALESCE(latest.state,'not_arrived') NOT IN ('boarded','no_show')
+           ORDER BY bp.created_at,bp.id`,
+          [actor.tenantId, departureId],
+        );
+        if (pending.length && !input.markRemainingNoShow)
+          throw new BadRequestException(
+            `${pending.length} guest${pending.length === 1 ? "" : "s"} still need boarding or an explicit no-show before start`,
+          );
+        const markedNoShow: { id: string; name: string; bookingId: string }[] =
+          [];
+        for (const passenger of pending) {
+          const checkinId = randomUUID();
+          await tx.query(
+            "INSERT INTO passenger_checkins(tenant_id,id,passenger_id,state,actor_id) VALUES($1,$2,$3,'no_show',$4)",
+            [actor.tenantId, checkinId, passenger.id, actor.actorId],
+          );
+          const result = {
+            id: checkinId,
+            passengerId: passenger.id,
+            bookingId: passenger.booking_id,
+            state: "no_show",
+          };
+          await record(
+            tx,
+            actor,
+            "passenger.checkin_recorded",
+            passenger.id,
+            null,
+            result,
+            input.reason ?? "Marked no-show when trip started",
+          );
+          markedNoShow.push({
+            id: passenger.id,
+            name: passenger.name,
+            bookingId: passenger.booking_id,
+          });
+        }
+        const version = (prior?.version ?? 0) + 1;
+        const reason =
+          input.reason ??
+          (markedNoShow.length
+            ? `Started with ${markedNoShow.length} no-show${markedNoShow.length === 1 ? "" : "s"}`
+            : "Trip started");
+        await tx.query(
+          "INSERT INTO trip_runs(tenant_id,departure_id,state,version,recorded_by) VALUES($1,$2,'departed',$3,$4) ON CONFLICT(tenant_id,departure_id) DO UPDATE SET state=EXCLUDED.state,version=EXCLUDED.version,recorded_by=EXCLUDED.recorded_by,updated_at=clock_timestamp()",
+          [actor.tenantId, departureId, version, actor.actorId],
+        );
+        const eventId = randomUUID();
+        const result = {
+          id: eventId,
+          departureId,
+          state: "departed" as const,
+          version,
+          reason,
+          markedNoShow,
+        };
+        await tx.query(
+          "INSERT INTO trip_run_events(tenant_id,id,departure_id,state,reason,actor_id) VALUES($1,$2,$3,$4,$5,$6)",
+          [
+            actor.tenantId,
+            eventId,
+            departureId,
+            result.state,
+            reason,
+            actor.actorId,
+          ],
+        );
+        await record(
+          tx,
+          actor,
+          "trip_run.event_recorded",
+          departureId,
+          prior ?? null,
+          {
+            id: eventId,
+            departureId,
+            state: result.state,
+            version,
+            reason,
+            markedNoShowCount: markedNoShow.length,
+          },
+          reason,
+        );
+        return result;
+      },
+    );
+  }
+  unstartTrip(actor: Actor, departureId: string, key: string, raw: unknown) {
+    const input = parse(unstartTripSchema, raw);
+    return this.db.command(
+      actor,
+      `trip.run.unstart:${departureId}`,
+      key,
+      input,
+      async (tx) => {
+        const departure = (
+          await tx.query(
+            "SELECT id FROM departures WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
+            [actor.tenantId, departureId],
+          )
+        ).rows[0];
+        if (!departure) throw new NotFoundException();
+        const prior = (
+          await tx.query(
+            "SELECT state,version FROM trip_runs WHERE tenant_id=$1 AND departure_id=$2 FOR UPDATE",
+            [actor.tenantId, departureId],
+          )
+        ).rows[0] as { state: string; version: number } | undefined;
+        if (prior?.state !== "departed")
+          throw new BadRequestException(
+            prior
+              ? "Only a departed trip run can be reverted to boarding"
+              : "Trip has not been started",
+          );
+        const version = prior.version + 1;
+        await tx.query(
+          "UPDATE trip_runs SET state='boarding',version=$3,recorded_by=$4,updated_at=clock_timestamp() WHERE tenant_id=$1 AND departure_id=$2",
+          [actor.tenantId, departureId, version, actor.actorId],
+        );
+        const eventId = randomUUID();
+        const result = {
+          id: eventId,
+          departureId,
+          state: "boarding" as const,
+          version,
+          reason: input.reason,
+        };
+        await tx.query(
+          "INSERT INTO trip_run_events(tenant_id,id,departure_id,state,reason,actor_id) VALUES($1,$2,$3,$4,$5,$6)",
+          [
+            actor.tenantId,
+            eventId,
+            departureId,
+            result.state,
+            input.reason,
+            actor.actorId,
+          ],
+        );
+        await record(
+          tx,
+          actor,
+          "trip_run.event_recorded",
+          departureId,
+          prior,
+          result,
+          input.reason,
+        );
+        return result;
+      },
+    );
+  }
 }
 @Controller("ops/v1")
 export class DispatchController {
@@ -554,5 +897,21 @@ export class DispatchController {
       parse(keySchema, k),
       b,
     );
+  }
+  @Post("departures/:id/start") @Access("checkin.write") start(
+    @CurrentActor() a: Actor,
+    @Param("id") d: string,
+    @Headers("idempotency-key") k: string,
+    @Body() b: unknown,
+  ) {
+    return this.service.startTrip(a, parse(id, d), parse(keySchema, k), b);
+  }
+  @Post("departures/:id/unstart") @Access("checkin.write") unstart(
+    @CurrentActor() a: Actor,
+    @Param("id") d: string,
+    @Headers("idempotency-key") k: string,
+    @Body() b: unknown,
+  ) {
+    return this.service.unstartTrip(a, parse(id, d), parse(keySchema, k), b);
   }
 }

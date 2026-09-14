@@ -10,6 +10,7 @@ import { DispatchService } from "../src/dispatch";
 import { WaiverService } from "../src/waivers";
 import { BookingChangeService } from "../src/booking-changes";
 import { PartnerService } from "../src/partners";
+import { PassengerService } from "../src/passengers";
 import { hashPassword } from "./sessions";
 import {
   grants,
@@ -325,6 +326,7 @@ async function main() {
     const waivers = app.get(WaiverService);
     const changes = app.get(BookingChangeService);
     const partners = app.get(PartnerService);
+    const passengers = app.get(PassengerService);
 
     for (const seed of tenants) {
       let tenantRow = (
@@ -371,7 +373,7 @@ async function main() {
         ],
       );
       await admin.query(
-        "INSERT INTO tenant_subscriptions(tenant_id,plan_id,status,billing_cycle,period_ends_at,trial_ends_at) VALUES($1,'6baf0d04-4c50-11f0-8dfa-525400d69130','trial','monthly',clock_timestamp()+interval '14 days',clock_timestamp()+interval '14 days') ON CONFLICT (tenant_id) DO NOTHING",
+        "INSERT INTO tenant_subscriptions(tenant_id,plan_id,status,billing_cycle,period_ends_at,trial_ends_at) VALUES($1,'f7317df1-086a-4ad9-a9c9-c229a5995dcd','trial','monthly',clock_timestamp()+interval '14 days',clock_timestamp()+interval '14 days') ON CONFLICT (tenant_id) DO NOTHING",
         [tenantId],
       );
       if (seed.rockDemo) {
@@ -689,13 +691,44 @@ async function main() {
           invoiceRequired: boolean;
         };
       }) => {
+        const rosterFor = (leadName: string, party: Record<string, number>) => {
+          const roster: Array<{
+            name: string;
+            category: string;
+            isMinor: boolean;
+          }> = [];
+          for (const [category, count] of Object.entries(party)) {
+            for (let index = 0; index < count; index += 1) {
+              const isMinor = category !== "adult";
+              const name =
+                roster.length === 0
+                  ? leadName
+                  : `${leadName} · ${category} ${index + 1}`;
+              roster.push({ name, category, isMinor });
+            }
+          }
+          return roster;
+        };
+        const ensureRoster = async (bookingId: string) => {
+          const existing = await admin.query(
+            "SELECT 1 FROM booking_passengers WHERE tenant_id=$1 AND booking_id=$2 AND superseded_at IS NULL LIMIT 1",
+            [tenantId, bookingId],
+          );
+          if (existing.rowCount) return;
+          await passengers.replace(actor, bookingId, key(), {
+            passengers: rosterFor(input.leadName, input.party),
+          });
+        };
         let row = (
           await admin.query(
             "SELECT id FROM bookings WHERE tenant_id=$1 AND lead_name=$2",
             [tenantId, input.leadName],
           )
         ).rows[0] as { id: string } | undefined;
-        if (row) return row.id;
+        if (row) {
+          await ensureRoster(row.id);
+          return row.id;
+        }
         const departure = await departureFor(input.productName, input.offset);
         const hold = await inventory.create(actor, key(), {
           departureId: departure.id,
@@ -710,6 +743,7 @@ async function main() {
           stay: input.stay,
           ...(input.partner ? { partner: input.partner } : {}),
         });
+        await ensureRoster(booking.bookingId);
         if (input.settled) {
           await reservations.payment(actor, booking.bookingId, key(), {
             amountMinor: hold.quote.totalMinor,
@@ -990,31 +1024,236 @@ async function main() {
           signerCapacity: "self",
         });
 
-      const planExists = await admin.query(
-        "SELECT 1 FROM departure_pickup_plans p JOIN bookings b ON b.tenant_id=p.tenant_id AND b.departure_id=p.departure_id WHERE p.tenant_id=$1 AND b.id=$2",
-        [tenantId, cruiseBooking],
+      // Seed `day` is already tomorrow in America/Antigua (rolling demo day), so
+      // offset 0 is the live Plan pickups / Print list target and should still
+      // be in the future when this script runs during a normal local day.
+      const planDepartureOffset = 0;
+      const pickupProduct = seed.products[0]!.name;
+      const pickupLead = (suffix: string) =>
+        seed.rockDemo ? `Demo Pickup · ${suffix}` : `Sample Pickup · ${suffix}`;
+      const pickupDeparture = await departureFor(
+        pickupProduct,
+        planDepartureOffset,
       );
-      if (!planExists.rowCount) {
-        const departure = await departureFor(seed.products[0]!.name, 0);
-        const starts = DateTime.fromJSDate(departure.starts_at).toUTC();
-        await dispatch.savePlan(actor, departure.id, key(), {
+      const ensurePickupBooking = async (input: {
+        leadName: string;
+        leadEmail: string;
+        party: Record<string, number>;
+        pickup: unknown;
+        stay: unknown;
+      }) => {
+        const onTarget = (
+          await admin.query(
+            "SELECT id,state FROM bookings WHERE tenant_id=$1 AND lead_name=$2 AND departure_id=$3",
+            [tenantId, input.leadName, pickupDeparture.id],
+          )
+        ).rows[0] as { id: string; state: string } | undefined;
+        if (onTarget?.state === "confirmed") return onTarget.id;
+        if (onTarget?.state === "held") {
+          await admin.query(
+            "UPDATE bookings SET pickup=$3::jsonb WHERE tenant_id=$1 AND id=$2",
+            [tenantId, onTarget.id, JSON.stringify(input.pickup)],
+          );
+          const version = (
+            await admin.query(
+              "SELECT version FROM bookings WHERE tenant_id=$1 AND id=$2",
+              [tenantId, onTarget.id],
+            )
+          ).rows[0] as { version: number };
+          const paid = (
+            await admin.query(
+              `SELECT COALESCE(SUM(amount_minor),0)::int AS paid
+               FROM payments WHERE tenant_id=$1 AND booking_id=$2 AND status='settled'`,
+              [tenantId, onTarget.id],
+            )
+          ).rows[0] as { paid: number };
+          const hold = (
+            await admin.query(
+              "SELECT quote FROM holds h JOIN bookings b ON b.tenant_id=h.tenant_id AND b.hold_id=h.id WHERE b.tenant_id=$1 AND b.id=$2",
+              [tenantId, onTarget.id],
+            )
+          ).rows[0] as { quote: { totalMinor: number } };
+          if (paid.paid < hold.quote.totalMinor) {
+            await reservations.payment(actor, onTarget.id, key(), {
+              amountMinor: hold.quote.totalMinor - paid.paid,
+              currency: seed.currency,
+              method: "cash",
+              status: "settled",
+              reference: `SAMPLE-${input.leadName.replaceAll(" ", "-").toUpperCase()}`,
+              reason: "Synthetic local sample payment; no money collected",
+              occurredAt: new Date().toISOString(),
+            });
+          }
+          await reservations.confirm(actor, onTarget.id, key(), {
+            version: version.version,
+          });
+          return onTarget.id;
+        }
+        const elsewhere = (
+          await admin.query(
+            "SELECT 1 FROM bookings WHERE tenant_id=$1 AND lead_name=$2",
+            [tenantId, input.leadName],
+          )
+        ).rowCount;
+        const leadName = elsewhere
+          ? `${input.leadName} · ${day.toISODate()}`
+          : input.leadName;
+        return ensureBooking({
+          ...input,
+          leadName,
+          productName: pickupProduct,
+          offset: planDepartureOffset,
+          settled: true,
+        });
+      };
+
+      const portPlanBooking = await ensurePickupBooking({
+        leadName: pickupLead("Port"),
+        leadEmail: "pickup.port@example.invalid",
+        party: { adult: 2 },
+        pickup: {
+          kind: "selected",
+          location: portName,
+          instructions: "Meet beside the visitor exit.",
+        },
+        stay: {
+          kind: "cruise",
+          vesselName: seed.rockDemo
+            ? "Rhapsody of the Seas"
+            : "Sample Ocean Voyager",
+          cabinNumber: "B214",
+        },
+      });
+      const hotelPlanBooking = await ensurePickupBooking({
+        leadName: pickupLead("Hotel"),
+        leadEmail: "pickup.hotel@example.invalid",
+        party: { adult: 1, child: 1 },
+        pickup: {
+          kind: "selected",
+          location: hotelName,
+          instructions: "Wait at the lobby entrance.",
+        },
+        stay: {
+          kind: "hotel",
+          hotelName,
+          roomNumber: "315",
+        },
+      });
+      const jollyPlanBooking = await ensurePickupBooking({
+        leadName: pickupLead("Jolly"),
+        leadEmail: "pickup.jolly@example.invalid",
+        party: { adult: 3 },
+        pickup: {
+          kind: "selected",
+          location: seed.rockDemo ? "Jolly Beach Antigua" : hotelName,
+          instructions: "Front porte-cochère.",
+        },
+        stay: {
+          kind: "hotel",
+          hotelName: seed.rockDemo ? "Jolly Beach Antigua" : hotelName,
+          roomNumber: "118",
+        },
+      });
+      const clubPlanBooking = await ensurePickupBooking({
+        leadName: pickupLead("Club"),
+        leadEmail: "pickup.club@example.invalid",
+        party: { adult: 2, child: 1 },
+        pickup: {
+          kind: "selected",
+          location: seed.rockDemo ? "St. James's Club" : hotelName,
+          instructions: "Main lobby desk.",
+        },
+        stay: {
+          kind: "hotel",
+          hotelName: seed.rockDemo ? "St. James's Club" : hotelName,
+          roomNumber: "402",
+        },
+      });
+      const unresolvedPlanBooking = await ensurePickupBooking({
+        leadName: pickupLead("Unresolved"),
+        leadEmail: "pickup.unresolved@example.invalid",
+        party: { adult: 2 },
+        // Confirm with a temporary selected pickup, then mark unresolved so the
+        // Needs attention strip has a live exception without flipping tenant policy.
+        pickup: {
+          kind: "selected",
+          location: hotelName,
+          instructions: "Placeholder until hotel is confirmed.",
+        },
+        stay: { kind: "none" },
+      });
+      await admin.query(
+        `UPDATE bookings
+         SET pickup = $3::jsonb
+         WHERE tenant_id = $1 AND id = $2 AND state = 'confirmed'`,
+        [
+          tenantId,
+          unresolvedPlanBooking,
+          JSON.stringify({
+            kind: "unresolved",
+            note: "Hotel name still being confirmed with the guest.",
+          }),
+        ],
+      );
+      await ensurePickupBooking({
+        leadName: pickupLead("Not planned"),
+        leadEmail: "pickup.notplanned@example.invalid",
+        party: { adult: 1 },
+        pickup: {
+          kind: "selected",
+          location: townName,
+          instructions: "Self-drive meeting point.",
+        },
+        stay: { kind: "none" },
+      });
+
+      const priorPlan = (
+        await admin.query(
+          "SELECT version FROM departure_pickup_plans WHERE tenant_id=$1 AND departure_id=$2",
+          [tenantId, pickupDeparture.id],
+        )
+      ).rows[0] as { version: number } | undefined;
+      const starts = DateTime.fromJSDate(pickupDeparture.starts_at).toUTC();
+      const clubLocation = seed.rockDemo ? "st-james-club" : hotelLocation;
+      const jollyLocation = seed.rockDemo ? "jolly-beach" : hotelLocation;
+      try {
+        await dispatch.savePlan(actor, pickupDeparture.id, key(), {
+          ...(priorPlan ? { version: priorPlan.version } : {}),
           notes:
-            "Synthetic local sample plan. Confirm timing with the operator.",
+            "Demo driver run: port → hotels → resort. Confirm lobby points with the desk.",
           stops: [
             {
-              bookingId: cruiseBooking,
+              bookingId: portPlanBooking,
               locationId: locations[portLocation]!,
-              pickupAt: starts.minus({ minutes: 45 }).toISO(),
-              notes: "Visitor exit.",
+              pickupAt: starts.minus({ minutes: 75 }).toISO(),
+              notes: "Visitor exit · watch for ship tenders.",
             },
             {
-              bookingId: hotelBooking,
+              bookingId: hotelPlanBooking,
               locationId: locations[hotelLocation]!,
-              pickupAt: starts.minus({ minutes: 25 }).toISO(),
+              pickupAt: starts.minus({ minutes: 55 }).toISO(),
               notes: "Lobby entrance.",
+            },
+            {
+              bookingId: jollyPlanBooking,
+              locationId: locations[jollyLocation]!,
+              pickupAt: starts.minus({ minutes: 40 }).toISO(),
+              notes: "Porte-cochère.",
+            },
+            {
+              bookingId: clubPlanBooking,
+              locationId: locations[clubLocation]!,
+              pickupAt: starts.minus({ minutes: 25 }).toISO(),
+              notes: "Main lobby desk.",
             },
           ],
         });
+      } catch (error) {
+        console.warn(
+          `Pickup plan seed skipped for ${seed.name}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
       }
       const cancelled = (
         await admin.query(

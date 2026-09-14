@@ -17,6 +17,8 @@ These names, durations, and provisional adult prices come from the client findin
 
 The tenant includes Antigua pickup locations, the accommodation names repeatedly observed in the workbook, one synthetic cruise call using a vessel name observed in the workbook, and Viator, GetYourGuide, and Island Routes demo partner records. Partner names include `(Demo)` and do not represent active integrations or commercial agreements.
 
+On the rolling demo day (seed “today” = tomorrow Antigua), Clear Boat gets a four-stop pickup plan (Port → Sandals → Jolly Beach → St. James’s Club), plus one unresolved pickup and one arranged guest left out of the plan so Plan pickups / Print list show live exceptions.
+
 Reservations, payments, room and cabin numbers, partner references, and contact details remain synthetic. No guest identity from the workbook is copied into the application. The waiver follows the supplied Rock sample's intent, remains tenant-editable, and explicitly requires legal review before production.
 
 ## Local demo identities

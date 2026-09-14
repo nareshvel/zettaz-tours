@@ -28,6 +28,7 @@ The database must enforce tenant-scoped foreign keys and prevent an active resou
 2. Manage fleet assets under **Fleet** (create/edit via modal; Manage documents per asset; remove deactivates).
 3. Manage all compliance files and storage usage under **Document library** (`/document-library`).
 4. Assign crew and fleet assets under **Catalog → Assignments** (date-range board + planner sheet with click/drag onto departures via `ops/v1/assignments`). Staff `assignment_role` comes from Workspace role; fleet uses asset type.
+5. Manifest **Crew** sheet shows readiness only (`unassigned` / `ready` / `blocked`); it does not edit assignments. See [manifest-boarding-toolbar.md](manifest-boarding-toolbar.md).
 5. Show unassigned and blocked items on Operations today.
 6. Expose only the assigned crew member's minimum trip data to the mobile surface.
 

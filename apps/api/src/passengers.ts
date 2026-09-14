@@ -82,9 +82,9 @@ export class PassengerService {
       )
     ).rows[0] as { state: string; party: Record<string, number> } | undefined;
     if (!booking) throw new NotFoundException();
-    if (booking.state !== "held")
+    if (!["held", "confirmed"].includes(booking.state))
       throw new ConflictException(
-        "Passenger roster is frozen after confirmation",
+        "Passenger roster cannot be changed for this booking state",
       );
     const expected = Object.entries(booking.party)
       .filter(([, count]) => count > 0)
@@ -111,7 +111,7 @@ export class PassengerService {
       async (tx) => {
         await this.validateParty(tx, actor, bookingId, input);
         const existing = await tx.query(
-          "SELECT id FROM booking_passengers WHERE tenant_id=$1 AND booking_id=$2",
+          "SELECT id FROM booking_passengers WHERE tenant_id=$1 AND booking_id=$2 AND superseded_at IS NULL",
           [actor.tenantId, bookingId],
         );
         if (existing.rowCount)
@@ -206,6 +206,67 @@ export class PassengerService {
           prior,
           result,
           input.reason,
+        );
+        return result;
+      },
+    );
+  }
+
+  /** First-time roster from the gate when names were never recorded before confirmation. */
+  boardingRoster(actor: Actor, bookingId: string, key: string, raw: unknown) {
+    const input = parse(rosterSchema, raw);
+    return this.db.command(
+      actor,
+      `booking.passengers.boarding:${bookingId}`,
+      key,
+      input,
+      async (tx) => {
+        const booking = (
+          await tx.query(
+            "SELECT b.state,h.party FROM bookings b JOIN holds h ON h.tenant_id=b.tenant_id AND h.id=b.hold_id WHERE b.tenant_id=$1 AND b.id=$2 FOR UPDATE",
+            [actor.tenantId, bookingId],
+          )
+        ).rows[0] as { state: string; party: Record<string, number> } | undefined;
+        if (!booking) throw new NotFoundException();
+        if (booking.state !== "confirmed")
+          throw new ConflictException(
+            "Boarding roster is only for confirmed bookings missing guest names",
+          );
+        const existing = await tx.query(
+          "SELECT id FROM booking_passengers WHERE tenant_id=$1 AND booking_id=$2 AND superseded_at IS NULL",
+          [actor.tenantId, bookingId],
+        );
+        if (existing.rowCount)
+          throw new ConflictException(
+            "Passenger roster already recorded; use a reasoned correction",
+          );
+        await this.validateParty(tx, actor, bookingId, input);
+        const result = input.passengers.map((passenger) => ({
+          id: randomUUID(),
+          ...passenger,
+          rosterVersion: 1,
+        }));
+        for (const passenger of result)
+          await tx.query(
+            "INSERT INTO booking_passengers(tenant_id,id,booking_id,name,category,is_minor,identity_pending,roster_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
+            [
+              actor.tenantId,
+              passenger.id,
+              bookingId,
+              passenger.name,
+              passenger.category,
+              passenger.isMinor,
+              passenger.identityPending,
+              passenger.rosterVersion,
+            ],
+          );
+        await record(
+          tx,
+          actor,
+          "booking.passengers_recorded",
+          bookingId,
+          null,
+          { count: result.length, rosterVersion: 1, source: "boarding" },
         );
         return result;
       },
@@ -415,6 +476,19 @@ export class PassengerController {
     @Body() body: unknown,
   ) {
     return this.service.replace(
+      actor,
+      parse(id, value),
+      parse(keySchema, key),
+      body,
+    );
+  }
+  @Post("bookings/:id/boarding-roster") @Access("checkin.write") boardingRoster(
+    @CurrentActor() actor: Actor,
+    @Param("id") value: string,
+    @Headers("idempotency-key") key: string,
+    @Body() body: unknown,
+  ) {
+    return this.service.boardingRoster(
       actor,
       parse(id, value),
       parse(keySchema, key),

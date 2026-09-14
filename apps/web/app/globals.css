@@ -2285,6 +2285,18 @@ td small {
   background: #e8f4ee;
   color: #247454;
 }
+.status.ready {
+  background: #e8f4ee;
+  color: #247454;
+}
+.status.unassigned {
+  background: #edf1f2;
+  color: #53656a;
+}
+.status.blocked {
+  background: #f8e8e5;
+  color: #a34438;
+}
 .row-actions {
   display: flex;
   gap: 15px;
@@ -2408,6 +2420,9 @@ td small {
 }
 .form-dialog-sheet.form-dialog-wide {
   width: min(640px, 100%);
+}
+.form-dialog-sheet.pickup-location-dialog {
+  width: min(720px, 100%);
 }
 .status.revoked {
   background: #f3eeee;
@@ -6001,18 +6016,120 @@ fieldset {
 .boarding-doc-actions {
   gap: 8px;
 }
-/* Document / print toolbars: icon + label on desktop; icon-only on small screens.
-   Use with .button-label spans and aria-label/title on each action. */
+/* Document / print toolbars. Print/Download use .icon-only-action (icon + aria-label/title). */
 .doc-actions {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
 }
+.doc-actions .button.icon-only-action .button-label,
+.boarding-doc-actions .button.icon-only-action .button-label,
+.booking-print-actions .button.icon-only-action .button-label,
+.pickup-print-actions .button.icon-only-action .button-label {
+  display: none;
+}
+.doc-actions .button.icon-only-action,
+.boarding-doc-actions .button.icon-only-action,
+.booking-print-actions .button.icon-only-action,
+.pickup-print-actions .button.icon-only-action {
+  min-width: 44px;
+  min-height: 44px;
+  padding-inline: 12px;
+}
 .boarding-page {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+.boarding-page-header {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.boarding-page-header .eyebrow {
+  margin: 0;
+}
+.boarding-page-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px 12px;
+  flex-wrap: wrap;
+}
+.boarding-page-title-row h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+.boarding-when-badge {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  max-width: 100%;
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--soft);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.boarding-page-meta-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  align-items: center;
+}
+.boarding-page-meta-row .boarding-doc-actions {
+  justify-content: flex-end;
+  margin-left: auto;
+}
+.pickup-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.pickup-page-header {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.pickup-page-header .eyebrow {
+  margin: 0;
+}
+.pickup-page-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pickup-page-title-row h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+.pickup-page-meta-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+.pickup-page-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.pickup-page-meta-row .pickup-print-actions {
+  justify-content: flex-end;
 }
 .button.icon-only.waiver-ready {
   border-color: color-mix(in srgb, var(--teal) 45%, var(--line));
@@ -6053,6 +6170,123 @@ fieldset {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   align-items: start;
+}
+.boarding-gate-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 4px;
+}
+.boarding-gate-search {
+  flex: 1 1 220px;
+  min-width: 0;
+  margin: 0;
+}
+.boarding-gate-search input {
+  min-height: 44px;
+}
+.boarding-gate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.boarding-gate-actions .status {
+  margin-left: 2px;
+}
+.boarding-sheet-root {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+.boarding-sheet-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: #142f3666;
+  cursor: pointer;
+}
+.boarding-sheet {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(440px, calc(100vw - 24px));
+  max-height: min(88vh, 720px);
+  overflow: auto;
+  border-radius: 16px;
+  background: white;
+  box-shadow: 0 24px 60px #142f3640;
+  display: flex;
+  flex-direction: column;
+}
+.boarding-sheet-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 1;
+}
+.boarding-sheet-head h2 {
+  margin: 2px 0 0;
+  font-size: 18px;
+}
+.boarding-sheet-body {
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+}
+.boarding-crew-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.boarding-scan-camera {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0f2a30;
+  color: #d7e4e6;
+}
+.boarding-scan-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+}
+.boarding-scan-video.is-live {
+  opacity: 1;
+}
+.boarding-scan-camera-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 .boarding-ops-card {
   margin: 0;
@@ -6212,6 +6446,11 @@ fieldset {
   display: grid;
   gap: 10px;
 }
+.boarding-roster-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+}
 .boarding-waiver-root {
   position: fixed;
   inset: 0;
@@ -6346,38 +6585,103 @@ fieldset {
   margin-left: auto;
 }
 @media (max-width: 1100px) {
-  .boarding-ops {
-    grid-template-columns: 1fr;
-    order: 3;
-  }
   .boarding-metrics {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    order: 1;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+  .boarding-metrics > div {
+    width: auto;
+    min-width: 0;
+    padding: 10px 12px;
+  }
+  .boarding-metrics strong {
+    font-size: 18px;
+  }
+  .boarding-metrics span {
+    font-size: 11px;
   }
   .boarding-manifest {
     order: 2;
   }
-  .boarding-setup-form {
-    order: 4;
+  .pickup-plan-metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 @media (max-width: 680px) {
-  .doc-actions .button-label,
-  .boarding-doc-actions .button-label,
-  .booking-print-actions .button-label,
-  .pickup-print-actions .button-label {
-    display: none;
+  .boarding-page-title-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
   }
-  .doc-actions .button,
-  .boarding-doc-actions .button,
-  .booking-print-actions .button,
-  .pickup-print-actions .button {
-    min-width: 44px;
-    min-height: 44px;
-    padding-inline: 12px;
+  .boarding-page-title-row h1 {
+    font-size: 22px;
+    flex: none;
+    width: 100%;
+  }
+  .boarding-when-badge {
+    white-space: normal;
+  }
+  .boarding-page-meta-row {
+    justify-content: flex-end;
+  }
+  .boarding-page-meta-row .boarding-doc-actions {
+    margin-left: auto;
+    width: auto;
+    max-width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+  .pickup-page-title-row h1 {
+    font-size: 22px;
+  }
+  .pickup-page-meta-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 10px 12px;
+  }
+  .pickup-print-masthead {
+    grid-template-columns: 1fr;
+  }
+  .pickup-plan-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+  }
+  .pickup-plan-metrics > div {
+    width: auto;
+    min-width: 0;
   }
   .boarding-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    padding-bottom: 2px;
+    max-width: 100%;
+    scrollbar-width: thin;
+  }
+  .boarding-metrics > div {
+    flex: 0 0 auto;
+    width: 110px;
+    min-width: 110px;
+    padding: 9px 10px;
+    scroll-snap-align: start;
+  }
+  .boarding-metrics strong {
+    font-size: 17px;
+  }
+  .boarding-metrics span {
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .boarding-gate-actions .status {
+    max-width: 7.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .boarding-party-head,
   .boarding-passenger-rows li {
@@ -6397,6 +6701,40 @@ fieldset {
   }
   .boarding-scan-form {
     grid-template-columns: 1fr;
+  }
+  .boarding-sheet {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-height: min(92vh, 860px);
+    transform: none;
+    border-radius: 16px 16px 0 0;
+  }
+  .boarding-gate-toolbar {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .boarding-gate-search {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .boarding-gate-actions {
+    flex: 0 0 auto;
+    width: auto;
+    flex-wrap: nowrap;
+  }
+  .boarding-gate-actions .button {
+    flex: 0 0 auto;
+    min-width: 44px;
+    min-height: 44px;
+    padding-inline: 12px;
+    justify-content: center;
+  }
+  .boarding-gate-actions .button-label {
+    display: none;
   }
   .boarding-waiver-sheet {
     top: auto;
@@ -8638,6 +8976,73 @@ dd {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 22px;
 }
+.board-trip-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin: 0 0 18px;
+}
+.board-trip-toolbar-controls {
+  --board-control-height: 38px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+}
+.board-trip-toolbar-controls .filter-menu {
+  display: flex;
+  align-items: end;
+}
+.board-trip-toolbar-controls .compact-control .tenant-date-input {
+  height: var(--board-control-height);
+}
+.board-trip-toolbar-controls .compact-control .tenant-date-input input {
+  min-height: var(--board-control-height);
+  height: var(--board-control-height);
+}
+.board-trip-toolbar-controls .compact-control .tenant-date-input > span {
+  top: 0;
+  transform: none;
+  line-height: var(--board-control-height);
+  display: flex;
+  align-items: center;
+}
+.button.secondary.board-trip-filter-trigger {
+  min-height: var(--board-control-height);
+  height: var(--board-control-height);
+  padding: 0 12px;
+  gap: 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1;
+}
+.board-trip-filter-popover {
+  width: min(240px, calc(100vw - 32px));
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+.board-trip-filter-popover .filter-range-option {
+  width: 100%;
+}
+.departure-options-popover {
+  width: min(260px, calc(100vw - 32px));
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+.departure-options-popover .filter-range-option {
+  width: 100%;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+}
+.departure-options-popover .filter-range-option:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .dispatch-card {
   padding: 24px;
 }
@@ -8652,9 +9057,25 @@ dd {
 .dispatch-card-top {
   margin-bottom: 24px;
 }
+.dispatch-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.start-trip-checklist {
+  display: grid;
+  gap: 8px;
+}
+.start-trip-checklist > span {
+  display: block;
+}
+.confirm-dialog-desc {
+  margin-top: 6px;
+}
 .dispatch-metrics {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 8px;
   border-block: 1px solid var(--line);
   padding: 18px 0;
@@ -8675,6 +9096,7 @@ dd {
 .dispatch-card-bottom {
   font-size: 11px;
   color: var(--muted);
+  justify-content: flex-end;
 }
 .dispatch-actions,
 .pickup-print-summary {
@@ -8713,6 +9135,21 @@ dd {
   color: var(--muted);
   font-size: 13px;
 }
+.pickup-print-note {
+  padding: 14px 16px;
+}
+.pickup-print-note strong {
+  display: block;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.pickup-print-note p {
+  margin: 6px 0 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
 .pickup-print-stops {
   list-style: none;
   margin: 0;
@@ -8728,6 +9165,13 @@ dd {
   padding: 14px 0;
   border-top: 1px solid var(--line);
 }
+.pickup-print-stop:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.pickup-print-stop:last-child {
+  padding-bottom: 0;
+}
 .pickup-print-stop-index {
   width: 28px;
   height: 28px;
@@ -8740,8 +9184,22 @@ dd {
 }
 .pickup-print-stop-main strong,
 .pickup-print-stop-main span,
-.pickup-print-stop-main small {
+.pickup-print-stop-main small,
+.pickup-print-stop-main time {
   display: block;
+}
+.pickup-print-stop-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pickup-print-stop-head time {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  white-space: nowrap;
 }
 .pickup-print-stop-main span {
   margin-top: 4px;
@@ -8752,14 +9210,6 @@ dd {
 }
 .pickup-print-table {
   display: none;
-}
-@media (min-width: 960px) {
-  .pickup-print-stops {
-    display: none;
-  }
-  .pickup-print-table {
-    display: block;
-  }
 }
 .location-list-row {
   display: flex;
@@ -8782,10 +9232,15 @@ dd {
   font-size: 20px;
 }
 .pickup-exceptions {
-  margin-top: 18px;
-}
-.pickup-exceptions:not(.clear) {
+  margin-top: 0;
+  padding: 16px 18px;
+  display: grid;
+  gap: 10px;
   border-color: color-mix(in srgb, var(--danger) 35%, var(--line));
+}
+.pickup-exceptions h2 {
+  margin: 0;
+  font-size: 15px;
 }
 .pickup-exceptions ul {
   margin: 0;
@@ -8794,11 +9249,112 @@ dd {
 .pickup-exceptions li + li {
   margin-top: 8px;
 }
+.pickup-plan-metrics {
+  margin-bottom: 4px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.pickup-plan-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.pickup-plan-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+}
+.pickup-stop-reorder {
+  display: inline-flex;
+  gap: 2px;
+  margin-top: 6px;
+}
+.eligible-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.eligible-list-head h3 {
+  margin: 0;
+}
 .pickup-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.55fr) minmax(290px, 0.8fr);
   gap: 24px;
   align-items: start;
+}
+.pickup-layout-sequencing {
+  grid-template-columns: minmax(0, 1fr);
+}
+.pickup-settings-list {
+  margin-bottom: 14px;
+}
+.pickup-settings-list article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.pickup-location-form {
+  display: grid;
+  gap: 18px;
+}
+.pickup-location-section {
+  display: grid;
+  gap: 12px;
+  padding-top: 4px;
+}
+.pickup-location-section + .pickup-location-section {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+.pickup-location-section h3 {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.pickup-location-section-hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.pickup-location-map-helpers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  font-size: 13px;
+}
+.pickup-location-map-helpers .text-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.location-map-preview {
+  display: grid;
+  gap: 8px;
+}
+.location-map-preview-canvas {
+  height: 220px;
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  overflow: hidden;
+  background: var(--soft);
+  z-index: 0;
+}
+.location-map-preview-caption {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
 }
 .pickup-plan-main,
 .pickup-plan-aside {
@@ -8821,6 +9377,9 @@ dd {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+.pickup-stop-fields .field:nth-child(3) {
+  grid-column: 1 / -1;
 }
 .pickup-stop .field {
   min-width: 0;
@@ -9361,7 +9920,22 @@ dd {
     grid-template-columns: 1fr;
   }
   .dispatch-metrics {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .board-trip-toolbar {
+    align-items: stretch;
+    justify-content: stretch;
+  }
+  .board-trip-toolbar-controls {
+    width: 100%;
+  }
+  .board-trip-toolbar-controls > .filter-menu,
+  .board-trip-toolbar-controls > .compact-control {
+    flex: 1 1 140px;
+  }
+  .board-trip-toolbar-controls .board-trip-filter-trigger {
+    width: 100%;
+    justify-content: space-between;
   }
   .pickup-stop {
     grid-template-columns: auto 1fr;

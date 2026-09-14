@@ -30,7 +30,7 @@ The tenant web aside uses four task-oriented groups: **Workspace** for the overv
 | Reservations / list, new, detail, change review | Reservations; authorized read roles | Search by reference/name/date/source; draft/hold/confirm; party, pickup, money, timeline; expiry/conflict recovery | Track A |
 | Catalog / products, rates, schedules, assignments | Owner/admin; dispatcher | Products and schedules; date-scoped departure crew/asset assignments | Track A |
 | Customers / search, detail | Reservations; scoped roles | Contact and history (Insights); protected sensitive data. Create/edit remains later. | Track A |
-| Operations pickup/plan/list/rebook (under Day Board) | Dispatcher | Plan pickups (edit sequence), Print pickup list, recovery after closure; weather hold/close/reopen via in-app reason dialog | Track A |
+| Operations pickup/plan/list/rebook (under Day Board) | Dispatcher | Plan pickups (sequence only), Print pickup list, recovery after closure; weather hold/close/reopen via in-app reason dialog. Location library lives in Tenant settings | Track A |
 | Partners / organizations, contacts, contracts, booking history | Owner/admin; scoped reservations/finance | External hotels/resellers, attribution, collector terms; finance-only money views | Track A staff-managed |
 | Finance / overview, booking payments, refunds, partner statements, remittances | Finance/owner | Guest dues, partner dues, evidence review, receipt matching, unallocated amounts, corrections | Track A slim |
 | Fleet / assets | Admin, dispatcher, resource manager | Asset readiness and compliance docs; people under Staff; assignments live under Catalog | Track A minimum |

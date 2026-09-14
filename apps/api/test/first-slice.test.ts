@@ -1924,6 +1924,12 @@ test("workspace reads paginate, honor tenant scope and restrict staff directory"
   );
   assert.equal(reservations.status, 200);
   assert.equal(reservations.body.items[0].id, booked.bookingId);
+  assert.ok(reservations.body.items[0].created_at);
+  const sortedByGuest = await get(
+    "/staff/v1/workspace/reservations?sort=lead_name&dir=asc",
+    one.token,
+  );
+  assert.equal(sortedByGuest.status, 200, JSON.stringify(sortedByGuest.body));
   assert.equal(
     (
       await get(
@@ -2415,6 +2421,141 @@ test("held pickup correction retains expiry and cancelled hold immediately retur
   );
 });
 
+test("amendment persists stay, purchaser and emergency contacts; held rejects departure or party change", async () => {
+  const hotel = await post("/ops/v1/stays/accommodations", a.token, {
+    name: "Mock Amend Hotel",
+    address: "9 Mock Wharf",
+  });
+  assert.equal(hotel.status, 201, JSON.stringify(hotel.body));
+  const d = await departure(a.token, 4);
+  const booking = await heldBooking(d.departureId);
+  const heldPartyReject = await changeQuote(booking.bookingId, {
+    party: { adult: 2 },
+  });
+  assert.equal(heldPartyReject.status, 409, JSON.stringify(heldPartyReject.body));
+  const other = await departure(a.token, 4);
+  const heldDepartureReject = await changeQuote(booking.bookingId, {
+    departureId: other.departureId,
+  });
+  assert.equal(
+    heldDepartureReject.status,
+    409,
+    JSON.stringify(heldDepartureReject.body),
+  );
+  const heldContacts = await changeQuote(booking.bookingId, {
+    leadName: "Mock Held Lead",
+    leadPhone: "+1 268 555 0200",
+    purchaser: {
+      name: "Mock Amend Buyer",
+      email: "amend-buyer@example.invalid",
+      phone: "+1 268 555 0201",
+    },
+    emergencyContact: {
+      name: "Mock Amend Emergency",
+      phone: "+1 268 555 0202",
+      relationship: "Parent",
+    },
+    stay: {
+      kind: "hotel",
+      accommodationId: hotel.body.id,
+      hotelName: "Untrusted hotel name",
+      roomNumber: "12",
+    },
+  });
+  assert.equal(heldContacts.status, 201, JSON.stringify(heldContacts.body));
+  assert.equal(heldContacts.body.differenceMinor, 0);
+  assert.equal(
+    (
+      await post(`/staff/v1/bookings/${booking.bookingId}/changes`, a.token, {
+        version: 1,
+        quoteId: heldContacts.body.quoteId,
+      })
+    ).status,
+    201,
+  );
+  const heldRead = (
+    await get(`/staff/v1/bookings/${booking.bookingId}`, a.token)
+  ).body;
+  assert.equal(heldRead.lead_name, "Mock Held Lead");
+  assert.equal(heldRead.purchaser.name, "Mock Amend Buyer");
+  assert.equal(heldRead.purchaser.phone, "+1 268 555 0201");
+  assert.equal(heldRead.emergency_contact.relationship, "Parent");
+  assert.equal(heldRead.stay.kind, "hotel");
+  assert.equal(heldRead.stay.hotelName, "Mock Amend Hotel");
+  assert.equal(heldRead.accommodation_property_id, hotel.body.id);
+  assert.equal((await pay(booking.bookingId, 10000)).status, 201);
+  assert.equal(
+    (
+      await post(`/staff/v1/bookings/${booking.bookingId}/confirm`, a.token, {
+        version: 2,
+      })
+    ).status,
+    201,
+  );
+  const cruise = await post("/ops/v1/stays/cruise-calls", a.token, {
+    vesselName: "Mock Amend Voyager",
+    callDate: DateTime.utc().plus({ days: 12 }).toISODate(),
+    portName: "Mock Port",
+    scheduledDeparture: DateTime.utc().plus({ days: 12, hours: 20 }).toISO(),
+    allAboardAt: DateTime.utc().plus({ days: 12, hours: 19 }).toISO(),
+    tenderRequired: false,
+  });
+  assert.equal(cruise.status, 201, JSON.stringify(cruise.body));
+  const confirmedQuote = await changeQuote(booking.bookingId, {
+    party: { adult: 2 },
+    leadPhone: "+1 268 555 0300",
+    purchaser: {
+      name: "Mock Confirmed Buyer",
+      email: "confirmed-buyer@example.invalid",
+      phone: "+1 268 555 0301",
+    },
+    emergencyContact: {
+      name: "Mock Confirmed Emergency",
+      phone: "+1 268 555 0302",
+      relationship: "Spouse",
+    },
+    stay: {
+      kind: "cruise",
+      cruiseCallId: cruise.body.id,
+      vesselName: "Untrusted vessel",
+      cabinNumber: "B4",
+    },
+    reason: "Mock party and stay amendment",
+  });
+  assert.equal(confirmedQuote.status, 201, JSON.stringify(confirmedQuote.body));
+  assert.equal(
+    (
+      await post(`/staff/v1/bookings/${booking.bookingId}/changes`, a.token, {
+        version: 3,
+        quoteId: confirmedQuote.body.quoteId,
+      })
+    ).status,
+    201,
+  );
+  const confirmedRead = (
+    await get(`/staff/v1/bookings/${booking.bookingId}`, a.token)
+  ).body;
+  assert.deepEqual(confirmedRead.party, { adult: 2 });
+  assert.equal(confirmedRead.purchaser.name, "Mock Confirmed Buyer");
+  assert.equal(confirmedRead.emergency_contact.name, "Mock Confirmed Emergency");
+  assert.equal(confirmedRead.stay.kind, "cruise");
+  assert.equal(confirmedRead.stay.vesselName, "Mock Amend Voyager");
+  assert.equal(confirmedRead.cruise_call_id, cruise.body.id);
+  const history = await get(
+    `/staff/v1/bookings/${booking.bookingId}/changes`,
+    a.token,
+  );
+  assert.equal(history.status, 200);
+  const latest = history.body[0];
+  assert.equal(latest.kind, "amendment");
+  assert.equal(latest.after_data.stay.kind, "cruise");
+  assert.equal(latest.after_data.purchaser.name, "Mock Confirmed Buyer");
+  assert.equal(
+    latest.after_data.emergency_contact.relationship,
+    "Spouse",
+  );
+});
+
 test("amendment policy, role denial and rollback on history failure protect commercial changes", async () => {
   const t = await setupTenant("mock-strict-amendments", {
     ...mockConfig,
@@ -2579,6 +2720,119 @@ test("published print templates and browser jobs are versioned, idempotent and t
     (await get(`/ops/v1/print-jobs/${job.body.id}/pdf`, b.token)).status,
     404,
   );
+});
+
+test("boarding payments may attribute a passenger and receipt PDF prints a booking", async () => {
+  const t = await setupTenant(`split-pay-${randomUUID().slice(0, 8)}`);
+  const dep = await departure(t.token, 8);
+  const booking = await heldBooking(dep.departureId, t.token, { adult: 2 });
+  const roster = await post(
+    `/staff/v1/bookings/${booking.bookingId}/passengers`,
+    t.token,
+    {
+      passengers: [
+        { name: "Traveler One", category: "adult", isMinor: false },
+        { name: "Traveler Two", category: "adult", isMinor: false },
+      ],
+    },
+  );
+  assert.equal(roster.status, 201, JSON.stringify(roster.body));
+  const detail = await get(`/staff/v1/bookings/${booking.bookingId}`, t.token);
+  assert.equal(detail.status, 200, JSON.stringify(detail.body));
+  const total = detail.body.balanceMinor as number;
+  const share = Math.floor(total / 2);
+  const firstPassenger = roster.body[0].id as string;
+  const secondPassenger = roster.body[1].id as string;
+  const first = await post(
+    `/staff/v1/bookings/${booking.bookingId}/payments`,
+    t.token,
+    {
+      amountMinor: share,
+      currency: "USD",
+      method: "cash",
+      status: "settled",
+      reference: "share-1",
+      reason: "Boarding share",
+      occurredAt: new Date().toISOString(),
+      passengerId: firstPassenger,
+    },
+  );
+  assert.equal(first.status, 201, JSON.stringify(first.body));
+  assert.equal(first.body.passengerId, firstPassenger);
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${booking.bookingId}/payments`,
+        t.token,
+        {
+          amountMinor: share,
+          currency: "USD",
+          method: "cash",
+          status: "settled",
+          reference: "bad-passenger",
+          reason: "Wrong booking passenger",
+          occurredAt: new Date().toISOString(),
+          passengerId: randomUUID(),
+        },
+      )
+    ).status,
+    400,
+  );
+  const afterPartial = await get(
+    `/staff/v1/bookings/${booking.bookingId}`,
+    t.token,
+  );
+  assert.equal(afterPartial.status, 200);
+  assert.equal(afterPartial.body.balanceMinor, total - share);
+  assert.equal(afterPartial.body.payments[0].passenger_id, firstPassenger);
+  assert.equal(afterPartial.body.payments[0].passenger_name, "Traveler One");
+  const second = await post(
+    `/staff/v1/bookings/${booking.bookingId}/payments`,
+    t.token,
+    {
+      amountMinor: total - share,
+      currency: "USD",
+      method: "cash",
+      status: "settled",
+      reference: "share-2",
+      reason: "Boarding share",
+      occurredAt: new Date().toISOString(),
+      passengerId: secondPassenger,
+    },
+  );
+  assert.equal(second.status, 201, JSON.stringify(second.body));
+  assert.equal(
+    (
+      await post(`/staff/v1/bookings/${booking.bookingId}/confirm`, t.token, {
+        version: 1,
+      })
+    ).status,
+    201,
+  );
+  const receipt = await post("/ops/v1/print-jobs", t.token, {
+    documentType: "receipt",
+    sourceType: "booking",
+    sourceId: booking.bookingId,
+  });
+  assert.equal(receipt.status, 201, JSON.stringify(receipt.body));
+  const pdf = await get(`/ops/v1/print-jobs/${receipt.body.id}/pdf`, t.token)
+    .buffer(true)
+    .parse((response, callback) => {
+      const chunks: Buffer[] = [];
+      response.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      response.on("end", () => callback(null, Buffer.concat(chunks)));
+    });
+  assert.equal(pdf.status, 200);
+  assert.match(String(pdf.headers["content-type"]), /^application\/pdf/);
+  const pdfBytes = pdf.body as Buffer;
+  assert.equal(pdfBytes.subarray(0, 8).toString(), "%PDF-1.4");
+  const pdfText = pdfBytes.toString("latin1");
+  assert.match(pdfText, /Reservation receipt/);
+  assert.match(pdfText, /Guest details/);
+  assert.match(pdfText, /Charges/);
+  assert.match(pdfText, /Payments/);
+  assert.match(pdfText, /Traveler One/);
+  assert.match(pdfText, /USD/);
 });
 
 test("report totals use tenant-scoped published commercial and operational facts", async () => {

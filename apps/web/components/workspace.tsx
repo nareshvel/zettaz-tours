@@ -42,7 +42,7 @@ import {
   PrintablePickupListPage,
   RebookingPage,
 } from "./dispatch";
-import { NewReservation, BookingDetail } from "./booking";
+import { AmendReservationPage, NewReservation, BookingDetail } from "./booking";
 import {
   AvailabilityDetail,
   Catalog,
@@ -341,7 +341,9 @@ export function Workspace({
       setLoading(false);
     }
   }
-  setTenantContext(session?.tenant.id ?? null);
+  setTenantContext(
+    session ? { id: session.tenant.id, name: session.tenant.name } : null,
+  );
   if (loading && !session) {
     return (
       <main className="workspace-boot" aria-busy="true">
@@ -443,17 +445,26 @@ export function Workspace({
   } else if (area === "reservations" && segments[1] === "new") {
     permission = "bookings.write";
     content = <NewReservation session={session} />;
+  } else   if (
+    area === "reservations" &&
+    segments[1] &&
+    segments[2] === "amend"
+  ) {
+    permission = "bookings.write";
+    content = (
+      <AmendReservationPage session={session} bookingId={segments[1]} />
+    );
   } else if (
     area === "reservations" &&
     segments[1] &&
-    ["amend", "cancel"].includes(segments[2] ?? "")
+    segments[2] === "cancel"
   ) {
     permission = "bookings.write";
     content = (
       <BookingChangePage
         session={session}
         bookingId={segments[1]}
-        cancel={segments[2] === "cancel"}
+        cancel
       />
     );
   } else if (area === "reservations" && segments[1])
@@ -712,10 +723,17 @@ export function Workspace({
             </button>
             <span>Workspace</span>
             <span>/</span>
-            <strong>
-              {navigation.find((n) => n.href === "/" + area)?.name ??
-                "Overview"}
-            </strong>
+            {segments.length > 1 && area !== "overview" ? (
+              <Link className="breadcrumb-link" href={"/" + area}>
+                {navigation.find((n) => n.href === "/" + area)?.name ??
+                  "Overview"}
+              </Link>
+            ) : (
+              <strong>
+                {navigation.find((n) => n.href === "/" + area)?.name ??
+                  "Overview"}
+              </strong>
+            )}
           </div>
           <span className="topbar-date" suppressHydrationWarning>
             {topbarDate}

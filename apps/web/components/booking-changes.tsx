@@ -11,7 +11,14 @@ import {
   usePaged,
   useResource,
 } from "@/lib/client";
-import { Back, ConfirmDialog, Field, FormActions, Heading, Loading, More, Notice } from "./common";
+import {
+  ConfirmDialog,
+  Field,
+  FormActions,
+  Loading,
+  More,
+  Notice,
+} from "./common";
 
 type ChangeQuote = {
   quoteId: string;
@@ -227,11 +234,12 @@ export function BookingChangePage({
   const booking = useResource<Booking>(`staff/v1/bookings/${bookingId}`);
   return (
     <>
-      <Back href={"/reservations/" + bookingId}>Reservation</Back>
-      <Heading
-        title={cancel ? "Cancel reservation" : "Amend reservation"}
-        description="Every accepted change is versioned and recorded in the audit trail."
-      />
+      <div className="booking-flow-header">
+        <h1>{cancel ? "Cancel reservation" : "Amend reservation"}</h1>
+        <p className="booking-flow-subtitle">
+          Every accepted change is versioned and recorded in the audit trail.
+        </p>
+      </div>
       {booking.error ? (
         <Notice error>{booking.error}</Notice>
       ) : !booking.data ? (

@@ -1,9 +1,25 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Page } from "./types";
-let tenantContext: string | null = null;
-export function setTenantContext(tenantId: string | null) {
-  tenantContext = tenantId;
+let tenantContext: { id: string; name: string } | null = null;
+export function setTenantContext(
+  tenant: { id: string; name: string } | string | null,
+) {
+  if (!tenant) {
+    tenantContext = null;
+    return;
+  }
+  if (typeof tenant === "string") {
+    tenantContext = { id: tenant, name: tenantContext?.name ?? "" };
+    return;
+  }
+  tenantContext = { id: tenant.id, name: tenant.name.trim() };
+}
+function sessionExpiredMessage() {
+  const name = tenantContext?.name;
+  if (name)
+    return `Your session expired. Switch or reopen ${name}.`;
+  return "Your session expired. Sign in again to reopen your workspace.";
 }
 export function errorText(data: unknown): string {
   if (typeof data === "string") return data;
@@ -21,23 +37,21 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     cache: "no-store",
     headers: {
       "Content-Type": "application/json",
-      ...(tenantContext ? { "X-Tenant-Id": tenantContext } : {}),
+      ...(tenantContext ? { "X-Tenant-Id": tenantContext.id } : {}),
       ...init.headers,
     },
   });
   const data = await res.json();
   if (!res.ok)
     throw new Error(
-      res.status === 401
-        ? "Your session expired. Switch or reopen the demo tenant."
-        : errorText(data),
+      res.status === 401 ? sessionExpiredMessage() : errorText(data),
     );
   return data;
 }
 export async function downloadApiFile(path: string, fallbackName: string) {
   const res = await fetch("/api/gateway/" + path, {
     cache: "no-store",
-    headers: tenantContext ? { "X-Tenant-Id": tenantContext } : {},
+    headers: tenantContext ? { "X-Tenant-Id": tenantContext.id } : {},
   });
   if (!res.ok) {
     const contentType = res.headers.get("content-type") ?? "";
@@ -183,7 +197,7 @@ export function money(amount: number, currency: string, locale = "en") {
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
-    currencyDisplay: "code",
+    currencyDisplay: "symbol",
   }).format(amount / 10 ** digits(currency));
 }
 export function dateOnly(

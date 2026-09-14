@@ -283,7 +283,7 @@ export function Catalog({ session }: { session: Session }) {
                 <span className="button-label">Add schedule</span>
               </button>
             ) : null}
-          </div>
+      </div>
         ) : null}
       </div>
       {products.error ? (
@@ -314,23 +314,23 @@ export function Catalog({ session }: { session: Session }) {
                         <div className="product-row-meta">
                           <span className="kind-chip">
                             {label(p.product_kind ?? "tour")}
-                          </span>
-                          <Status state={p.status ?? "active"} />
-                        </div>
+            </span>
+                    <Status state={p.status ?? "active"} />
+                  </div>
                         <h2>{p.customer_title ?? p.name}</h2>
-                        <p>
+                  <p>
                           {p.definition.optionName} ·{" "}
                           {durationHint(String(p.definition.durationMinutes))} ·{" "}
                           {modeLabel(p.availability_mode)}
-                        </p>
-                      </div>
+                  </p>
+                  </div>
                       <div className="product-row-when">
                         <span>
                           {scheduledProduct
                             ? "Next departure"
                             : "Selling model"}
                         </span>
-                        <strong>
+                          <strong>
                           {p.next_departure_at
                             ? localWhen(
                                 p.next_departure_at,
@@ -340,13 +340,13 @@ export function Catalog({ session }: { session: Session }) {
                             : scheduledProduct
                               ? "None scheduled"
                               : modeLabel(p.availability_mode)}
-                        </strong>
-                        <small>
+                          </strong>
+                          <small>
                           {p.availability_rule_count ?? 0}{" "}
                           {(p.availability_rule_count ?? 0) === 1
                             ? "schedule"
                             : "schedules"}
-                        </small>
+                          </small>
                       </div>
                       <div className="product-row-price">
                         <span>From</span>
@@ -354,7 +354,7 @@ export function Catalog({ session }: { session: Session }) {
                           {priceFromMinor(p) != null
                             ? money(
                                 priceFromMinor(p)!,
-                                session.tenant.config.bookingCurrency,
+                            session.tenant.config.bookingCurrency,
                                 session.tenant.config.locale,
                               )
                             : "No rate"}
@@ -362,15 +362,15 @@ export function Catalog({ session }: { session: Session }) {
                       </div>
                     </Link>
                     {canWrite && scheduledProduct && (
-                      <Link
+                    <Link
                         className="product-row-action"
                         href={"/catalog?tab=schedules&product=" + p.id}
-                      >
+                    >
                         Schedule
                         <ArrowRight size={16} />
-                      </Link>
-                    )}
-                  </article>
+                    </Link>
+                  )}
+                </article>
                 );
               })}
             </section>
@@ -1201,16 +1201,16 @@ export function NewProduct({ session }: { session: Session }) {
             <div className="offer-grid">
               <div className="col-span-2">
                 <Field label="Customer-facing name">
-                  <input
-                    required
-                    maxLength={120}
+            <input
+              required
+              maxLength={120}
                     placeholder="e.g. Island Discovery Cruise"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                  />
-                </Field>
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </Field>
               </div>
-              <Field label="Product type">
+          <Field label="Product type">
                 <select
                   value={productKind}
                   onChange={(e) => setProductKind(e.target.value)}
@@ -1222,29 +1222,29 @@ export function NewProduct({ session }: { session: Session }) {
                   <option value="transport">Transport</option>
                   <option value="rental">Rental</option>
                   <option value="ticket">Ticket</option>
-                </select>
-              </Field>
+            </select>
+          </Field>
               <Field
                 label="Option name"
                 hint="The first sellable variant, such as Standard or Morning."
               >
-                <input
-                  required
-                  maxLength={120}
-                  value={option}
-                  onChange={(e) => setOption(e.target.value)}
-                />
-              </Field>
+            <input
+              required
+              maxLength={120}
+              value={option}
+              onChange={(e) => setOption(e.target.value)}
+            />
+          </Field>
               <Field label="Duration · minutes" hint={durationHint(duration)}>
-                <input
-                  type="number"
-                  min="1"
-                  max="10080"
-                  required
-                  value={duration}
-                  onChange={(e) => setDuration(e.target.value)}
-                />
-              </Field>
+            <input
+              type="number"
+              min="1"
+              max="10080"
+              required
+              value={duration}
+              onChange={(e) => setDuration(e.target.value)}
+            />
+          </Field>
               <Field label="Availability model" hint={mode?.summary}>
                 <select
                   value={availabilityMode}
@@ -1268,7 +1268,7 @@ export function NewProduct({ session }: { session: Session }) {
                   ))}
                 </select>
               </Field>
-              <Field label="Pricing model">
+          <Field label="Pricing model">
                 <select
                   value={pricingModel}
                   onChange={(e) => setPricingModel(e.target.value)}
@@ -1276,17 +1276,17 @@ export function NewProduct({ session }: { session: Session }) {
                   <option value="per_person">Per person</option>
                   <option value="per_group">Per group</option>
                   <option value="per_unit">Per unit / resource</option>
-                </select>
-              </Field>
-              <Field label="Confirmation">
+            </select>
+          </Field>
+          <Field label="Confirmation">
                 <select
                   value={confirmationMode}
                   onChange={(e) => setConfirmationMode(e.target.value)}
                 >
                   <option value="instant">Instant confirmation</option>
                   <option value="request">Operator approval required</option>
-                </select>
-              </Field>
+            </select>
+          </Field>
               <div className="col-span-full">
                 <Toggle
                   className="toggle-card"
@@ -1295,7 +1295,7 @@ export function NewProduct({ session }: { session: Session }) {
                   checked={privateBooking}
                   onChange={setPrivateBooking}
                 />
-              </div>
+        </div>
               <div className="col-span-full">
                 <Field label="Short description">
                   <textarea
@@ -1304,8 +1304,8 @@ export function NewProduct({ session }: { session: Session }) {
                     maxLength={2000}
                     rows={3}
                     placeholder="Brief highlights or requirements shown to guests and reservation staff…"
-                  />
-                </Field>
+            />
+          </Field>
               </div>
             </div>
             {availabilityMode !== "fixed_departure" && (
@@ -1348,7 +1348,7 @@ export function NewProduct({ session }: { session: Session }) {
               </span>
               <Check size={16} />
             </button>
-          </div>
+        </div>
         </div>
         <aside className="product-preview" aria-live="polite">
           <div className="product-preview-card">
@@ -1587,15 +1587,15 @@ export function ProductDetail({
             </div>
             <div className="product-header-actions">
               {canWrite && scheduled && (
-                <button
-                  type="button"
+          <button
+            type="button"
                   className="button secondary"
                   aria-label="Add schedule"
                   onClick={() => setScheduleModalOpen(true)}
-                >
-                  <Plus size={16} />
+          >
+            <Plus size={16} />
                   <span className="button-label">Add schedule</span>
-                </button>
+          </button>
               )}
               {canWrite && (
                 <>
@@ -1624,7 +1624,7 @@ export function ProductDetail({
                   </button>
                 </>
               )}
-            </div>
+        </div>
           </div>
           {!scheduled && (
             <Notice>
@@ -1648,8 +1648,8 @@ export function ProductDetail({
                   <div className="offer-grid">
                     <div className="col-span-2">
                       <Field label="Customer-facing name">
-                        <input
-                          required
+                <input
+                  required
                           maxLength={120}
                           value={name}
                           onChange={(e) => setName(e.target.value)}
@@ -1669,8 +1669,8 @@ export function ProductDetail({
                         <option value="rental">Rental</option>
                         <option value="ticket">Ticket</option>
                       </select>
-                    </Field>
-                    <Field
+              </Field>
+              <Field
                       label="Status"
                       hint="Archived products stay in history but leave New reservation."
                     >
@@ -1683,26 +1683,26 @@ export function ProductDetail({
                       </select>
                     </Field>
                     <Field label="Option name">
-                      <input
-                        required
+                <input
+                  required
                         maxLength={120}
                         value={option}
                         onChange={(e) => setOption(e.target.value)}
-                      />
-                    </Field>
+                />
+              </Field>
                     <Field
                       label="Duration · minutes"
                       hint={durationHint(duration)}
                     >
-                      <input
+                <input
                         type="number"
                         min="1"
                         max="10080"
-                        required
+                  required
                         value={duration}
                         onChange={(e) => setDuration(e.target.value)}
-                      />
-                    </Field>
+                />
+              </Field>
                     <Field label="Pricing model">
                       <select
                         value={pricingModel}
@@ -1734,7 +1734,7 @@ export function ProductDetail({
                           {modeLabel(item.availability_mode)}
                         </span>
                         <span className="lock-tag">Locked</span>
-                      </div>
+            </div>
                     </Field>
                     <div className="col-span-full">
                       <Toggle
@@ -1774,8 +1774,8 @@ export function ProductDetail({
                     description="When this product runs. Each schedule creates bookable departures."
                     action={
                       canWrite && scheduled ? (
-                        <button
-                          type="button"
+                <button
+                  type="button"
                           className="button secondary"
                           onClick={() => setScheduleModalOpen(true)}
                         >
@@ -1844,8 +1844,8 @@ export function ProductDetail({
                           onClick={() => setScheduleModalOpen(true)}
                         >
                           Create the first schedule
-                        </button>
-                      )}
+                </button>
+              )}
                     </Empty>
                   )}
                 </section>
@@ -1877,8 +1877,8 @@ export function ProductDetail({
                     </span>
                     <Check size={16} />
                   </button>
-                </div>
-              </div>
+            </div>
+          </div>
               <aside className="product-preview" aria-live="polite">
                 <div className="product-preview-card">
                   <span className="kind-chip">{label(productKind)}</span>
@@ -1964,12 +1964,12 @@ export function ProductDetail({
                       >
                         <Plus size={15} />
                         Add schedule
-                      </button>
-                    </div>
+          </button>
+        </div>
                   )}
                 </div>
               </aside>
-            </form>
+      </form>
           ) : (
             <div className="product-editor-layout">
               <div className="editor-stack">
@@ -2236,7 +2236,7 @@ export function AvailabilityDetail({
                     </div>
                     <label className="compact-control">
                       <span>Departure status</span>
-                      <select
+          <select
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
                       >
@@ -2246,9 +2246,9 @@ export function AvailabilityDetail({
                         ].map((status) => (
                           <option key={status} value={status}>
                             {label(status)}
-                          </option>
-                        ))}
-                      </select>
+              </option>
+            ))}
+          </select>
                     </label>
                     <div className="filter-popover-actions">
                       <button
@@ -2266,7 +2266,7 @@ export function AvailabilityDetail({
                       >
                         Done
                       </button>
-                    </div>
+        </div>
                   </div>
                 )}
               </div>
@@ -2308,7 +2308,7 @@ export function AvailabilityDetail({
               ) : null}
             </div>
           </div>
-          {mutation.error && <Notice error>{mutation.error}</Notice>}
+        {mutation.error && <Notice error>{mutation.error}</Notice>}
           <div className="catalog-metrics" aria-label="Schedule summary">
             <div>
               <strong>
@@ -2338,12 +2338,12 @@ export function AvailabilityDetail({
               <h2>Upcoming departures</h2>
               <Link className="text-link" href="/departures">
                 Open departures <ArrowRight size={16} />
-              </Link>
+          </Link>
             </div>
             {filteredDepartures.length ? (
               <div className="rule-departure-calendar">
                 <div className="schedule-calendar-nav">
-                  <button
+          <button
                     type="button"
                     className="text-button"
                     disabled={months.indexOf(visibleMonth) <= 0}
@@ -2375,8 +2375,8 @@ export function AvailabilityDetail({
                     }}
                   >
                     Next
-                  </button>
-                </div>
+          </button>
+        </div>
                 <div className="rule-departure-grid">
                   {gridDays.map((day, index) => {
                     if (!day)
@@ -2743,12 +2743,12 @@ export function Settings({
               </span>
             )}
             <div>
-              <h2>{session.tenant.name}</h2>
+            <h2>{session.tenant.name}</h2>
               <p className="muted settings-tenant-meta">
                 {session.tenant.timezone} · {config.reportingCurrency} ·{" "}
                 {config.locale}
               </p>
-            </div>
+          </div>
           </div>
           <dl className="settings-facts">
             <div>
@@ -2870,142 +2870,142 @@ export function Settings({
           </div>
         ) : (
           <form className="panel form-panel" onSubmit={submit}>
-            {tab === "general" && (
-              <section>
-                <div className="settings-card-head" id="branding">
-                  <Building2 size={20} />
-                  <div>
-                    <h2>Company identity</h2>
-                    <p>
+          {tab === "general" && (
+            <section>
+              <div className="settings-card-head" id="branding">
+                <Building2 size={20} />
+                <div>
+                  <h2>Company identity</h2>
+                  <p>
                       Logo and core business details used across the workspace
                       and operational documents.
-                    </p>
-                  </div>
+                  </p>
                 </div>
-                <div className="identity-layout">
-                  <div className="logo-control">
-                    <label className="logo-dropzone" htmlFor="tenant-logo">
-                      {session.tenant.logo_path && !logoUnavailable ? (
-                        <img
-                          className="uploaded-tenant-logo"
-                          src={session.tenant.logo_path}
-                          alt="Tenant logo"
-                          onError={() => setLogoUnavailable(true)}
-                        />
-                      ) : (
-                        <span className="logo-monogram">
-                          {profile.displayName.slice(0, 1).toUpperCase() || "T"}
-                        </span>
-                      )}
-                      {(!session.tenant.logo_path || logoUnavailable) && (
-                        <span>Click to upload logo</span>
-                      )}
-                    </label>
+              </div>
+              <div className="identity-layout">
+                <div className="logo-control">
+                  <label className="logo-dropzone" htmlFor="tenant-logo">
+                    {session.tenant.logo_path && !logoUnavailable ? (
+                      <img
+                        className="uploaded-tenant-logo"
+                        src={session.tenant.logo_path}
+                        alt="Tenant logo"
+                        onError={() => setLogoUnavailable(true)}
+                      />
+                    ) : (
+                      <span className="logo-monogram">
+                        {profile.displayName.slice(0, 1).toUpperCase() || "T"}
+                      </span>
+                    )}
+                    {(!session.tenant.logo_path || logoUnavailable) && (
+                      <span>Click to upload logo</span>
+                    )}
+                  </label>
+                  <input
+                    id="tenant-logo"
+                    className="visually-hidden"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/svg+xml"
+                    disabled={logoBusy}
+                    onChange={(e) => void uploadLogo(e.target.files?.[0])}
+                  />
+                  <small>JPG, PNG, WebP or SVG · maximum 2 MB</small>
+                </div>
+                <div className="identity-fields">
+                  <Field label="Business name">
                     <input
-                      id="tenant-logo"
-                      className="visually-hidden"
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,image/svg+xml"
-                      disabled={logoBusy}
-                      onChange={(e) => void uploadLogo(e.target.files?.[0])}
-                    />
-                    <small>JPG, PNG, WebP or SVG · maximum 2 MB</small>
-                  </div>
-                  <div className="identity-fields">
-                    <Field label="Business name">
-                      <input
-                        required
-                        value={profile.displayName}
-                        onChange={(e) =>
+                      required
+                      value={profile.displayName}
+                      onChange={(e) =>
                           setProfile({
                             ...profile,
                             displayName: e.target.value,
                           })
+                      }
+                    />
+                  </Field>
+                  <div className="form-grid">
+                    <Field label="Business email">
+                      <input
+                        required
+                        type="email"
+                        value={profile.email}
+                        onChange={(e) =>
+                          setProfile({ ...profile, email: e.target.value })
                         }
                       />
                     </Field>
-                    <div className="form-grid">
-                      <Field label="Business email">
-                        <input
-                          required
-                          type="email"
-                          value={profile.email}
-                          onChange={(e) =>
-                            setProfile({ ...profile, email: e.target.value })
-                          }
-                        />
-                      </Field>
-                      <Field label="Business phone">
-                        <input
-                          value={profile.phone}
-                          onChange={(e) =>
-                            setProfile({ ...profile, phone: e.target.value })
-                          }
-                        />
-                      </Field>
-                    </div>
+                    <Field label="Business phone">
+                      <input
+                        value={profile.phone}
+                        onChange={(e) =>
+                          setProfile({ ...profile, phone: e.target.value })
+                        }
+                      />
+                    </Field>
                   </div>
                 </div>
-                {logoError && <Notice error>{logoError}</Notice>}
-                <div className="form-divider" />
-                <div className="settings-card-head compact-card-head">
-                  <Globe2 size={20} />
-                  <div>
-                    <h2>Business address</h2>
-                    <p>Used for operational and statutory correspondence.</p>
-                  </div>
+              </div>
+              {logoError && <Notice error>{logoError}</Notice>}
+              <div className="form-divider" />
+              <div className="settings-card-head compact-card-head">
+                <Globe2 size={20} />
+                <div>
+                  <h2>Business address</h2>
+                  <p>Used for operational and statutory correspondence.</p>
                 </div>
-                <div className="form-grid">
-                  <Field label="Street address">
-                    <input
-                      value={profile.streetAddress}
-                      onChange={(e) =>
+              </div>
+              <div className="form-grid">
+                <Field label="Street address">
+                  <input
+                    value={profile.streetAddress}
+                    onChange={(e) =>
                         setProfile({
                           ...profile,
                           streetAddress: e.target.value,
                         })
-                      }
-                    />
-                  </Field>
-                  <Field label="Apt / suite">
-                    <input
-                      value={profile.suite}
-                      onChange={(e) =>
-                        setProfile({ ...profile, suite: e.target.value })
-                      }
-                    />
-                  </Field>
-                  <Field label="City">
-                    <input
-                      value={profile.city}
-                      onChange={(e) =>
-                        setProfile({ ...profile, city: e.target.value })
-                      }
-                    />
-                  </Field>
-                  <Field label="State / parish">
-                    <input
-                      value={profile.stateParish}
-                      onChange={(e) =>
-                        setProfile({ ...profile, stateParish: e.target.value })
-                      }
-                    />
-                  </Field>
-                  <Field label="Postal code">
-                    <input
-                      value={profile.postalCode}
-                      onChange={(e) =>
-                        setProfile({ ...profile, postalCode: e.target.value })
-                      }
-                    />
-                  </Field>
-                  <Field label="Country">
+                    }
+                  />
+                </Field>
+                <Field label="Apt / suite">
+                  <input
+                    value={profile.suite}
+                    onChange={(e) =>
+                      setProfile({ ...profile, suite: e.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="City">
+                  <input
+                    value={profile.city}
+                    onChange={(e) =>
+                      setProfile({ ...profile, city: e.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="State / parish">
+                  <input
+                    value={profile.stateParish}
+                    onChange={(e) =>
+                      setProfile({ ...profile, stateParish: e.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="Postal code">
+                  <input
+                    value={profile.postalCode}
+                    onChange={(e) =>
+                      setProfile({ ...profile, postalCode: e.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="Country">
                     <select
-                      required
-                      value={profile.country}
-                      onChange={(e) =>
-                        setProfile({
-                          ...profile,
+                    required
+                    value={profile.country}
+                    onChange={(e) =>
+                      setProfile({
+                        ...profile,
                           country: e.target.value,
                         })
                       }
@@ -3022,136 +3022,136 @@ export function Settings({
                         </option>
                       ))}
                     </select>
-                  </Field>
-                </div>
-                <h2>Authorized contact</h2>
-                <p className="policy-copy">
-                  This contact will receive future verification requests for
-                  critical account changes.
-                </p>
-                <div className="form-grid">
-                  <Field label="Name">
-                    <input
-                      required
-                      value={authorizedContact.name}
-                      onChange={(e) =>
-                        setAuthorizedContact({
-                          ...authorizedContact,
-                          name: e.target.value,
-                        })
-                      }
-                    />
-                  </Field>
-                  <Field label="Email">
-                    <input
-                      required
-                      type="email"
-                      value={authorizedContact.email}
-                      onChange={(e) =>
-                        setAuthorizedContact({
-                          ...authorizedContact,
-                          email: e.target.value,
-                        })
-                      }
-                    />
-                  </Field>
-                  <Field label="Phone">
-                    <input
-                      value={authorizedContact.phone}
-                      onChange={(e) =>
-                        setAuthorizedContact({
-                          ...authorizedContact,
-                          phone: e.target.value,
-                        })
-                      }
-                    />
-                  </Field>
-                </div>
-                {profileMutation.error && (
-                  <Notice error>{profileMutation.error}</Notice>
-                )}
+                </Field>
+              </div>
+              <h2>Authorized contact</h2>
+              <p className="policy-copy">
+                This contact will receive future verification requests for
+                critical account changes.
+              </p>
+              <div className="form-grid">
+                <Field label="Name">
+                  <input
+                    required
+                    value={authorizedContact.name}
+                    onChange={(e) =>
+                      setAuthorizedContact({
+                        ...authorizedContact,
+                        name: e.target.value,
+                      })
+                    }
+                  />
+                </Field>
+                <Field label="Email">
+                  <input
+                    required
+                    type="email"
+                    value={authorizedContact.email}
+                    onChange={(e) =>
+                      setAuthorizedContact({
+                        ...authorizedContact,
+                        email: e.target.value,
+                      })
+                    }
+                  />
+                </Field>
+                <Field label="Phone">
+                  <input
+                    value={authorizedContact.phone}
+                    onChange={(e) =>
+                      setAuthorizedContact({
+                        ...authorizedContact,
+                        phone: e.target.value,
+                      })
+                    }
+                  />
+                </Field>
+              </div>
+              {profileMutation.error && (
+                <Notice error>{profileMutation.error}</Notice>
+              )}
                 <FormActions stickyOnMobile>
-                  <button
-                    type="button"
-                    className="button"
-                    disabled={profileMutation.busy}
-                    onClick={() => void saveProfile()}
-                  >
-                    {profileMutation.busy ? "Saving…" : "Save general profile"}
-                    <Check size={17} />
-                  </button>
+                <button
+                  type="button"
+                  className="button"
+                  disabled={profileMutation.busy}
+                  onClick={() => void saveProfile()}
+                >
+                  {profileMutation.busy ? "Saving…" : "Save general profile"}
+                  <Check size={17} />
+                </button>
                 </FormActions>
-                <div className="form-divider" />
-              </section>
-            )}
-            {tab === "commercial" && (
-              <section>
-                <div className="settings-card-head" id="commercial">
-                  <Landmark size={20} />
-                  <div>
-                    <h2>Booking, taxes & commercial policy</h2>
-                    <p>
-                      Controls for new holds and bookings. Existing snapshots
-                      remain fixed.
-                    </p>
-                  </div>
+              <div className="form-divider" />
+            </section>
+          )}
+          {tab === "commercial" && (
+            <section>
+              <div className="settings-card-head" id="commercial">
+                <Landmark size={20} />
+                <div>
+                  <h2>Booking, taxes & commercial policy</h2>
+                  <p>
+                    Controls for new holds and bookings. Existing snapshots
+                    remain fixed.
+                  </p>
                 </div>
-                <div className="form-grid">
-                  <Field
-                    label="Hold duration · seconds"
-                    hint="Between 30 and 1,800 seconds."
-                  >
-                    <input
-                      type="number"
-                      min="30"
-                      max="1800"
-                      required
-                      value={config.holdSeconds}
-                      onChange={(e) =>
-                        setConfig({
-                          ...config,
-                          holdSeconds: Number(e.target.value),
-                        })
-                      }
-                    />
-                  </Field>
-                  <Field label="Minimum payment to confirm · %">
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      required
-                      value={config.minimumPaidPercent}
-                      onChange={(e) =>
-                        setConfig({
-                          ...config,
-                          minimumPaidPercent: Number(e.target.value),
-                        })
-                      }
-                    />
-                  </Field>
-                  <Field
-                    label="Tax / fee rate · %"
+              </div>
+              <div className="form-grid">
+                <Field
+                  label="Hold duration · seconds"
+                  hint="Between 30 and 1,800 seconds."
+                >
+                  <input
+                    type="number"
+                    min="30"
+                    max="1800"
+                    required
+                    value={config.holdSeconds}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        holdSeconds: Number(e.target.value),
+                      })
+                    }
+                  />
+                </Field>
+                <Field label="Minimum payment to confirm · %">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    required
+                    value={config.minimumPaidPercent}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        minimumPaidPercent: Number(e.target.value),
+                      })
+                    }
+                  />
+                </Field>
+                <Field
+                  label="Tax / fee rate · %"
                     hint="Added once on the party subtotal when a hold is priced (exclusive). Not a tax engine."
-                  >
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="100"
-                      required
-                      value={config.taxBasisPoints / 100}
-                      onChange={(e) =>
-                        setConfig({
-                          ...config,
-                          taxBasisPoints: Math.round(
-                            Number(e.target.value) * 100,
-                          ),
-                        })
-                      }
-                    />
-                  </Field>
-                </div>
+                >
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    required
+                    value={config.taxBasisPoints / 100}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        taxBasisPoints: Math.round(
+                          Number(e.target.value) * 100,
+                        ),
+                      })
+                    }
+                  />
+                </Field>
+              </div>
                 <p className="policy-copy">
                   Yes — this rate is used today. New holds compute tax as rate ×
                   party subtotal and freeze it on the quote (total = subtotal +
@@ -3159,104 +3159,104 @@ export function Settings({
                   and remittance are not modeled; treat catalogue amounts as
                   tax-exclusive until a finance-approved tax engine ships.
                 </p>
-                <Toggle
-                  label="Allow confirmation before pickup is arranged"
-                  description="Unresolved pickup still appears on the booking."
-                  checked={config.allowUnresolvedPickup}
-                  onChange={(checked) =>
-                    setConfig({ ...config, allowUnresolvedPickup: checked })
-                  }
-                />
-                <div className="form-divider" />
-              </section>
-            )}
-            {tab === "localization" && (
-              <section>
-                <div className="settings-card-head" id="localization">
-                  <Globe2 size={20} />
-                  <div>
-                    <h2>Localization</h2>
-                    <p>
-                      Regional display and data-entry defaults for this tenant.
-                    </p>
-                  </div>
+              <Toggle
+                label="Allow confirmation before pickup is arranged"
+                description="Unresolved pickup still appears on the booking."
+                checked={config.allowUnresolvedPickup}
+                onChange={(checked) =>
+                  setConfig({ ...config, allowUnresolvedPickup: checked })
+                }
+              />
+              <div className="form-divider" />
+            </section>
+          )}
+          {tab === "localization" && (
+            <section>
+              <div className="settings-card-head" id="localization">
+                <Globe2 size={20} />
+                <div>
+                  <h2>Localization</h2>
+                  <p>
+                    Regional display and data-entry defaults for this tenant.
+                  </p>
                 </div>
-                <div className="form-grid">
-                  <Field label="Display language">
-                    <select
-                      value={config.locale}
-                      onChange={(e) =>
-                        setConfig({ ...config, locale: e.target.value })
-                      }
-                    >
-                      <option value="en">English</option>
-                      <option value="es">Spanish</option>
-                      <option value="fr">French</option>
-                    </select>
-                  </Field>
-                  <Field label="Date format">
-                    <select
-                      value={config.dateFormat}
-                      onChange={(e) =>
-                        setConfig({
-                          ...config,
+              </div>
+              <div className="form-grid">
+                <Field label="Display language">
+                  <select
+                    value={config.locale}
+                    onChange={(e) =>
+                      setConfig({ ...config, locale: e.target.value })
+                    }
+                  >
+                    <option value="en">English</option>
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                  </select>
+                </Field>
+                <Field label="Date format">
+                  <select
+                    value={config.dateFormat}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
                           dateFormat: e.target
                             .value as typeof config.dateFormat,
-                        })
-                      }
-                    >
-                      <option value="DD/MM/YYYY">DD/MM/YYYY</option>
-                      <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-                      <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-                    </select>
-                  </Field>
-                  <Field label="Time format">
-                    <select
-                      value={config.timeFormat}
-                      onChange={(e) =>
-                        setConfig({
-                          ...config,
+                      })
+                    }
+                  >
+                    <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                    <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                    <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                  </select>
+                </Field>
+                <Field label="Time format">
+                  <select
+                    value={config.timeFormat}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
                           timeFormat: e.target
                             .value as typeof config.timeFormat,
-                        })
-                      }
-                    >
-                      <option value="12h">12-hour</option>
-                      <option value="24h">24-hour</option>
-                    </select>
-                  </Field>
-                  <Field label="Week starts on">
-                    <select
-                      value={config.weekStartsOn}
-                      onChange={(e) =>
-                        setConfig({
-                          ...config,
-                          weekStartsOn: Number(e.target.value),
-                        })
-                      }
-                    >
-                      <option value={0}>Sunday</option>
-                      <option value={1}>Monday</option>
-                    </select>
-                  </Field>
-                  <Field label="Measurement system">
-                    <select
-                      value={config.measurementSystem}
-                      onChange={(e) =>
-                        setConfig({
-                          ...config,
-                          measurementSystem: e.target
-                            .value as typeof config.measurementSystem,
-                        })
-                      }
-                    >
-                      <option value="metric">Metric</option>
-                      <option value="imperial">Imperial</option>
-                    </select>
-                  </Field>
-                </div>
-                <div className="form-divider" />
-                <h2>Currency & tax context</h2>
+                      })
+                    }
+                  >
+                    <option value="12h">12-hour</option>
+                    <option value="24h">24-hour</option>
+                  </select>
+                </Field>
+                <Field label="Week starts on">
+                  <select
+                    value={config.weekStartsOn}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        weekStartsOn: Number(e.target.value),
+                      })
+                    }
+                  >
+                    <option value={0}>Sunday</option>
+                    <option value={1}>Monday</option>
+                  </select>
+                </Field>
+                <Field label="Measurement system">
+                  <select
+                    value={config.measurementSystem}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        measurementSystem: e.target
+                          .value as typeof config.measurementSystem,
+                      })
+                    }
+                  >
+                    <option value="metric">Metric</option>
+                    <option value="imperial">Imperial</option>
+                  </select>
+                </Field>
+              </div>
+              <div className="form-divider" />
+              <h2>Currency & tax context</h2>
                 <p className="policy-copy">
                   Track A requires booking, collection, and reporting currencies
                   to be the same. FX conversion is out of scope, so these fields
@@ -3264,65 +3264,65 @@ export function Settings({
                   approved finance migration — not from this screen. Tax rate
                   editing lives under Taxes & commercial.
                 </p>
-                <div className="form-grid">
-                  <Field label="Booking currency">
-                    <input value={config.bookingCurrency} disabled />
-                  </Field>
-                  <Field label="Collection currency">
-                    <input value={config.collectionCurrency} disabled />
-                  </Field>
-                  <Field label="Reporting currency">
-                    <input value={config.reportingCurrency} disabled />
-                  </Field>
+              <div className="form-grid">
+                <Field label="Booking currency">
+                  <input value={config.bookingCurrency} disabled />
+                </Field>
+                <Field label="Collection currency">
+                  <input value={config.collectionCurrency} disabled />
+                </Field>
+                <Field label="Reporting currency">
+                  <input value={config.reportingCurrency} disabled />
+                </Field>
+              </div>
+              <div className="form-divider" />
+            </section>
+          )}
+          {tab === "printers" && (
+            <section>
+              <div className="settings-card-head">
+                <Printer size={20} />
+                <div>
+                  <h2>Printers & documents</h2>
+                  <p>
+                    Produce paper-safe operational documents from the current
+                    departure data.
+                  </p>
                 </div>
-                <div className="form-divider" />
-              </section>
-            )}
-            {tab === "printers" && (
-              <section>
-                <div className="settings-card-head">
-                  <Printer size={20} />
+              </div>
+              <div className="document-access-grid">
+                <article>
+                  <FileText size={19} />
                   <div>
-                    <h2>Printers & documents</h2>
+                    <h3>Departure manifest</h3>
                     <p>
-                      Produce paper-safe operational documents from the current
-                      departure data.
+                      Open a departure, then print its confirmed passenger
+                      manifest or save it as a PDF.
                     </p>
+                    <Link className="text-link" href="/departures">
+                      Open departures <ArrowRight size={16} />
+                    </Link>
                   </div>
-                </div>
-                <div className="document-access-grid">
-                  <article>
-                    <FileText size={19} />
-                    <div>
-                      <h3>Departure manifest</h3>
-                      <p>
-                        Open a departure, then print its confirmed passenger
-                        manifest or save it as a PDF.
-                      </p>
-                      <Link className="text-link" href="/departures">
-                        Open departures <ArrowRight size={16} />
-                      </Link>
-                    </div>
-                  </article>
-                  <article>
-                    <Printer size={19} />
-                    <div>
-                      <h3>Pickup list</h3>
-                      <p>
-                        Open the operations board, save the pickup plan, then
-                        print its ordered stops and exceptions.
-                      </p>
-                      <Link className="text-link" href="/operations">
-                        Open operations <ArrowRight size={16} />
-                      </Link>
-                    </div>
-                  </article>
-                </div>
-                <p className="policy-copy">
-                  Browser print and Save as PDF are the current delivery method.
-                  Browser jobs are recorded for audit; a printer agent and
-                  physical destinations are not enabled yet.
-                </p>
+                </article>
+                <article>
+                  <Printer size={19} />
+                  <div>
+                    <h3>Pickup list</h3>
+                    <p>
+                      Open the operations board, save the pickup plan, then
+                      print its ordered stops and exceptions.
+                    </p>
+                    <Link className="text-link" href="/operations">
+                      Open operations <ArrowRight size={16} />
+                    </Link>
+                  </div>
+                </article>
+              </div>
+              <p className="policy-copy">
+                Browser print and Save as PDF are the current delivery method.
+                Browser jobs are recorded for audit; a printer agent and
+                physical destinations are not enabled yet.
+              </p>
                 <div className="form-divider" />
                 <h2>Document storage</h2>
                 <p className="policy-copy">
@@ -3415,94 +3415,94 @@ export function Settings({
                     </button>
                   </FormActions>
                 )}
-                {session.permissions.includes("print.templates.manage") && (
-                  <>
-                    <div className="form-divider" />
-                    <h2>Document templates</h2>
-                    <p className="policy-copy">
+              {session.permissions.includes("print.templates.manage") && (
+                <>
+                  <div className="form-divider" />
+                  <h2>Document templates</h2>
+                  <p className="policy-copy">
                       Publishing creates a new tenant-owned template version.
                       The selected layout becomes the default for its document
                       type.
-                    </p>
-                    <div className="form-grid compact">
-                      <Field label="Document type">
-                        <select
-                          value={printDocumentType}
-                          onChange={(event) =>
-                            setPrintDocumentType(
-                              event.target.value as "manifest" | "pickup_list",
-                            )
-                          }
-                        >
-                          <option value="manifest">Departure manifest</option>
-                          <option value="pickup_list">Pickup list</option>
-                        </select>
-                      </Field>
-                      <Field label="Template name">
-                        <input
-                          value={printName}
-                          maxLength={120}
-                          placeholder="Standard departure manifest"
-                          onChange={(event) => setPrintName(event.target.value)}
-                        />
-                      </Field>
-                    </div>
-                    {printMutation.error && (
-                      <Notice error>{printMutation.error}</Notice>
-                    )}
-                    <div className="form-actions">
-                      <button
-                        className="button"
-                        type="button"
-                        disabled={printMutation.busy || !printName.trim()}
-                        onClick={() => void publishPrintTemplate()}
+                  </p>
+                  <div className="form-grid compact">
+                    <Field label="Document type">
+                      <select
+                        value={printDocumentType}
+                        onChange={(event) =>
+                          setPrintDocumentType(
+                            event.target.value as "manifest" | "pickup_list",
+                          )
+                        }
                       >
+                        <option value="manifest">Departure manifest</option>
+                        <option value="pickup_list">Pickup list</option>
+                      </select>
+                    </Field>
+                    <Field label="Template name">
+                      <input
+                        value={printName}
+                        maxLength={120}
+                        placeholder="Standard departure manifest"
+                        onChange={(event) => setPrintName(event.target.value)}
+                      />
+                    </Field>
+                  </div>
+                  {printMutation.error && (
+                    <Notice error>{printMutation.error}</Notice>
+                  )}
+                  <div className="form-actions">
+                    <button
+                      className="button"
+                      type="button"
+                      disabled={printMutation.busy || !printName.trim()}
+                      onClick={() => void publishPrintTemplate()}
+                    >
                         {printMutation.busy
                           ? "Publishing…"
                           : "Publish template"}
-                      </button>
-                    </div>
-                  </>
-                )}
-                {printTemplates.error ? (
-                  <Notice error>{printTemplates.error}</Notice>
-                ) : printTemplates.data?.length ? (
+                    </button>
+                  </div>
+                </>
+              )}
+              {printTemplates.error ? (
+                <Notice error>{printTemplates.error}</Notice>
+              ) : printTemplates.data?.length ? (
+                <div className="settings-list">
+                  {printTemplates.data.map((template) => (
+                    <article key={template.id}>
+                      <div>
+                        <strong>{template.name}</strong>
+                        <p>
+                          {label(template.document_type)} · version{" "}
+                          {template.version}
+                        </p>
+                      </div>
+                      {template.is_default && <Status state="confirmed" />}
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted">No published document templates yet.</p>
+              )}
+              {printJobs.data?.length ? (
+                <>
+                  <div className="form-divider" />
+                  <h2>Recent document requests</h2>
                   <div className="settings-list">
-                    {printTemplates.data.map((template) => (
-                      <article key={template.id}>
+                    {printJobs.data.slice(0, 5).map((job) => (
+                      <article key={job.id}>
                         <div>
-                          <strong>{template.name}</strong>
-                          <p>
-                            {label(template.document_type)} · version{" "}
-                            {template.version}
-                          </p>
+                          <strong>{label(job.document_type)}</strong>
+                          <p>{new Date(job.requested_at).toLocaleString()}</p>
                         </div>
-                        {template.is_default && <Status state="confirmed" />}
+                        <Status state={job.status} />
                       </article>
                     ))}
                   </div>
-                ) : (
-                  <p className="muted">No published document templates yet.</p>
-                )}
-                {printJobs.data?.length ? (
-                  <>
-                    <div className="form-divider" />
-                    <h2>Recent document requests</h2>
-                    <div className="settings-list">
-                      {printJobs.data.slice(0, 5).map((job) => (
-                        <article key={job.id}>
-                          <div>
-                            <strong>{label(job.document_type)}</strong>
-                            <p>{new Date(job.requested_at).toLocaleString()}</p>
-                          </div>
-                          <Status state={job.status} />
-                        </article>
-                      ))}
-                    </div>
-                  </>
-                ) : null}
-              </section>
-            )}
+                </>
+              ) : null}
+            </section>
+          )}
             {tab === "stays" && (
               <section>
                 <div className="settings-card-head">
@@ -3515,7 +3515,7 @@ export function Settings({
                     </p>
                   </div>
                 </div>
-                <h2>Cruise calls</h2>
+            <h2>Cruise calls</h2>
                 <div className="form-grid">
                   <Field label="Vessel name">
                     <input
@@ -3614,112 +3614,112 @@ export function Settings({
             {tab === "resellers" && session.permissions.includes("partner.manage") && (
               <PartnersResellersSettings />
             )}
-            {tab === "payments" && (
-              <section className="settings-future">
-                <CreditCard size={20} />
-                <div>
-                  <h2>Payments</h2>
-                  <p>
+          {tab === "payments" && (
+            <section className="settings-future">
+              <CreditCard size={20} />
+              <div>
+                <h2>Payments</h2>
+                <p>
                     Tenant collection providers, Stripe Connect, gateway
                     selection and settlement rules will appear here after
                     finance policy decisions are recorded.
+                </p>
+              </div>
+            </section>
+          )}
+          {tab === "waivers" && (
+            <section>
+              <div className="settings-card-head">
+                <FileText size={20} />
+                <div>
+                  <h2>Waiver templates</h2>
+                  <p>
+                    Publish an approved version for staff capture. Signed
+                    evidence always stays bound to its original version.
                   </p>
                 </div>
-              </section>
-            )}
-            {tab === "waivers" && (
-              <section>
-                <div className="settings-card-head">
-                  <FileText size={20} />
-                  <div>
-                    <h2>Waiver templates</h2>
-                    <p>
-                      Publish an approved version for staff capture. Signed
-                      evidence always stays bound to its original version.
-                    </p>
+              </div>
+              {waiverTemplates.error ? (
+                <Notice error>{waiverTemplates.error}</Notice>
+              ) : !waiverTemplates.data ? (
+                <Loading />
+              ) : waiverTemplates.data.length ? (
+                <div className="waiver-current">
+                  <span>ACTIVE VERSION</span>
+                  <strong>
+                    v{waiverTemplates.data[0].version} ·{" "}
+                    {waiverTemplates.data[0].title}
+                  </strong>
+                  <p>
+                    Published{" "}
+                    {new Date(
+                      waiverTemplates.data[0].created_at,
+                    ).toLocaleDateString()}
+                  </p>
+                </div>
+              ) : (
+                <Notice>No active waiver template has been published.</Notice>
+              )}
+              {session.permissions.includes("waiver.template.publish") ? (
+                <div className="waiver-editor">
+                  <h2>
+                    {waiverTemplates.data?.length
+                      ? "Publish replacement version"
+                      : "Publish first version"}
+                  </h2>
+                  <p className="policy-copy">
+                    Confirm wording with the tenant's legal and insurance
+                    advisers before publishing. Publishing supersedes the
+                    current version for future signatures; it never changes
+                    existing evidence.
+                  </p>
+                  <Field label="Template title">
+                    <input
+                      required
+                      maxLength={160}
+                      value={waiverTitle}
+                      onChange={(e) => setWaiverTitle(e.target.value)}
+                      placeholder="For example, Tour participant waiver"
+                    />
+                  </Field>
+                  <Field label="Approved waiver wording">
+                    <textarea
+                      required
+                      maxLength={20000}
+                      value={waiverBody}
+                      onChange={(e) => setWaiverBody(e.target.value)}
+                      placeholder="Enter tenant-approved wording"
+                      rows={12}
+                    />
+                  </Field>
+                  {waiverMutation.error && (
+                    <Notice error>{waiverMutation.error}</Notice>
+                  )}
+                  <div className="form-actions">
+                    <button
+                      type="button"
+                      className="button"
+                      disabled={
+                        waiverMutation.busy ||
+                        !waiverTitle.trim() ||
+                        !waiverBody.trim()
+                      }
+                      onClick={() => void publishWaiverTemplate()}
+                    >
+                      {waiverMutation.busy
+                        ? "Publishing…"
+                        : "Publish immutable version"}
+                      <Check size={17} />
+                    </button>
                   </div>
                 </div>
-                {waiverTemplates.error ? (
-                  <Notice error>{waiverTemplates.error}</Notice>
-                ) : !waiverTemplates.data ? (
-                  <Loading />
-                ) : waiverTemplates.data.length ? (
-                  <div className="waiver-current">
-                    <span>ACTIVE VERSION</span>
-                    <strong>
-                      v{waiverTemplates.data[0].version} ·{" "}
-                      {waiverTemplates.data[0].title}
-                    </strong>
-                    <p>
-                      Published{" "}
-                      {new Date(
-                        waiverTemplates.data[0].created_at,
-                      ).toLocaleDateString()}
-                    </p>
-                  </div>
-                ) : (
-                  <Notice>No active waiver template has been published.</Notice>
-                )}
-                {session.permissions.includes("waiver.template.publish") ? (
-                  <div className="waiver-editor">
-                    <h2>
-                      {waiverTemplates.data?.length
-                        ? "Publish replacement version"
-                        : "Publish first version"}
-                    </h2>
-                    <p className="policy-copy">
-                      Confirm wording with the tenant's legal and insurance
-                      advisers before publishing. Publishing supersedes the
-                      current version for future signatures; it never changes
-                      existing evidence.
-                    </p>
-                    <Field label="Template title">
-                      <input
-                        required
-                        maxLength={160}
-                        value={waiverTitle}
-                        onChange={(e) => setWaiverTitle(e.target.value)}
-                        placeholder="For example, Tour participant waiver"
-                      />
-                    </Field>
-                    <Field label="Approved waiver wording">
-                      <textarea
-                        required
-                        maxLength={20000}
-                        value={waiverBody}
-                        onChange={(e) => setWaiverBody(e.target.value)}
-                        placeholder="Enter tenant-approved wording"
-                        rows={12}
-                      />
-                    </Field>
-                    {waiverMutation.error && (
-                      <Notice error>{waiverMutation.error}</Notice>
-                    )}
-                    <div className="form-actions">
-                      <button
-                        type="button"
-                        className="button"
-                        disabled={
-                          waiverMutation.busy ||
-                          !waiverTitle.trim() ||
-                          !waiverBody.trim()
-                        }
-                        onClick={() => void publishWaiverTemplate()}
-                      >
-                        {waiverMutation.busy
-                          ? "Publishing…"
-                          : "Publish immutable version"}
-                        <Check size={17} />
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <Notice>
-                    Only the tenant owner can publish or replace waiver wording.
-                  </Notice>
-                )}
-              </section>
-            )}
+              ) : (
+                <Notice>
+                  Only the tenant owner can publish or replace waiver wording.
+                </Notice>
+              )}
+            </section>
+          )}
             {tab === "security" ? (
               session.role === "owner" ? (
                 <SupportAccessSettings />
@@ -3738,29 +3738,29 @@ export function Settings({
                 </section>
               )
             ) : null}
-            {tab === "commercial" && (
-              <section>
-                <h2>Collection methods & booking sources</h2>
-                <Field
-                  label="Allowed manual collection methods"
+          {tab === "commercial" && (
+            <section>
+              <h2>Collection methods & booking sources</h2>
+              <Field
+                label="Allowed manual collection methods"
                   hint="Comma-separated codes. Suggested: cash, card, online, bank_transfer, reseller_payment. Guest payment via reseller is a guest-to-operator ledger entry when the guest paid through a reseller channel — not a substitute for Partner collects / Partner invoice claims."
-                >
-                  <input
-                    required
-                    value={methods}
-                    onChange={(e) => setMethods(e.target.value)}
-                  />
-                </Field>
-                <Field
-                  label="Booking sources"
+              >
+                <input
+                  required
+                  value={methods}
+                  onChange={(e) => setMethods(e.target.value)}
+                />
+              </Field>
+              <Field
+                label="Booking sources"
                   hint="Comma-separated codes such as phone, walk_in, website, partner_reseller. Channel brands (Viator, GetYourGuide) belong under Partners / Resellers organizations, not as separate booking sources."
-                >
-                  <input
-                    required
-                    value={sources}
-                    onChange={(e) => setSources(e.target.value)}
-                  />
-                </Field>
+              >
+                <input
+                  required
+                  value={sources}
+                  onChange={(e) => setSources(e.target.value)}
+                />
+              </Field>
                 <Toggle
                   label="Allow confirmed amendments to create an additional balance due"
                   description="When disabled, an accepted amendment must satisfy its minimum-paid rule. This is separate from the initial confirmation policy."
@@ -3772,24 +3772,24 @@ export function Settings({
                     })
                   }
                 />
-              </section>
-            )}
-            {mutation.error && (
-              <Notice error>
-                {mutation.error}{" "}
-                <button type="button" className="text-button" onClick={refresh}>
-                  Reload current settings
-                </button>
-              </Notice>
-            )}
-            {(tab === "commercial" || tab === "localization") && (
+            </section>
+          )}
+          {mutation.error && (
+            <Notice error>
+              {mutation.error}{" "}
+              <button type="button" className="text-button" onClick={refresh}>
+                Reload current settings
+              </button>
+            </Notice>
+          )}
+          {(tab === "commercial" || tab === "localization") && (
               <FormActions stickyOnMobile>
-                <button className="button" disabled={mutation.busy}>
-                  {mutation.busy ? "Saving…" : "Save settings"}
-                  <Check size={17} />
-                </button>
+              <button className="button" disabled={mutation.busy}>
+                {mutation.busy ? "Saving…" : "Save settings"}
+                <Check size={17} />
+              </button>
               </FormActions>
-            )}
+          )}
           </form>
         )}
       </div>
@@ -4244,8 +4244,8 @@ export function Team({ session }: { session: Session }) {
         phone: form.phone,
         address,
         role: form.role,
-      });
-      if (result) {
+    });
+    if (result) {
         setEditor(null);
         members.reload();
       }
@@ -4414,8 +4414,8 @@ export function Team({ session }: { session: Session }) {
             role="tab"
             aria-selected="false"
           >
-            Roles & permissions
-          </Link>
+              Roles & permissions
+            </Link>
         </div>
         <button
           type="button"
@@ -4423,10 +4423,10 @@ export function Team({ session }: { session: Session }) {
           aria-label="Add staff"
           onClick={openCreate}
         >
-          <Plus size={17} />
+              <Plus size={17} />
           <span className="button-label">Add staff</span>
-        </button>
-      </div>
+            </button>
+          </div>
 
       {(invitationToken || grantNotice) && (
         <section className="panel form-panel staff-invite-token">
@@ -4434,17 +4434,17 @@ export function Team({ session }: { session: Session }) {
           {grantNotice && <p className="muted">{grantNotice}</p>}
           {invitationToken && (
             <>
-              <p className="muted">
+          <p className="muted">
                 Recipient activates at <strong>/activate</strong> with this
                 one-time token (expires in 7 days).
-              </p>
+          </p>
               <Field label="One-time token">
-                <input
+              <input
                   readOnly
                   value={invitationToken}
                   onFocus={(e) => e.currentTarget.select()}
-                />
-              </Field>
+              />
+            </Field>
               <div className="button-row">
                 <button
                   type="button"
@@ -4458,7 +4458,7 @@ export function Team({ session }: { session: Session }) {
                   }}
                 >
                   Copy token
-                </button>
+          </button>
                 <button
                   type="button"
                   className="button"
@@ -4504,44 +4504,44 @@ export function Team({ session }: { session: Session }) {
         ) : members.items.length ? (
           <>
             <div className="table-scroll resource-table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Staff member</th>
-                    <th>Role</th>
-                    <th>Access</th>
+            <table>
+              <thead>
+                <tr>
+                  <th>Staff member</th>
+                  <th>Role</th>
+                  <th>Access</th>
                     <th>Last login</th>
                     <th>Docs</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {members.items.map((m) => (
-                    <tr key={m.id}>
-                      <td>
-                        <strong>
-                          {m.name}
-                          {m.id === session.actorId ? " (you)" : ""}
-                        </strong>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {members.items.map((m) => (
+                  <tr key={m.id}>
+                    <td>
+                      <strong>
+                        {m.name}
+                        {m.id === session.actorId ? " (you)" : ""}
+                      </strong>
                         <small>
                           {m.email}
                           {m.phone ? ` · ${m.phone}` : ""}
                         </small>
-                      </td>
-                      <td>
-                        {m.role === "owner" ? (
-                          <span className="owner-role">
-                            <ShieldCheck size={15} />
-                            Owner
-                          </span>
-                        ) : (
+                    </td>
+                    <td>
+                      {m.role === "owner" ? (
+                        <span className="owner-role">
+                          <ShieldCheck size={15} />
+                          Owner
+                        </span>
+                      ) : (
                           roleName(m.role)
-                        )}
-                      </td>
-                      <td>
+                      )}
+                    </td>
+                    <td>
                         <Status state={accessLabel(m)} />
-                      </td>
-                      <td>
+                    </td>
+                    <td>
                         <small>
                           {m.last_login_at
                             ? dateTime(
@@ -4577,8 +4577,8 @@ export function Team({ session }: { session: Session }) {
                                 <Pencil size={15} aria-hidden="true" />
                                 Edit
                               </button>
-                              {m.role !== "owner" && (
-                                <button
+                      {m.role !== "owner" && (
+                        <button
                                   type="button"
                                   role="menuitem"
                                   disabled={grant.busy}
@@ -4588,8 +4588,8 @@ export function Team({ session }: { session: Session }) {
                                   {m.access_status === "active"
                                     ? "Resend access"
                                     : "Grant access"}
-                                </button>
-                              )}
+                        </button>
+                      )}
                               {canManageDocs && (
                                 <button
                                   type="button"
@@ -4631,12 +4631,12 @@ export function Team({ session }: { session: Session }) {
                             </div>
                           )}
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
             <div className="resource-cards">
               {members.items.map((m) => (
                 <article key={m.id} className="resource-card">
@@ -5143,38 +5143,38 @@ export function RolesPermissions() {
         }}
       >
         <Field label="Role name" required>
-          <input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            required
-          />
-        </Field>
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              required
+            />
+          </Field>
         <div className="permission-grid permission-grid-modal">
-          {grouped.map(([module, permissions]) => (
-            <fieldset key={module}>
-              <legend>{module}</legend>
-              {permissions!.map((permission) => (
-                <label key={permission.code}>
-                  <input
-                    type="checkbox"
-                    checked={selected.includes(permission.code)}
-                    onChange={() =>
-                      setSelected((current) =>
-                        current.includes(permission.code)
-                          ? current.filter((code) => code !== permission.code)
-                          : [...current, permission.code],
-                      )
-                    }
-                  />{" "}
-                  <span>
-                    <strong>{permission.name}</strong>
-                    <small>{permission.description}</small>
-                  </span>
-                </label>
-              ))}
-            </fieldset>
-          ))}
-        </div>
+            {grouped.map(([module, permissions]) => (
+              <fieldset key={module}>
+                <legend>{module}</legend>
+                {permissions!.map((permission) => (
+                  <label key={permission.code}>
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(permission.code)}
+                      onChange={() =>
+                        setSelected((current) =>
+                          current.includes(permission.code)
+                            ? current.filter((code) => code !== permission.code)
+                            : [...current, permission.code],
+                        )
+                      }
+                    />{" "}
+                    <span>
+                      <strong>{permission.name}</strong>
+                      <small>{permission.description}</small>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
+            ))}
+          </div>
       </FormDialog>
     </>
   );

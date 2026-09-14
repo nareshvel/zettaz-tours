@@ -67,7 +67,7 @@ export async function upstream(
     pathOnly.startsWith("/auth/v1/password-recovery/");
   if (!credential && !publicAuth)
     return Response.json(
-      { message: "Choose a demo tenant to continue." },
+      { message: "Sign in to continue." },
       { status: 401 },
     );
   return fetch(apiBase() + path, {

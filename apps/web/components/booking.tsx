@@ -15,6 +15,8 @@ import {
   ShoppingCart,
   Users,
   X,
+  Printer,
+  Download,
 } from "lucide-react";
 import type {
   Session,
@@ -32,6 +34,7 @@ import { availabilityModes } from "@/lib/types";
 import {
   dateTime,
   digits,
+  downloadApiFile,
   label,
   minor,
   money,
@@ -40,9 +43,8 @@ import {
   useResource,
 } from "@/lib/client";
 import {
-  Back,
   Field,
-  Heading,
+  FormActions,
   Loading,
   Notice,
   readablePickup,
@@ -392,7 +394,41 @@ function CustomerMessages({
     </section>
   );
 }
-export function NewReservation({ session }: { session: Session }) {
+export function AmendReservationPage({
+  session,
+  bookingId,
+}: {
+  session: Session;
+  bookingId: string;
+}) {
+  const booking = useResource<Booking>("staff/v1/bookings/" + bookingId);
+  if (booking.error) return <Notice error>{booking.error}</Notice>;
+  if (!booking.data) return <Loading />;
+  const b = booking.data;
+  const editable =
+    ["held", "confirmed"].includes(b.state) &&
+    new Date(b.departure.starts_at).getTime() > Date.now() &&
+    (b.state === "confirmed" || new Date(b.expiresAt).getTime() > Date.now());
+  if (!editable)
+    return (
+      <Notice error>
+        This reservation is no longer eligible for pre-departure changes.{" "}
+        <Link href={"/reservations/" + bookingId}>Return to reservation</Link>.
+      </Notice>
+    );
+  return <NewReservation key={b.version} session={session} amendBooking={b} />;
+}
+
+export function NewReservation({
+  session,
+  amendBooking,
+}: {
+  session: Session;
+  amendBooking?: Booking;
+}) {
+  const amendMode = Boolean(amendBooking);
+  const commercialLocked =
+    amendMode && (amendBooking?.state === "held" || !amendBooking);
   const [departureSearch, setDepartureSearch] = useState("");
   const [timeWindow, setTimeWindow] = useState("all");
   const [showSoldOut, setShowSoldOut] = useState(true);
@@ -405,7 +441,9 @@ export function NewReservation({ session }: { session: Session }) {
     }).format(new Date()),
   );
   const [selectedProductId, setSelectedProductId] = useState("all-scheduled");
-  const [lockedDepartureId, setLockedDepartureId] = useState("");
+  const [lockedDepartureId, setLockedDepartureId] = useState(
+    amendBooking?.departure_id ?? "",
+  );
   const products = useResource<Product[]>("admin/v1/products");
   const selectedProduct = products.data?.find(
     (item) => item.id === selectedProductId,
@@ -445,64 +483,161 @@ export function NewReservation({ session }: { session: Session }) {
       }[];
       accommodations: { id: string; name: string; address: string }[];
     }>("ops/v1/stays/options");
-  const [departureId, setDepartureId] = useState(""),
-    [party, setParty] = useState<Record<string, number>>({}),
+  const [departureId, setDepartureId] = useState(amendBooking?.departure_id ?? ""),
+    [party, setParty] = useState<Record<string, number>>(
+      amendBooking?.party ?? {},
+    ),
     [hold, setHold] = useState<{
       holdId: string;
       quote: Quote;
       expiresAt: string;
-    } | null>(null);
-  const [name, setName] = useState(""),
-    [email, setEmail] = useState(""),
-    [phone, setPhone] = useState(""),
-    [purchaserIsLead, setPurchaserIsLead] = useState(true),
-    [purchaserName, setPurchaserName] = useState(""),
-    [purchaserEmail, setPurchaserEmail] = useState(""),
-    [purchaserPhone, setPurchaserPhone] = useState(""),
-    [emergencyName, setEmergencyName] = useState(""),
-    [emergencyPhone, setEmergencyPhone] = useState(""),
-    [emergencyRelationship, setEmergencyRelationship] = useState(""),
-    [source, setSource] = useState(
-      session.tenant.config.bookingSources[0] ?? "",
+    } | null>(
+      amendBooking
+        ? {
+            holdId: "amend",
+            quote: amendBooking.quote,
+            expiresAt: amendBooking.expiresAt,
+          }
+        : null,
+    );
+  const [name, setName] = useState(amendBooking?.lead_name ?? ""),
+    [email, setEmail] = useState(amendBooking?.lead_email ?? ""),
+    [phone, setPhone] = useState(amendBooking?.purchaser?.phone ?? ""),
+    [purchaserIsLead, setPurchaserIsLead] = useState(() => {
+      if (!amendBooking?.purchaser) return true;
+      return (
+        amendBooking.purchaser.name === amendBooking.lead_name &&
+        amendBooking.purchaser.email === amendBooking.lead_email
+      );
+    }),
+    [purchaserName, setPurchaserName] = useState(
+      amendBooking?.purchaser?.name ?? "",
     ),
-    [pickupKind, setPickupKind] = useState("none"),
-    [location, setLocation] = useState(""),
-    [instructions, setInstructions] = useState(""),
-    [stayKind, setStayKind] = useState("none"),
-    [stayReferenceId, setStayReferenceId] = useState(""),
-    [unitNumber, setUnitNumber] = useState(""),
-    [stayPropertyName, setStayPropertyName] = useState(""),
-    [stayAddress, setStayAddress] = useState(""),
+    [purchaserEmail, setPurchaserEmail] = useState(
+      amendBooking?.purchaser?.email ?? "",
+    ),
+    [purchaserPhone, setPurchaserPhone] = useState(
+      amendBooking?.purchaser?.phone ?? "",
+    ),
+    [emergencyName, setEmergencyName] = useState(
+      amendBooking?.emergency_contact?.name ?? "",
+    ),
+    [emergencyPhone, setEmergencyPhone] = useState(
+      amendBooking?.emergency_contact?.phone ?? "",
+    ),
+    [emergencyRelationship, setEmergencyRelationship] = useState(
+      amendBooking?.emergency_contact?.relationship ?? "",
+    ),
+    [source, setSource] = useState(
+      amendBooking?.source ?? session.tenant.config.bookingSources[0] ?? "",
+    ),
+    [pickupKind, setPickupKind] = useState(amendBooking?.pickup?.kind ?? "none"),
+    [location, setLocation] = useState(
+      amendBooking?.pickup?.kind === "selected"
+        ? amendBooking.pickup.location
+        : "",
+    ),
+    [instructions, setInstructions] = useState(
+      amendBooking?.pickup?.kind === "selected"
+        ? amendBooking.pickup.instructions
+        : amendBooking?.pickup?.kind === "unresolved"
+          ? amendBooking.pickup.note
+          : "",
+    ),
+    [stayKind, setStayKind] = useState(amendBooking?.stay?.kind ?? "none"),
+    [stayReferenceId, setStayReferenceId] = useState(
+      amendBooking?.stay?.kind === "cruise"
+        ? (amendBooking.stay.cruiseCallId ?? "")
+        : amendBooking?.stay?.kind === "hotel"
+          ? (amendBooking.stay.accommodationId ?? "")
+          : "",
+    ),
+    [unitNumber, setUnitNumber] = useState(
+      amendBooking?.stay?.kind === "cruise"
+        ? (amendBooking.stay.cabinNumber ?? "")
+        : amendBooking?.stay?.kind === "hotel"
+          ? (amendBooking.stay.roomNumber ?? "")
+          : "",
+    ),
+    [stayPropertyName, setStayPropertyName] = useState(
+      amendBooking?.stay?.kind === "private_accommodation"
+        ? amendBooking.stay.propertyName
+        : amendBooking?.stay?.kind === "cruise"
+          ? amendBooking.stay.vesselName
+          : amendBooking?.stay?.kind === "hotel"
+            ? amendBooking.stay.hotelName
+            : "",
+    ),
+    [stayAddress, setStayAddress] = useState(
+      amendBooking?.stay?.kind === "private_accommodation"
+        ? amendBooking.stay.address
+        : amendBooking?.stay?.kind === "local"
+          ? (amendBooking.stay.address ?? "")
+          : "",
+    ),
     [discountAmount, setDiscountAmount] = useState(""),
     [promoCode, setPromoCode] = useState(""),
     [discountReason, setDiscountReason] = useState(""),
-    [partnerId, setPartnerId] = useState(""),
-    [partnerReference, setPartnerReference] = useState(""),
-    [collectionMode, setCollectionMode] = useState("guest_pays_tenant"),
-    [invoiceRequired, setInvoiceRequired] = useState(false),
+    [partnerId, setPartnerId] = useState(amendBooking?.partner?.partnerId ?? ""),
+    [partnerReference, setPartnerReference] = useState(
+      amendBooking?.partner?.externalReference ?? "",
+    ),
+    [collectionMode, setCollectionMode] = useState(
+      amendBooking?.partner?.collectionMode ?? "guest_pays_tenant",
+    ),
+    [invoiceRequired, setInvoiceRequired] = useState(
+      amendBooking?.partner?.invoiceRequired ?? false,
+    ),
     [leadIsTraveling, setLeadIsTraveling] = useState(true),
     [passengerDrafts, setPassengerDrafts] = useState<PassengerDraft[]>([]),
-    [createdBookingId, setCreatedBookingId] = useState("");
+    [createdBookingId, setCreatedBookingId] = useState(""),
+    [amendReason, setAmendReason] = useState(""),
+    [changeQuote, setChangeQuote] = useState<{
+      quoteId: string;
+      version: number;
+      quote: Quote;
+      differenceMinor: number;
+      previousTotalMinor: number;
+      paidMinor: number;
+      balanceMinor: number;
+      expiresAt: string;
+      allowAmendmentBalance: boolean;
+    } | null>(null);
   const [authorizeOverbook, setAuthorizeOverbook] = useState(false),
     [overbookReason, setOverbookReason] = useState("");
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     lead: true,
     roster: false,
-    pickup: false,
-    stay: false,
-    concession: false,
-    contacts: false,
+    pickup: amendMode,
+    stay: amendMode,
+    concession: !amendMode,
+    contacts: amendMode,
   });
   const holdMutation = useMutation(),
     bookingMutation = useMutation(),
     rosterMutation = useMutation(),
+    quoteMutation = useMutation(),
+    acceptMutation = useMutation(),
     router = useRouter();
-  const [returnTo, setReturnTo] = useState<string | null>(null);
+  const [returnTo, setReturnTo] = useState<string | null>(
+    amendBooking ? `/reservations/${amendBooking.id}` : null,
+  );
   const guestPanelRef = useRef<HTMLElement>(null);
   const leadNameRef = useRef<HTMLInputElement>(null);
-  const remaining = useRemaining(hold?.expiresAt),
+  const remaining = useRemaining(amendMode ? undefined : hold?.expiresAt),
     departure = departures.items.find((d) => d.id === departureId);
   const partyTotal = Object.values(party).reduce((sum, n) => sum + n, 0);
+  const flowReady = amendMode || Boolean(hold);
+  const quoteExpired = Boolean(
+    changeQuote && new Date(changeQuote.expiresAt).getTime() <= Date.now(),
+  );
+  const amendShortfall =
+    changeQuote &&
+    amendBooking?.state === "confirmed" &&
+    !changeQuote.allowAmendmentBalance &&
+    BigInt(changeQuote.paidMinor) * 100n <
+      BigInt(changeQuote.quote.totalMinor) *
+        BigInt(changeQuote.quote.minimumPaidPercent);
   const visibleDepartures = useMemo(
     () =>
       departures.items.filter((item) => {
@@ -523,6 +658,7 @@ export function NewReservation({ session }: { session: Session }) {
     ],
   );
   useEffect(() => {
+    if (amendMode) return;
     const params = new URLSearchParams(window.location.search);
     const fromDepartures = params.get("departure") ?? "";
     setLockedDepartureId(fromDepartures);
@@ -532,8 +668,23 @@ export function NewReservation({ session }: { session: Session }) {
     if (product) setSelectedProductId(product);
     const date = params.get("date");
     if (date) setDepartureDate(date);
-  }, []);
+  }, [amendMode]);
   useEffect(() => {
+    if (!amendBooking) return;
+    setDepartureDate(
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: session.tenant.timezone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date(amendBooking.departure.starts_at)),
+    );
+    if (amendBooking.departure.product_name) {
+      // Keep all-scheduled discovery; product filter optional.
+    }
+  }, [amendBooking, session.tenant.timezone]);
+  useEffect(() => {
+    if (amendMode) return;
     if (!lockedDepartureId || !departures.items.length) return;
     const match = departures.items.find((item) => item.id === lockedDepartureId);
     if (!match) return;
@@ -547,12 +698,12 @@ export function NewReservation({ session }: { session: Session }) {
         day: "2-digit",
       }).format(new Date(match.starts_at)),
     );
-  }, [lockedDepartureId, departures.items, session.tenant.timezone]);
+  }, [amendMode, lockedDepartureId, departures.items, session.tenant.timezone]);
   useEffect(() => {
-    if (!hold) return;
+    if (amendMode || !hold) return;
     guestPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     window.setTimeout(() => leadNameRef.current?.focus(), 250);
-  }, [hold?.holdId]);
+  }, [amendMode, hold?.holdId]);
   useEffect(() => {
     if (collectionMode === "partner_invoice") setInvoiceRequired(true);
   }, [collectionMode]);
@@ -592,6 +743,15 @@ export function NewReservation({ session }: { session: Session }) {
     });
   }
   function changeDeparture() {
+    if (amendMode) {
+      if (commercialLocked) return;
+      setChangeQuote(null);
+      setLockedDepartureId("");
+      setDepartureId("");
+      setParty({});
+      departures.reload();
+      return;
+    }
     if (hold && remaining > 0) {
       const ok = window.confirm(
         "Changing the departure releases the current seat hold. Continue?",
@@ -608,8 +768,50 @@ export function NewReservation({ session }: { session: Session }) {
     setParty({});
     departures.reload();
   }
+  function buildPickup(): Pickup {
+    return pickupKind === "none"
+      ? { kind: "none" }
+      : pickupKind === "selected"
+        ? { kind: "selected", location, instructions }
+        : { kind: "unresolved", note: instructions };
+  }
+  function buildStay() {
+    return stayKind === "cruise"
+      ? {
+          kind: "cruise" as const,
+          cruiseCallId: stayReferenceId || undefined,
+          vesselName:
+            stays.data?.cruiseCalls.find((item) => item.id === stayReferenceId)
+              ?.vessel_name ||
+            stayPropertyName ||
+            "Cruise vessel",
+          cabinNumber: unitNumber,
+        }
+      : stayKind === "hotel"
+        ? {
+            kind: "hotel" as const,
+            accommodationId: stayReferenceId || undefined,
+            hotelName:
+              stays.data?.accommodations.find(
+                (item) => item.id === stayReferenceId,
+              )?.name ||
+              stayPropertyName ||
+              "Hotel",
+            roomNumber: unitNumber,
+          }
+        : stayKind === "private_accommodation"
+          ? {
+              kind: "private_accommodation" as const,
+              propertyName: stayPropertyName,
+              address: stayAddress,
+            }
+          : stayKind === "local"
+            ? { kind: "local" as const, address: stayAddress }
+            : { kind: "none" as const };
+  }
   async function reserve(e: React.FormEvent) {
     e.preventDefault();
+    if (amendMode) return;
     if (!scheduledDiscovery) return;
     const result = await holdMutation.run<{
       holdId: string;
@@ -643,6 +845,7 @@ export function NewReservation({ session }: { session: Session }) {
   }
   async function create(e: React.FormEvent) {
     e.preventDefault();
+    if (amendMode) return submitAmend(e);
     if (!hold || remaining <= 0) return;
     if (partnerSourceSelected && !partnerId) return;
     const pickup: Pickup =
@@ -761,6 +964,74 @@ export function NewReservation({ session }: { session: Session }) {
       router.push(next);
     }
   }
+  async function submitAmend(e: React.FormEvent) {
+    e.preventDefault();
+    if (!amendBooking || !amendReason.trim() || !departureId) return;
+    const pickup = buildPickup();
+    const stay = buildStay();
+    const q = await quoteMutation.run<{
+      quoteId: string;
+      version: number;
+      quote: Quote;
+      differenceMinor: number;
+      previousTotalMinor: number;
+      paidMinor: number;
+      balanceMinor: number;
+      expiresAt: string;
+      allowAmendmentBalance: boolean;
+    }>(`staff/v1/bookings/${amendBooking.id}/change-quotes`, {
+      version: amendBooking.version,
+      departureId,
+      party,
+      leadName: name,
+      leadEmail: email,
+      leadPhone: phone,
+      ...(!purchaserIsLead
+        ? {
+            purchaser: {
+              name: purchaserName,
+              email: purchaserEmail,
+              phone: purchaserPhone,
+            },
+          }
+        : {}),
+      ...(emergencyName || emergencyPhone || emergencyRelationship
+        ? {
+            emergencyContact: {
+              name: emergencyName || name,
+              phone: emergencyPhone || phone || "n/a",
+              relationship: emergencyRelationship || "other",
+            },
+          }
+        : {}),
+      pickup,
+      stay,
+      reason: amendReason.trim(),
+    });
+    if (q) setChangeQuote(q);
+  }
+  async function acceptAmend() {
+    if (!amendBooking || !changeQuote) return;
+    const priorParty = amendBooking.party;
+    const partyChanged = Object.keys({ ...priorParty, ...party }).some(
+      (key) => (priorParty[key] ?? 0) !== (party[key] ?? 0),
+    );
+    const result = await acceptMutation.run(
+      `staff/v1/bookings/${amendBooking.id}/changes`,
+      {
+        version: amendBooking.version,
+        quoteId: changeQuote.quoteId,
+      },
+    );
+    if (result) {
+      const params = new URLSearchParams();
+      if (partyChanged) params.set("roster", "1");
+      const query = params.toString();
+      router.push(
+        `/reservations/${amendBooking.id}${query ? `?${query}` : ""}`,
+      );
+    }
+  }
   const partnerFields = partnerSourceSelected ? (
     <>
       <Field
@@ -797,7 +1068,14 @@ export function NewReservation({ session }: { session: Session }) {
         >
           <select
             value={collectionMode}
-            onChange={(e) => setCollectionMode(e.target.value)}
+            onChange={(e) =>
+              setCollectionMode(
+                e.target.value as
+                  | "guest_pays_tenant"
+                  | "partner_collects_for_tenant"
+                  | "partner_invoice",
+              )
+            }
           >
             <option value="guest_pays_tenant">Guest pays tenant</option>
             <option value="partner_collects_for_tenant">
@@ -829,7 +1107,123 @@ export function NewReservation({ session }: { session: Session }) {
       )}
     </>
   ) : null;
-  const summaryBody = (
+  const summaryBody = amendMode ? (
+    <>
+      <p className="eyebrow">REVIEW BEFORE ACCEPTING</p>
+      <h2>
+        {departure?.product_name ??
+          amendBooking?.departure.product_name ??
+          "Amendment"}
+      </h2>
+      {(departure || amendBooking) && (
+        <p className="muted">
+          {dateTime(
+            departure?.starts_at ?? amendBooking!.departure.starts_at,
+            session.tenant.timezone,
+            session.tenant.config.locale,
+            session.tenant.config.dateFormat,
+            session.tenant.config.timeFormat,
+          )}
+        </p>
+      )}
+      {!changeQuote ? (
+        <p className="muted">
+          Guest, pickup, stay, and contact corrections preserve the price when
+          departure and party stay the same. Commercial changes use current
+          rates.
+        </p>
+      ) : (
+        <>
+          <div className="balance-lines">
+            <div>
+              <span>Previous total</span>
+              <strong>
+                {money(
+                  changeQuote.previousTotalMinor,
+                  changeQuote.quote.currency,
+                )}
+              </strong>
+            </div>
+            <div>
+              <span>New total</span>
+              <strong>
+                {money(changeQuote.quote.totalMinor, changeQuote.quote.currency)}
+              </strong>
+            </div>
+            <div>
+              <span>Price difference</span>
+              <strong>
+                {money(changeQuote.differenceMinor, changeQuote.quote.currency)}
+              </strong>
+            </div>
+            <div>
+              <span>Payments retained</span>
+              <strong>
+                {money(changeQuote.paidMinor, changeQuote.quote.currency)}
+              </strong>
+            </div>
+            <div>
+              <span>
+                {changeQuote.balanceMinor < 0
+                  ? "Credit for review"
+                  : "New balance"}
+              </span>
+              <strong>
+                {money(
+                  Math.abs(changeQuote.balanceMinor),
+                  changeQuote.quote.currency,
+                )}
+              </strong>
+            </div>
+          </div>
+          <p className="policy-copy">
+            Quote expires{" "}
+            {dateTime(changeQuote.expiresAt, session.tenant.timezone)}. Seats
+            are checked again at acceptance; this quote does not hold inventory.
+          </p>
+          {changeQuote.balanceMinor < 0 && (
+            <Notice>
+              Overpayment requires finance review. No refund is issued by
+              accepting this amendment.
+            </Notice>
+          )}
+          {amendShortfall && (
+            <Notice error>
+              The tenant’s amendment payment policy is not met. A higher total
+              cannot be accepted through this workflow until that policy is
+              satisfied.
+            </Notice>
+          )}
+          {quoteExpired && (
+            <Notice error>Quote expired. Request a fresh quote.</Notice>
+          )}
+          <FormActions stickyOnMobile>
+            <button
+              type="button"
+              className="button secondary"
+              disabled={acceptMutation.busy}
+              onClick={() => {
+                setChangeQuote(null);
+                acceptMutation.clear();
+              }}
+            >
+              Revise
+            </button>
+            <button
+              type="button"
+              className="button"
+              disabled={
+                quoteExpired || Boolean(amendShortfall) || acceptMutation.busy
+              }
+              onClick={() => void acceptAmend()}
+            >
+              {acceptMutation.busy ? "Applying…" : "Accept change"}
+            </button>
+          </FormActions>
+        </>
+      )}
+    </>
+  ) : (
     <>
       <p className="eyebrow">BOOKING SUMMARY</p>
       <h2>{departure?.product_name ?? "Select a departure"}</h2>
@@ -922,20 +1316,32 @@ export function NewReservation({ session }: { session: Session }) {
   );
   return (
     <div className="booking-flow">
-      <Back href={returnTo ?? "/reservations"}>
-        {returnTo?.startsWith("/departures") ? "Departures" : "Reservations"}
-      </Back>
-      <Heading
-        title="New reservation"
-        description="Find a departure, hold seats, then capture the guest."
-      />
+      <div className="booking-flow-header">
+        <h1>{amendMode ? "Amend reservation" : "New reservation"}</h1>
+        <p className="booking-flow-subtitle">
+          {amendMode
+            ? "Update guest, pickup, stay, and (when confirmed) departure or party. Review a change quote before accepting."
+            : "Find a departure, hold seats, then capture the guest."}
+        </p>
+      </div>
+      {amendMode && commercialLocked && (
+        <Notice>
+          Held reservations allow guest, pickup, stay, and contact corrections.
+          For a different departure or party size, confirm first or cancel and
+          create a new reservation.
+        </Notice>
+      )}
       <div className="booking-strip" aria-live="polite">
         <div className="booking-strip-main">
-          <strong>{departure?.product_name ?? "No departure yet"}</strong>
+          <strong>
+            {departure?.product_name ??
+              amendBooking?.departure.product_name ??
+              "No departure yet"}
+          </strong>
           <span>
-            {departure
+            {departure || amendBooking
               ? dateTime(
-                  departure.starts_at,
+                  departure?.starts_at ?? amendBooking!.departure.starts_at,
                   session.tenant.timezone,
                   session.tenant.config.locale,
                   session.tenant.config.dateFormat,
@@ -948,7 +1354,9 @@ export function NewReservation({ session }: { session: Session }) {
           <span>
             {partyTotal} {partyTotal === 1 ? "guest" : "guests"}
           </span>
-          {hold ? (
+          {amendMode ? (
+            <span>{label(amendBooking?.state ?? "")}</span>
+          ) : hold ? (
             <span className={remaining <= 0 ? "danger-text" : ""}>
               {remaining > 0
                 ? `Hold ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`
@@ -958,9 +1366,11 @@ export function NewReservation({ session }: { session: Session }) {
             <span>No hold</span>
           )}
           <strong>
-            {hold
-              ? money(hold.quote.totalMinor, hold.quote.currency)
-              : "—"}
+            {changeQuote
+              ? money(changeQuote.quote.totalMinor, changeQuote.quote.currency)
+              : hold
+                ? money(hold.quote.totalMinor, hold.quote.currency)
+                : "-"}
           </strong>
         </div>
       </div>
@@ -968,36 +1378,55 @@ export function NewReservation({ session }: { session: Session }) {
         <div className="booking-flow-main">
           <section className="panel form-panel">
             <div className="booking-phase-head">
-              <span className="booking-phase-index">{hold ? "1" : "1"}</span>
+              <span className="booking-phase-index">1</span>
               <div>
                 <h2>
-                  {hold
-                    ? "Departure held"
-                    : lockedDepartureId
-                      ? "Selected departure"
-                      : "Find departure"}
+                  {amendMode
+                    ? commercialLocked
+                      ? "Current departure"
+                      : departureId
+                        ? "Selected departure"
+                        : "Find departure"
+                    : hold
+                      ? "Departure held"
+                      : lockedDepartureId
+                        ? "Selected departure"
+                        : "Find departure"}
                 </h2>
                 <p>
-                  {hold
-                    ? "Seats are reserved. Change only if you need a different departure."
-                    : lockedDepartureId
-                      ? "Booking into the departure opened from Departures. Change only if you need a different trip."
-                      : "Pick the product and travel date, then choose a live departure."}
+                  {amendMode
+                    ? commercialLocked
+                      ? "Departure and party are locked while this reservation is held."
+                      : "Choose the updated departure and party, then review a change quote."
+                    : hold
+                      ? "Seats are reserved. Change only if you need a different departure."
+                      : lockedDepartureId
+                        ? "Booking into the departure opened from Departures. Change only if you need a different trip."
+                        : "Pick the product and travel date, then choose a live departure."}
                 </p>
               </div>
-              {hold && <Check className="step-check" size={20} />}
+              {(hold || (amendMode && departureId)) && (
+                <Check className="step-check" size={20} />
+              )}
             </div>
             {departures.error && <Notice error>{departures.error}</Notice>}
             {products.error && <Notice error>{products.error}</Notice>}
             <form onSubmit={reserve}>
-              {hold && departure ? (
+              {(hold && departure) ||
+              (amendMode && departureId && (departure || amendBooking)) ? (
                 <div className="departure-chip">
                   <div>
-                    <small>Selected departure</small>
-                    <strong>{departure.product_name}</strong>
+                    <small>
+                      {amendMode ? "Departure" : "Selected departure"}
+                    </small>
+                    <strong>
+                      {departure?.product_name ??
+                        amendBooking?.departure.product_name}
+                    </strong>
                     <p>
                       {dateTime(
-                        departure.starts_at,
+                        departure?.starts_at ??
+                          amendBooking!.departure.starts_at,
                         session.tenant.timezone,
                         session.tenant.config.locale,
                         session.tenant.config.dateFormat,
@@ -1008,15 +1437,53 @@ export function NewReservation({ session }: { session: Session }) {
                         : ""}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    className="button secondary"
-                    onClick={changeDeparture}
-                  >
-                    Change
-                  </button>
+                  {!commercialLocked && (
+                    <button
+                      type="button"
+                      className="button secondary"
+                      onClick={changeDeparture}
+                    >
+                      Change
+                    </button>
+                  )}
                 </div>
-              ) : lockedDepartureId && departure ? (
+              ) : null}
+              {amendMode && departureId && (departure || amendBooking) ? (
+                <div className="party-stepper-grid" style={{ marginTop: 16 }}>
+                  {(
+                    departure?.categories ??
+                    Object.keys(party).map((slug) => ({
+                      slug,
+                      label: label(slug),
+                    }))
+                  ).map((category) => (
+                    <div className="party-stepper" key={category.slug}>
+                      <span>{category.label}</span>
+                      <div>
+                        <button
+                          type="button"
+                          aria-label={`Decrease ${category.label}`}
+                          disabled={commercialLocked || Boolean(changeQuote)}
+                          onClick={() => bumpParty(category.slug, -1)}
+                        >
+                          <Minus size={16} />
+                        </button>
+                        <span aria-live="polite">
+                          {party[category.slug] ?? 0}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Increase ${category.label}`}
+                          disabled={commercialLocked || Boolean(changeQuote)}
+                          onClick={() => bumpParty(category.slug, 1)}
+                        >
+                          <Plus size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : lockedDepartureId && departure && !hold ? (
                 <div className="departure-chip">
                   <div>
                     <small>Selected departure</small>
@@ -1292,6 +1759,7 @@ export function NewReservation({ session }: { session: Session }) {
               {scheduledDiscovery &&
                 session.permissions.includes("inventory.overbook") &&
                 !hold &&
+                !amendMode &&
                 departure && (
                   <div className="overbook-control">
                     <Toggle
@@ -1321,7 +1789,7 @@ export function NewReservation({ session }: { session: Session }) {
               {holdMutation.error && (
                 <Notice error>{holdMutation.error}</Notice>
               )}
-              {scheduledDiscovery && !hold && (
+              {scheduledDiscovery && !hold && !amendMode && (
                 <div className="form-actions mobile-sticky">
                   <button
                     className="button"
@@ -1343,7 +1811,7 @@ export function NewReservation({ session }: { session: Session }) {
             ref={guestPanelRef}
             className={
               "panel form-panel booking-guest-panel" +
-              (!hold ? " muted-panel" : "")
+              (!flowReady ? " muted-panel" : "")
             }
           >
             <div className="booking-phase-head">
@@ -1351,19 +1819,25 @@ export function NewReservation({ session }: { session: Session }) {
               <div>
                 <h2>Guest details</h2>
                 <p>
-                  {hold
-                    ? "Required lead details first. Optional sections stay collapsed."
-                    : "Unlocks after seats are held."}
+                  {amendMode
+                    ? "Update lead, contacts, pickup, and stay. Traveller roster is managed on the reservation page."
+                    : hold
+                      ? "Required lead details first. Optional sections stay collapsed."
+                      : "Unlocks after seats are held."}
                 </p>
               </div>
             </div>
             <form onSubmit={create}>
               <fieldset
                 disabled={
-                  !hold ||
-                  (remaining <= 0 && !createdBookingId) ||
-                  bookingMutation.busy ||
-                  rosterMutation.busy
+                  amendMode
+                    ? Boolean(changeQuote) ||
+                      quoteMutation.busy ||
+                      acceptMutation.busy
+                    : !hold ||
+                      (remaining <= 0 && !createdBookingId) ||
+                      bookingMutation.busy ||
+                      rosterMutation.busy
                 }
               >
                 <BookingAccordion
@@ -1405,12 +1879,15 @@ export function NewReservation({ session }: { session: Session }) {
                     <Field
                       label="Booking source"
                       hint={
-                        partnerSourceSelected
-                          ? "Pick the partner organization below (Viator, GetYourGuide, hotel, and others live there)."
-                          : undefined
+                        amendMode
+                          ? "Source and partner settlement stay as recorded on this reservation."
+                          : partnerSourceSelected
+                            ? "Pick the partner organization below (Viator, GetYourGuide, hotel, and others live there)."
+                            : undefined
                       }
                     >
                       <select
+                        disabled={amendMode}
                         value={
                           bookingSourceOptions.includes(source)
                             ? source
@@ -1427,9 +1904,18 @@ export function NewReservation({ session }: { session: Session }) {
                         ))}
                       </select>
                     </Field>
-                    {partnerFields}
+                    {!amendMode && partnerFields}
+                    {amendMode && amendBooking?.partner && (
+                      <p className="muted">
+                        Partner {amendBooking.partner.partnerName} ·{" "}
+                        {collectionModeLabel(
+                          amendBooking.partner.collectionMode,
+                        )}
+                      </p>
+                    )}
                   </div>
                 </BookingAccordion>
+                {!amendMode && (
                 <BookingAccordion
                   id="roster"
                   title="Travel party names"
@@ -1496,6 +1982,7 @@ export function NewReservation({ session }: { session: Session }) {
                     </p>
                   </div>
                 </BookingAccordion>
+                )}
                 <BookingAccordion
                   id="pickup"
                   title="Pickup"
@@ -1507,7 +1994,11 @@ export function NewReservation({ session }: { session: Session }) {
                     <Field label="Pickup disposition">
                       <select
                         value={pickupKind}
-                        onChange={(e) => setPickupKind(e.target.value)}
+                        onChange={(e) =>
+                          setPickupKind(
+                            e.target.value as "none" | "selected" | "unresolved",
+                          )
+                        }
                       >
                         <option value="none">No pickup needed</option>
                         <option value="selected">Pickup arranged</option>
@@ -1565,7 +2056,14 @@ export function NewReservation({ session }: { session: Session }) {
                         <select
                           value={stayKind}
                           onChange={(e) => {
-                            setStayKind(e.target.value);
+                            setStayKind(
+                              e.target.value as
+                                | "none"
+                                | "cruise"
+                                | "hotel"
+                                | "private_accommodation"
+                                | "local",
+                            );
                             setStayReferenceId("");
                             setUnitNumber("");
                             setStayPropertyName("");
@@ -1660,6 +2158,7 @@ export function NewReservation({ session }: { session: Session }) {
                     </div>
                   )}
                 </BookingAccordion>
+                {!amendMode && (
                 <BookingAccordion
                   id="concession"
                   title="Discount & promo"
@@ -1707,6 +2206,7 @@ export function NewReservation({ session }: { session: Session }) {
                     </Field>
                   </div>
                 </BookingAccordion>
+                )}
                 <BookingAccordion
                   id="contacts"
                   title="Purchaser & emergency"
@@ -1798,33 +2298,68 @@ export function NewReservation({ session }: { session: Session }) {
                     </Field>
                   </div>
                 </BookingAccordion>
+                {amendMode && (
+                  <Field label="Reason for amendment" required>
+                    <textarea
+                      required
+                      maxLength={500}
+                      value={amendReason}
+                      onChange={(e) => setAmendReason(e.target.value)}
+                      placeholder="Why this change is being made"
+                    />
+                  </Field>
+                )}
                 <div className="form-actions mobile-sticky">
-                  <button
-                    className="button"
-                    disabled={
-                      !hold ||
-                      (remaining <= 0 && !createdBookingId) ||
-                      bookingMutation.busy ||
-                      rosterMutation.busy ||
-                      (partnerSourceSelected && !partnerId) ||
-                      (Boolean(discountAmount.trim()) &&
-                        discountReason.trim().length < 3)
-                    }
-                  >
-                    {bookingMutation.busy
-                      ? "Creating reservation…"
-                      : rosterMutation.busy
-                        ? "Saving guest roster…"
-                        : createdBookingId
-                          ? "Retry guest roster"
-                          : "Create reservation"}
-                    <ArrowRight size={16} />
-                  </button>
-                  {hold && remaining <= 0 && !createdBookingId && (
+                  {amendMode ? (
+                    <button
+                      className="button"
+                      disabled={
+                        !departureId ||
+                        partyTotal < 1 ||
+                        !amendReason.trim() ||
+                        quoteMutation.busy ||
+                        Boolean(changeQuote)
+                      }
+                    >
+                      {quoteMutation.busy
+                        ? "Calculating…"
+                        : "Review change quote"}
+                      <ArrowRight size={16} />
+                    </button>
+                  ) : (
+                    <button
+                      className="button"
+                      disabled={
+                        !hold ||
+                        (remaining <= 0 && !createdBookingId) ||
+                        bookingMutation.busy ||
+                        rosterMutation.busy ||
+                        (partnerSourceSelected && !partnerId) ||
+                        (Boolean(discountAmount.trim()) &&
+                          discountReason.trim().length < 3)
+                      }
+                    >
+                      {bookingMutation.busy
+                        ? "Creating reservation…"
+                        : rosterMutation.busy
+                          ? "Saving guest roster…"
+                          : createdBookingId
+                            ? "Retry guest roster"
+                            : "Create reservation"}
+                      <ArrowRight size={16} />
+                    </button>
+                  )}
+                  {!amendMode && hold && remaining <= 0 && !createdBookingId && (
                     <span className="muted">Hold expired — create a new hold first.</span>
                   )}
                 </div>
               </fieldset>
+              {quoteMutation.error && (
+                <Notice error>{quoteMutation.error}</Notice>
+              )}
+              {acceptMutation.error && (
+                <Notice error>{acceptMutation.error}</Notice>
+              )}
               {bookingMutation.error && (
                 <Notice error>{bookingMutation.error}</Notice>
               )}
@@ -1855,9 +2390,11 @@ export function BookingDetail({
 }) {
   const router = useRouter();
   const [returnTo, setReturnTo] = useState<string | null>(null);
+  const [rosterNotice, setRosterNotice] = useState(false);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setReturnTo(safeReturnTo(params.get("returnTo")));
+    setRosterNotice(params.get("roster") === "1");
   }, []);
   const booking = useResource<Booking>("staff/v1/bookings/" + bookingId),
     financeSummary = useResource<BookingFinanceSummary>(
@@ -1873,7 +2410,8 @@ export function BookingDetail({
     confirm = useMutation(),
     reviveHold = useMutation(),
     concessionMutation = useMutation(),
-    savePassengers = useMutation();
+    savePassengers = useMutation(),
+    printJob = useMutation();
   const [amount, setAmount] = useState(""),
     [method, setMethod] = useState(""),
     [reference, setReference] = useState(""),
@@ -1883,6 +2421,7 @@ export function BookingDetail({
     [discountReason, setDiscountReason] = useState(""),
     [inputError, setInputError] = useState(""),
     [success, setSuccess] = useState("");
+  const [printError, setPrintError] = useState("");
   const [adjustingPaymentId, setAdjustingPaymentId] = useState("");
   const [adjustmentReference, setAdjustmentReference] = useState("");
   const [adjustmentReason, setAdjustmentReason] = useState("");
@@ -1915,6 +2454,19 @@ export function BookingDetail({
       window.removeEventListener("keydown", onKey);
     };
   }, [summaryOpen, compactSummary]);
+  // Close the mobile sheet if the booking no longer needs a payment/confirm action.
+  useEffect(() => {
+    if (!booking.data) return;
+    const partnerSettles =
+      booking.data.partner?.collectionMode === "partner_invoice" ||
+      booking.data.partner?.collectionMode === "partner_collects_for_tenant";
+    const actionable =
+      booking.data.state === "held" ||
+      (booking.data.state === "confirmed" &&
+        booking.data.balanceMinor !== 0 &&
+        !partnerSettles);
+    if (!actionable) setSummaryOpen(false);
+  }, [booking.data]);
   useEffect(() => {
     if (booking.data)
       setAmount(
@@ -1986,6 +2538,40 @@ export function BookingDetail({
     });
     if (result) {
       router.push(returnTo ?? "/reservations");
+    }
+  }
+  async function printReservation() {
+    setPrintError("");
+    if (!session.permissions.includes("print.jobs.create")) {
+      window.print();
+      return;
+    }
+    const result = await printJob.run("ops/v1/print-jobs", {
+      documentType: "receipt",
+      sourceType: "booking",
+      sourceId: bookingId,
+    });
+    if (result) window.print();
+    else setPrintError(printJob.error || "Could not prepare print job.");
+  }
+  async function downloadReservationPdf() {
+    setPrintError("");
+    const result = await printJob.run<{ id: string }>("ops/v1/print-jobs", {
+      documentType: "receipt",
+      sourceType: "booking",
+      sourceId: bookingId,
+    });
+    if (!result) {
+      setPrintError(printJob.error || "Could not prepare PDF.");
+      return;
+    }
+    try {
+      await downloadApiFile(
+        `ops/v1/print-jobs/${result.id}/pdf`,
+        `receipt-${bookingId.slice(0, 8)}.pdf`,
+      );
+    } catch (error) {
+      setPrintError((error as Error).message);
     }
   }
   async function payAndConfirm() {
@@ -2143,32 +2729,124 @@ export function BookingDetail({
     (partnerSettles ||
       alreadyFunded ||
       (Boolean(method) && session.permissions.includes("payment.write")));
+  // Mobile FAB opens the payment/confirm sheet — only when there is something
+  // to do (hold flow, or confirmed guest balance still collectible here).
+  const summaryActionable =
+    b.state === "held" ||
+    (b.state === "confirmed" &&
+      b.balanceMinor !== 0 &&
+      !partnerSettles &&
+      session.permissions.includes("payment.write"));
+  const sheetOpen = summaryOpen && summaryActionable;
 
   return (
-    <div className="booking-detail">
-      <Back href={returnTo ?? "/reservations"}>
-        {returnTo?.startsWith("/departures") ? "Departures" : "Reservations"}
-      </Back>
-      <Heading
-        eyebrow={"BOOKING " + b.id.slice(0, 8).toUpperCase()}
-        title={b.lead_name}
-        description={
-          [
-            b.lead_email,
-            b.departure.product_name,
-            dateTime(
-              b.departure.starts_at,
-              session.tenant.timezone,
-              session.tenant.config.locale,
-              session.tenant.config.dateFormat,
-              session.tenant.config.timeFormat,
-            ),
-          ]
-            .filter(Boolean)
-            .join(" · ")
-        }
-        action={<Status state={expired ? "expired" : b.state} />}
-      />
+    <div
+      className={
+        "booking-detail" +
+        (compactSummary && summaryActionable ? " has-summary-fab" : "")
+      }
+    >
+      <div className="booking-detail-header">
+        <p className="eyebrow">{"BOOKING " + b.id.slice(0, 8).toUpperCase()}</p>
+        <div className="booking-detail-title-row">
+          <h1>{b.lead_name}</h1>
+          <Status state={expired ? "expired" : b.state} />
+        </div>
+        <div className="booking-detail-meta-row">
+          <p className="booking-detail-email">{b.lead_email}</p>
+          <div className="doc-actions booking-print-actions no-print">
+            <button
+              type="button"
+              className="button secondary"
+              disabled={printJob.busy}
+              onClick={() => void printReservation()}
+              aria-label="Print reservation"
+              title={printJob.busy ? "Preparing print" : "Print reservation"}
+            >
+              <Printer size={16} aria-hidden="true" />
+              <span className="button-label">
+                {printJob.busy ? "Preparing…" : "Print"}
+              </span>
+            </button>
+            <button
+              type="button"
+              className="button secondary"
+              disabled={printJob.busy}
+              onClick={() => void downloadReservationPdf()}
+              aria-label="Download PDF"
+              title={printJob.busy ? "Preparing PDF" : "Download PDF"}
+            >
+              <Download size={16} aria-hidden="true" />
+              <span className="button-label">
+                {printJob.busy ? "Preparing…" : "PDF"}
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+      {(printError || printJob.error) && (
+        <Notice error>{printError || printJob.error}</Notice>
+      )}
+      <section className="print-only reservation-print-page" aria-hidden="true">
+        <div className="reservation-print-masthead">
+          <strong>{session.tenant.name}</strong>
+          <span>
+            Reservation {b.id.slice(0, 8).toUpperCase()} ·{" "}
+            {expired ? "Expired" : label(b.state)}
+          </span>
+        </div>
+        <p>
+          {b.departure.product_name ?? "Experience"} ·{" "}
+          {dateTime(
+            b.departure.starts_at,
+            session.tenant.timezone,
+            session.tenant.config.locale,
+            session.tenant.config.dateFormat,
+            session.tenant.config.timeFormat,
+          )}
+        </p>
+        <p>
+          {b.lead_name} · {b.lead_email}
+        </p>
+        <p>
+          Total {money(b.quote.totalMinor, b.quote.currency)} · Paid{" "}
+          {money(b.paidMinor, b.quote.currency)} · Balance{" "}
+          {money(
+            b.state === "cancelled"
+              ? b.historicalBalanceMinor
+              : Math.abs(b.balanceMinor),
+            b.quote.currency,
+          )}
+        </p>
+        {(passengers.data ?? []).length > 0 ? (
+          <ul>
+            {(passengers.data ?? []).map((passenger) => (
+              <li key={passenger.id}>
+                {passenger.name} ({passenger.category}
+                {passenger.is_minor ? ", minor" : ""})
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {b.payments.length > 0 ? (
+          <ul>
+            {b.payments.map((payment) => (
+              <li key={payment.id}>
+                {money(payment.amount_minor, payment.currency)} ·{" "}
+                {label(payment.method)}
+                {payment.passenger_name ? ` · ${payment.passenger_name}` : ""}
+                {payment.reference ? ` · ${payment.reference}` : ""}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </section>
+      {rosterNotice && (
+        <Notice>
+          Party size changed. Update the traveller roster to match the new
+          party.
+        </Notice>
+      )}
       {success && <Notice>{success}</Notice>}
       {b.state === "cancelled" && (
         <Notice>
@@ -2240,9 +2918,11 @@ export function BookingDetail({
           <section className="booking-detail-section">
             <h2>Overview</h2>
             <dl className="detail-grid compact">
-              <div className="detail-wide">
+              <div className="detail-wide detail-inline">
                 <dt>Experience</dt>
-                <dd>{b.departure.product_name ?? "Experience"}</dd>
+                <dd>
+                  <strong>{b.departure.product_name ?? "Experience"}</strong>
+                </dd>
               </div>
               <div>
                 <dt>Departure</dt>
@@ -2417,6 +3097,9 @@ export function BookingDetail({
                       <small>
                         {dateTime(payment.occurred_at, session.tenant.timezone)}{" "}
                         · {payment.reference}
+                        {payment.passenger_name
+                          ? ` · ${payment.passenger_name}`
+                          : ""}
                       </small>
                       {payment.adjustment_id && (
                         <small>
@@ -2523,22 +3206,22 @@ export function BookingDetail({
 
         <div
           className={
-            "booking-summary-scrim" + (summaryOpen ? " open" : "")
+            "booking-summary-scrim" + (sheetOpen ? " open" : "")
           }
-          aria-hidden={!summaryOpen}
+          aria-hidden={!sheetOpen}
           onClick={() => setSummaryOpen(false)}
         />
         <aside
           className={
             "panel summary-panel booking-detail-rail" +
-            (summaryOpen ? " open" : "")
+            (sheetOpen ? " open" : "")
           }
           id="booking-summary-panel"
-          aria-hidden={compactSummary ? !summaryOpen : undefined}
-          aria-modal={compactSummary && summaryOpen ? true : undefined}
-          role={compactSummary && summaryOpen ? "dialog" : undefined}
+          aria-hidden={compactSummary ? !sheetOpen : undefined}
+          aria-modal={compactSummary && sheetOpen ? true : undefined}
+          role={compactSummary && sheetOpen ? "dialog" : undefined}
           aria-label="Booking summary"
-          {...(compactSummary && !summaryOpen ? { inert: true } : {})}
+          {...(compactSummary && !sheetOpen ? { inert: true } : {})}
         >
           <div className="booking-summary-sheet-head">
             <div>
@@ -2808,31 +3491,33 @@ export function BookingDetail({
                   : "Guest payments to the operator are recorded here. Partner collection claims use Partners / Resellers."}
           </p>
         </aside>
-        <button
-          type="button"
-          className={
-            "booking-summary-fab" + (summaryOpen ? " is-hidden" : "")
-          }
-          aria-expanded={summaryOpen}
-          aria-controls="booking-summary-panel"
-          onClick={() => setSummaryOpen(true)}
-        >
-          <ShoppingCart size={22} aria-hidden />
-          <span className="booking-summary-fab-label">
-            {b.state === "held" && !expired
-              ? partnerSettles || alreadyFunded
-                ? "Confirm"
-                : "Pay & confirm"
-              : "Summary"}
-          </span>
-          <span className="booking-summary-fab-amount">
-            {b.state === "cancelled"
-              ? money(b.historicalBalanceMinor, b.quote.currency)
-              : b.balanceMinor !== 0
+        {compactSummary && summaryActionable ? (
+          <button
+            type="button"
+            className={
+              "booking-summary-fab" + (sheetOpen ? " is-hidden" : "")
+            }
+            aria-expanded={sheetOpen}
+            aria-controls="booking-summary-panel"
+            onClick={() => setSummaryOpen(true)}
+          >
+            <ShoppingCart size={22} aria-hidden />
+            <span className="booking-summary-fab-label">
+              {b.state === "held" && !expired
+                ? partnerSettles || alreadyFunded
+                  ? "Confirm"
+                  : "Pay & confirm"
+                : b.balanceMinor < 0
+                  ? "Credit"
+                  : "Collect"}
+            </span>
+            <span className="booking-summary-fab-amount">
+              {b.balanceMinor !== 0
                 ? money(Math.abs(b.balanceMinor), b.quote.currency)
                 : money(b.quote.totalMinor, b.quote.currency)}
-          </span>
-        </button>
+            </span>
+          </button>
+        ) : null}
       </div>
     </div>
   );

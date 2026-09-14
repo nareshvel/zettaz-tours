@@ -5,6 +5,8 @@ import { useSearchParams } from "next/navigation";
 import {
   Plus,
   ArrowUpRight,
+  ArrowDown,
+  ArrowUp,
   ChevronRight,
   Download,
   Printer,
@@ -447,13 +449,49 @@ export function Overview({ session }: { session: Session }) {
     </>
   );
 }
+type ReservationSort =
+  | "created_at"
+  | "starts_at"
+  | "lead_name"
+  | "state"
+  | "guests"
+  | "balance";
+
 function ReservationTable({
   items,
   session,
+  sort,
+  dir,
+  onSort,
 }: {
   items: Reservation[];
   session: Session;
+  sort?: ReservationSort;
+  dir?: "asc" | "desc";
+  onSort?: (column: ReservationSort) => void;
 }) {
+  function header(column: ReservationSort, labelText: string, numeric = false) {
+    if (!onSort) return <th className={numeric ? "numeric" : undefined}>{labelText}</th>;
+    const active = sort === column;
+    return (
+      <th className={numeric ? "numeric" : undefined} aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"}>
+        <button
+          type="button"
+          className={"sortable-th" + (active ? " is-active" : "")}
+          onClick={() => onSort(column)}
+        >
+          <span>{labelText}</span>
+          {active ? (
+            dir === "asc" ? (
+              <ArrowUp size={14} aria-hidden="true" />
+            ) : (
+              <ArrowDown size={14} aria-hidden="true" />
+            )
+          ) : null}
+        </button>
+      </th>
+    );
+  }
   return !items.length ? (
     <Empty title="No reservations found">
       <p>Create a reservation or adjust your search.</p>
@@ -463,11 +501,12 @@ function ReservationTable({
       <table>
         <thead>
           <tr>
-            <th>Guest / reference</th>
-            <th>Tour & departure</th>
-            <th>Guests</th>
-            <th>Status</th>
-            <th className="numeric">Balance due</th>
+            {header("lead_name", "Guest / reference")}
+            {header("starts_at", "Tour & departure")}
+            {header("created_at", "Booked")}
+            {header("guests", "Guests")}
+            {header("state", "Status")}
+            {header("balance", "Balance due", true)}
             <th />
           </tr>
         </thead>
@@ -491,6 +530,18 @@ function ReservationTable({
                     session.tenant.config.locale,
                     session.tenant.config.timeFormat,
                   )}
+                </small>
+              </td>
+              <td>
+                <small>
+                  {r.created_at
+                    ? friendlyDateTime(
+                        r.created_at,
+                        session.tenant.timezone,
+                        session.tenant.config.locale,
+                        session.tenant.config.timeFormat,
+                      )
+                    : "—"}
                 </small>
               </td>
               <td>{Object.values(r.party).reduce((s, v) => s + v, 0)}</td>
@@ -593,13 +644,22 @@ export function Reservations({ session }: { session: Session }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
   const [from, to] = rangeBounds(range, today, customFrom, customTo);
-  const filters = { state, source, from, to };
+  const [sort, setSort] = useState<ReservationSort>("created_at");
+  const [dir, setDir] = useState<"asc" | "desc">("desc");
+  const filters = { state, source, from, to, sort, dir };
   const list = usePaged<Reservation>(
     "staff/v1/workspace/reservations",
     search,
     filters,
     25,
   );
+  function toggleSort(column: ReservationSort) {
+    if (sort === column) setDir((value) => (value === "asc" ? "desc" : "asc"));
+    else {
+      setSort(column);
+      setDir(column === "lead_name" || column === "state" ? "asc" : "desc");
+    }
+  }
   useEffect(() => {
     if (!filtersOpen) return;
     function onPointer(event: MouseEvent) {
@@ -901,7 +961,13 @@ export function Reservations({ session }: { session: Session }) {
           </Empty>
         ) : (
           <>
-            <ReservationTable items={list.items} session={session} />
+            <ReservationTable
+              items={list.items}
+              session={session}
+              sort={sort}
+              dir={dir}
+              onSort={toggleSort}
+            />
             <div className="reservation-cards">
               {list.items.map((item) => {
                 const party = Object.values(item.party).reduce(
@@ -1834,7 +1900,7 @@ export function ManifestView({
             : undefined
         }
         action={
-          <div className="button-row no-print boarding-doc-actions">
+          <div className="button-row no-print doc-actions boarding-doc-actions">
             <button
               type="button"
               className="button secondary"
@@ -1843,7 +1909,7 @@ export function ManifestView({
               onClick={() => void printManifest()}
               disabled={!data || printJob.busy}
             >
-              <Printer size={17} />
+              <Printer size={17} aria-hidden="true" />
               <span className="button-label">Print</span>
             </button>
             <button
@@ -1854,8 +1920,10 @@ export function ManifestView({
               onClick={() => void downloadManifest()}
               disabled={!data || printJob.busy}
             >
-              <Download size={17} />
-              <span className="button-label">PDF</span>
+              <Download size={17} aria-hidden="true" />
+              <span className="button-label">
+                {printJob.busy ? "Preparing…" : "PDF"}
+              </span>
             </button>
           </div>
         }

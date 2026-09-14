@@ -36,7 +36,7 @@ The Go agent, agent enrollment credentials, job polling, stored-artifact renderi
 
 ## Acceptance
 
-- A departure day manifest and pickup list can be printed or saved as PDF from the browser.
+- A departure day manifest, pickup list, and booking receipt can be printed or saved as PDF from the browser. Booking receipts render a branded layout (tenant name, optional JPG/PNG logo, contact lines, formatted money/dates, charges and payments).
 - A tenant cannot access another tenant's template, route, job or artifact.
 - Repeating a request with the same idempotency key does not duplicate a physical print job.
 - Template edits create a new version; completed jobs retain the version used.

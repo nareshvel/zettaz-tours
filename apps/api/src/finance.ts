@@ -115,9 +115,26 @@ export class FinanceService {
       paid + partnerCredit + data.amountMinor > quote.totalMinor
     )
       throw new ConflictException("Payment exceeds remaining balance");
+    let passengerId: string | null = data.passengerId ?? null;
+    if (passengerId) {
+      const {
+        rows: [passenger],
+      } = await tx.query(
+        `SELECT id FROM booking_passengers
+         WHERE tenant_id=$1 AND id=$2 AND booking_id=$3 AND superseded_at IS NULL`,
+        [actor.tenantId, passengerId, bookingId],
+      );
+      if (!passenger)
+        throw new BadRequestException(
+          "Passenger is unavailable on this booking",
+        );
+    }
     const paymentId = randomUUID();
     await tx.query(
-      `INSERT INTO payments VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      `INSERT INTO payments(
+         tenant_id,id,booking_id,amount_minor,currency,method,status,
+         reference,reason,occurred_at,actor_id,passenger_id
+       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
       [
         actor.tenantId,
         paymentId,
@@ -130,6 +147,7 @@ export class FinanceService {
         data.reason,
         data.occurredAt,
         actor.actorId,
+        passengerId,
       ],
     );
     await record(
@@ -138,12 +156,13 @@ export class FinanceService {
       "payment.manual_recorded",
       paymentId,
       null,
-      { bookingId, ...data },
+      { bookingId, ...data, passengerId: passengerId ?? undefined },
       data.reason,
     );
     return {
       paymentId,
       ...data,
+      passengerId: passengerId ?? undefined,
       paidMinor: paid + (data.status === "settled" ? data.amountMinor : 0),
       partnerCreditMinor: partnerCredit,
     };

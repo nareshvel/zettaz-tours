@@ -133,6 +133,47 @@ export class BookingChangeService {
           !priced.quote.allowUnresolvedPickup
         )
           throw new ConflictException("Pickup must be resolved");
+        const existingPurchaser =
+          (booking.purchaser as {
+            name?: string;
+            email?: string;
+            phone?: string;
+          }) ?? {};
+        const purchaser = data.purchaser ?? {
+          name: data.leadName,
+          email: data.leadEmail,
+          phone: data.leadPhone || existingPurchaser.phone || "",
+        };
+        if (data.leadPhone && !data.purchaser)
+          purchaser.phone = data.leadPhone;
+        const stayInput =
+          data.stay ??
+          (booking.stay as {
+            kind: string;
+            cruiseCallId?: string;
+            accommodationId?: string;
+          });
+        const resolved = await this.reservations.resolveStay(
+          tx,
+          actor,
+          stayInput,
+        );
+        const emergencyContact =
+          data.emergencyContact ??
+          (booking.emergency_contact as Record<string, unknown>) ??
+          {};
+        const normalizedInput = {
+          ...data,
+          leadPhone: data.leadPhone || purchaser.phone || "",
+          purchaser,
+          emergencyContact:
+            emergencyContact && Object.keys(emergencyContact).length
+              ? emergencyContact
+              : undefined,
+          stay: resolved.stay,
+          cruiseCallId: resolved.cruiseCallId,
+          accommodationId: resolved.accommodationId,
+        };
         const settings = await tenant(tx, actor),
           quoteId = randomUUID();
         const {
@@ -146,7 +187,7 @@ export class BookingChangeService {
             bookingId,
             actor.actorId,
             booking.version,
-            data,
+            normalizedInput,
             priced.quote,
             priced.seats,
             settings.config.allowAmendmentBalance === true,
@@ -325,18 +366,64 @@ export class BookingChangeService {
             [actor.tenantId, bookingId],
           );
         let customerId = booking.customer_id;
+        const leadPhone =
+          typeof q.input.leadPhone === "string" ? q.input.leadPhone : "";
+        const purchaser = (q.input.purchaser as {
+          name: string;
+          email: string;
+          phone: string;
+        }) ?? {
+          name: q.input.leadName,
+          email: q.input.leadEmail,
+          phone: leadPhone,
+        };
+        const emergencyContact =
+          (q.input.emergencyContact as Record<string, unknown>) ?? {};
+        const stay =
+          (q.input.stay as Record<string, unknown>) ?? booking.stay ?? { kind: "none" };
+        const cruiseCallId =
+          (q.input.cruiseCallId as string | null | undefined) ??
+          (stay.kind === "cruise" ? (stay.cruiseCallId as string) ?? null : null);
+        const accommodationId =
+          (q.input.accommodationId as string | null | undefined) ??
+          (stay.kind === "hotel"
+            ? (stay.accommodationId as string) ?? null
+            : null);
         if (booking.lead_email.toLowerCase().trim() !== q.input.leadEmail.toLowerCase().trim()) {
           const { rows: [customer] } = await tx.query(
             `INSERT INTO customers(tenant_id,id,name,email,normalized_email,phone)
-             VALUES($1,$2,$3,$4,lower(trim($4)),'')
-             ON CONFLICT(tenant_id,normalized_email) DO UPDATE SET name=EXCLUDED.name,email=EXCLUDED.email,updated_at=clock_timestamp()
+             VALUES($1,$2,$3,$4,lower(trim($4)),$5)
+             ON CONFLICT(tenant_id,normalized_email) DO UPDATE SET name=EXCLUDED.name,email=EXCLUDED.email,
+               phone=CASE WHEN EXCLUDED.phone<>'' THEN EXCLUDED.phone ELSE customers.phone END,
+               updated_at=clock_timestamp()
              RETURNING id`,
-            [actor.tenantId, randomUUID(), q.input.leadName, q.input.leadEmail],
+            [
+              actor.tenantId,
+              randomUUID(),
+              q.input.leadName,
+              q.input.leadEmail,
+              leadPhone || purchaser.phone || "",
+            ],
           );
           customerId = customer.id;
+        } else if (leadPhone || purchaser.phone) {
+          await tx.query(
+            `UPDATE customers SET
+               phone=CASE WHEN $3<>'' THEN $3 ELSE phone END,
+               name=$4,updated_at=clock_timestamp()
+             WHERE tenant_id=$1 AND id=$2`,
+            [
+              actor.tenantId,
+              customerId,
+              leadPhone || purchaser.phone || "",
+              q.input.leadName,
+            ],
+          );
         }
         await tx.query(
-          `UPDATE bookings SET hold_id=$3,departure_id=$4,lead_name=$5,lead_email=$6,pickup=$7,customer_id=$8,version=version+1 WHERE tenant_id=$1 AND id=$2`,
+          `UPDATE bookings SET hold_id=$3,departure_id=$4,lead_name=$5,lead_email=$6,pickup=$7,
+            stay=$8,cruise_call_id=$9,accommodation_property_id=$10,purchaser=$11,emergency_contact=$12,
+            customer_id=$13,version=version+1 WHERE tenant_id=$1 AND id=$2`,
           [
             actor.tenantId,
             bookingId,
@@ -345,6 +432,11 @@ export class BookingChangeService {
             q.input.leadName,
             q.input.leadEmail,
             q.input.pickup,
+            stay,
+            cruiseCallId,
+            accommodationId,
+            purchaser,
+            emergencyContact,
             customerId,
           ],
         );
@@ -355,6 +447,11 @@ export class BookingChangeService {
           lead_name: q.input.leadName,
           lead_email: q.input.leadEmail,
           pickup: q.input.pickup,
+          stay,
+          cruise_call_id: cruiseCallId,
+          accommodation_property_id: accommodationId,
+          purchaser,
+          emergency_contact: emergencyContact,
           customer_id: customerId,
           party: q.input.party,
           quote: q.quote,

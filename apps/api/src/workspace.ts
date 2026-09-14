@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Headers, Patch, Query } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Patch,
+  Query,
+} from "@nestjs/common";
 import { z } from "zod";
 import {
   Actor,
@@ -32,12 +40,36 @@ const departureQuerySchema = querySchema.extend({
     ])
     .optional(),
 });
-const reservationQuerySchema = querySchema.extend({
-  state: z.enum(["held", "confirmed", "cancelled", "expired"]).optional(),
-  source: z.string().trim().max(60).optional(),
-  from: z.iso.date().optional(),
-  to: z.iso.date().optional(),
-});
+const reservationQuerySchema = querySchema
+  .omit({ cursor: true, view: true })
+  .extend({
+    cursor: z.string().trim().min(1).max(40).optional(),
+    state: z.enum(["held", "confirmed", "cancelled", "expired"]).optional(),
+    source: z.string().trim().max(60).optional(),
+    from: z.iso.date().optional(),
+    to: z.iso.date().optional(),
+    sort: z
+      .enum([
+        "created_at",
+        "starts_at",
+        "lead_name",
+        "state",
+        "guests",
+        "balance",
+      ])
+      .default("created_at"),
+    dir: z.enum(["asc", "desc"]).default("desc"),
+  })
+  .strict();
+
+const reservationSortSql = {
+  created_at: "b.created_at",
+  starts_at: "d.starts_at",
+  lead_name: "lower(b.lead_name)",
+  state: `CASE WHEN b.state='held' AND h.expires_at<=clock_timestamp() THEN 'expired' ELSE b.state END`,
+  guests: `(SELECT COALESCE(SUM(value::int),0) FROM jsonb_each_text(h.party))`,
+  balance: `((h.quote->>'totalMinor')::float8 - COALESCE((SELECT SUM(x.amount_minor) FROM payments x WHERE x.tenant_id=b.tenant_id AND x.booking_id=b.id AND x.status='settled' AND NOT EXISTS(SELECT 1 FROM payment_adjustments a WHERE a.tenant_id=x.tenant_id AND a.payment_id=x.id)),0))`,
+} as const;
 function page<T extends { id: string }>(rows: T[], limit: number) {
   return {
     items: rows.slice(0, limit),
@@ -161,9 +193,14 @@ export class WorkspaceController {
   @Access("bookings.read")
   reservations(@CurrentActor() actor: Actor, @Query() raw: unknown) {
     const q = parse(reservationQuerySchema, raw);
+    const offset = q.cursor ? Number(q.cursor) : 0;
+    if (!Number.isInteger(offset) || offset < 0)
+      throw new BadRequestException("Invalid reservation list cursor");
+    const sortSql = reservationSortSql[q.sort];
+    const dirSql = q.dir === "asc" ? "ASC" : "DESC";
     return this.db.transaction(actor, async (tx) => {
       const { rows } = await tx.query(
-        `SELECT b.id,b.departure_id,b.lead_name,b.source,b.pickup,b.version,
+        `SELECT b.id,b.departure_id,b.lead_name,b.source,b.pickup,b.version,b.created_at,
       CASE WHEN b.state='held' AND h.expires_at<=clock_timestamp() THEN 'expired' ELSE b.state END AS state,
       d.starts_at,p.name AS product_name,h.party,h.quote->>'currency' AS currency,
       (h.quote->>'totalMinor')::float8 AS total_minor,
@@ -172,25 +209,31 @@ export class WorkspaceController {
       FROM bookings b JOIN holds h ON h.tenant_id=b.tenant_id AND h.id=b.hold_id
       JOIN departures d ON d.tenant_id=b.tenant_id AND d.id=b.departure_id
       JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id
-      WHERE b.tenant_id=$1 AND ($2::uuid IS NULL OR b.id>$2)
-      AND (b.lead_name ILIKE $3 OR b.id::text ILIKE $3 OR p.name ILIKE $3)
-      AND ($5::text IS NULL OR (CASE WHEN b.state='held' AND h.expires_at<=clock_timestamp() THEN 'expired' ELSE b.state END)=$5)
-      AND ($6::text IS NULL OR b.source=$6)
-      AND ($7::date IS NULL OR d.starts_at >= $7::date)
-      AND ($8::date IS NULL OR d.starts_at < ($8::date + interval '1 day'))
-      ORDER BY b.id LIMIT $4`,
+      WHERE b.tenant_id=$1
+      AND (b.lead_name ILIKE $2 OR b.id::text ILIKE $2 OR p.name ILIKE $2)
+      AND ($3::text IS NULL OR (CASE WHEN b.state='held' AND h.expires_at<=clock_timestamp() THEN 'expired' ELSE b.state END)=$3)
+      AND ($4::text IS NULL OR b.source=$4)
+      AND ($5::date IS NULL OR d.starts_at >= $5::date)
+      AND ($6::date IS NULL OR d.starts_at < ($6::date + interval '1 day'))
+      ORDER BY ${sortSql} ${dirSql}, b.id ${dirSql}
+      LIMIT $7 OFFSET $8`,
         [
           actor.tenantId,
-          q.cursor ?? null,
           "%" + q.search + "%",
-          q.limit + 1,
           q.state ?? null,
           q.source ?? null,
           q.from ?? null,
           q.to ?? null,
+          q.limit + 1,
+          offset,
         ],
       );
-      return page(rows, q.limit);
+      const items = rows.slice(0, q.limit);
+      return {
+        items,
+        nextCursor:
+          rows.length > q.limit ? String(offset + q.limit) : null,
+      };
     });
   }
   @Get("members")

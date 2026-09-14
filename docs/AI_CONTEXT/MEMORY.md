@@ -88,7 +88,7 @@ See [../STRATEGY/delivery.md](../STRATEGY/delivery.md).
 
 ## Reservation changes — 9 September 2026
 
-- ADR 011: confirmed bookings support quoted departure/party and guest/pickup amendments, with ordered capacity locks, immutable snapshots/history and original allocation preservation. Quotes do not hold seats. Held bookings support guest/pickup corrections without extending expiry.
+- ADR 011: confirmed bookings support quoted departure/party and guest/pickup/stay/contact amendments, with ordered capacity locks, immutable snapshots/history and original allocation preservation. Quotes do not hold seats. Held bookings support guest/stay/contact/pickup corrections without extending expiry. Amend UI reuses Make reservation (quote → accept).
 - Live held and future confirmed bookings can cancel atomically; payments remain unchanged. No auto-refund or fee entitlement. Credit/cancellation payments expose finance-review flags. Cancelled bookings cannot collect or confirm.
 - New tenant flag allowAmendmentBalance defaults false; synthetic fixtures explicitly enable it. Actual commercial policies are still open. A future finance increment must address review/payment corrections before claiming complete cancellation finance. Continue the delivery order with the operations board and pickup planning.
 

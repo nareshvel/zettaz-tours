@@ -524,6 +524,7 @@ export const paymentSchema = z
     reference: z.string().trim().max(120).default(""),
     reason: z.string().trim().max(500).default(""),
     occurredAt: z.string().datetime({ offset: true }),
+    passengerId: z.string().uuid().optional(),
   })
   .strict();
 export const paymentAdjustmentSchema = z
@@ -578,7 +579,11 @@ export const amendmentSchema = z
     party: holdSchema.shape.party,
     leadName: bookingSchema.shape.leadName,
     leadEmail: bookingSchema.shape.leadEmail,
+    leadPhone: z.string().trim().max(40).default(""),
+    purchaser: bookingSchema.shape.purchaser,
+    emergencyContact: bookingSchema.shape.emergencyContact,
     pickup: bookingSchema.shape.pickup,
+    stay: bookingSchema.shape.stay.optional(),
     reason: z.string().trim().min(1).max(500),
   })
   .strict();

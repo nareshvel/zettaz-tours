@@ -45,6 +45,44 @@ export class ReservationService {
     if (!row) throw new NotFoundException();
     return row;
   }
+  async resolveStay(
+    tx: Tx,
+    actor: Actor,
+    input: {
+      kind: string;
+      cruiseCallId?: string;
+      accommodationId?: string;
+      vesselName?: string;
+      hotelName?: string;
+      cabinNumber?: string;
+      roomNumber?: string;
+      propertyName?: string;
+      address?: string;
+    },
+  ) {
+    let stay = input as Record<string, unknown>;
+    let cruiseCallId: string | null = null;
+    let accommodationId: string | null = null;
+    if (input.kind === "cruise" && input.cruiseCallId) {
+      const { rows } = await tx.query(
+        "SELECT id,vessel_name FROM cruise_calls WHERE tenant_id=$1 AND id=$2 AND active",
+        [actor.tenantId, input.cruiseCallId],
+      );
+      if (!rows[0]) throw new NotFoundException("Cruise call not found");
+      cruiseCallId = rows[0].id;
+      stay = { ...input, vesselName: rows[0].vessel_name };
+    }
+    if (input.kind === "hotel" && input.accommodationId) {
+      const { rows } = await tx.query(
+        "SELECT id,name FROM accommodation_properties WHERE tenant_id=$1 AND id=$2 AND active",
+        [actor.tenantId, input.accommodationId],
+      );
+      if (!rows[0]) throw new NotFoundException("Accommodation not found");
+      accommodationId = rows[0].id;
+      stay = { ...input, hotelName: rows[0].name };
+    }
+    return { stay, cruiseCallId, accommodationId };
+  }
   create(actor: Actor, key: string, input: unknown) {
     const data = parse(bookingSchema, input);
     return this.db.command(actor, "booking.create", key, data, async (tx) => {
@@ -57,21 +95,10 @@ export class ReservationService {
       if (current.actor_id !== actor.actorId) throw new NotFoundException();
       if (!current.live || current.consumed)
         throw new ConflictException("Hold expired or consumed");
-      let stay = data.stay;
-      let cruiseCallId: string | null = null;
-      let accommodationId: string | null = null;
-      if (data.stay.kind === "cruise" && data.stay.cruiseCallId) {
-        const { rows } = await tx.query("SELECT id,vessel_name FROM cruise_calls WHERE tenant_id=$1 AND id=$2 AND active", [actor.tenantId,data.stay.cruiseCallId]);
-        if (!rows[0]) throw new NotFoundException("Cruise call not found");
-        cruiseCallId = rows[0].id;
-        stay = { ...data.stay, vesselName: rows[0].vessel_name };
-      }
-      if (data.stay.kind === "hotel" && data.stay.accommodationId) {
-        const { rows } = await tx.query("SELECT id,name FROM accommodation_properties WHERE tenant_id=$1 AND id=$2 AND active", [actor.tenantId,data.stay.accommodationId]);
-        if (!rows[0]) throw new NotFoundException("Accommodation not found");
-        accommodationId = rows[0].id;
-        stay = { ...data.stay, hotelName: rows[0].name };
-      }
+      const resolved = await this.resolveStay(tx, actor, data.stay);
+      const stay = resolved.stay;
+      const cruiseCallId = resolved.cruiseCallId;
+      const accommodationId = resolved.accommodationId;
       let quote = current.quote as Quote;
       if (data.concession) {
         const ceiling = quote.subtotalMinor + quote.taxMinor;
@@ -530,9 +557,13 @@ export class ReservationService {
       );
       const {rows:payments}=await tx.query(
         `SELECT p.id,p.amount_minor::float8,p.currency,p.method,p.status,p.reference,p.reason,p.occurred_at,
+          p.passenger_id,bp.name AS passenger_name,
           a.id AS adjustment_id,a.kind AS adjustment_kind,a.reference AS adjustment_reference,
           a.reason AS adjustment_reason,a.occurred_at AS adjustment_occurred_at
-         FROM payments p LEFT JOIN payment_adjustments a ON a.tenant_id=p.tenant_id AND a.payment_id=p.id
+         FROM payments p
+         LEFT JOIN booking_passengers bp
+           ON bp.tenant_id=p.tenant_id AND bp.id=p.passenger_id
+         LEFT JOIN payment_adjustments a ON a.tenant_id=p.tenant_id AND a.payment_id=p.id
          WHERE p.tenant_id=$1 AND p.booking_id=$2 ORDER BY p.occurred_at,p.id`,
         [actor.tenantId,bookingId],
       );

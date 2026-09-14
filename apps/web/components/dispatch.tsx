@@ -604,29 +604,43 @@ export function PrintablePickupListPage({
         title="Print pickup list"
         description={`${departure.product_name} · ${when}. Paper-safe stop sequence for the driver. Edit on Plan pickups.`}
         action={
-          <div className="button-row no-print pickup-print-actions">
+          <div className="button-row no-print doc-actions pickup-print-actions">
             {session.permissions.includes("operations.write") && (
               <Link
                 className="button secondary"
                 href={`/operations/${departureId}/pickups`}
+                aria-label="Plan pickups"
+                title="Plan pickups"
               >
-                <MapPin size={16} /> Plan pickups
+                <MapPin size={16} aria-hidden="true" />
+                <span className="button-label">Plan pickups</span>
               </Link>
             )}
             <button
+              type="button"
               className="button secondary"
               disabled={printJob.busy}
               onClick={() => void printPickupList()}
+              aria-label="Print pickup list"
+              title={printJob.busy ? "Preparing print" : "Print"}
             >
-              <Printer size={16} /> Print
+              <Printer size={16} aria-hidden="true" />
+              <span className="button-label">
+                {printJob.busy ? "Preparing…" : "Print"}
+              </span>
             </button>
             <button
+              type="button"
               className="button"
               disabled={printJob.busy}
               onClick={() => void downloadPickupList()}
+              aria-label="Download PDF"
+              title={printJob.busy ? "Preparing PDF" : "Download PDF"}
             >
-              <Download size={16} />{" "}
-              {printJob.busy ? "Preparing…" : "Download PDF"}
+              <Download size={16} aria-hidden="true" />
+              <span className="button-label">
+                {printJob.busy ? "Preparing…" : "PDF"}
+              </span>
             </button>
           </div>
         }

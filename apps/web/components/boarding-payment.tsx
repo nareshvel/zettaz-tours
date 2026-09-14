@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import type { Manifest, Session } from "@/lib/types";
 import {
@@ -15,6 +15,28 @@ import { Field, Notice } from "./common";
 function paymentMethodLabel(method: string) {
   if (method === "reseller_payment") return "Guest payment via reseller";
   return label(method);
+}
+
+/** Equal share of remaining balance; last share absorbs rounding remainder. */
+export function suggestedBoardingShare(
+  balanceMinor: number,
+  rosterCount: number,
+) {
+  if (balanceMinor <= 0) return 0;
+  if (rosterCount <= 1) return balanceMinor;
+  const share = Math.floor(balanceMinor / rosterCount);
+  const lastShare = balanceMinor - share * (rosterCount - 1);
+  return balanceMinor <= lastShare ? balanceMinor : share;
+}
+
+function attributionPassenger(
+  booking: Manifest["bookings"][number],
+  passenger?: Manifest["bookings"][number]["passengers"][number],
+) {
+  if (!passenger) return undefined;
+  if (!passenger.is_minor) return passenger;
+  const adult = booking.passengers.find((item) => !item.is_minor);
+  return adult ?? passenger;
 }
 
 export function BoardingPaymentModal({
@@ -33,6 +55,18 @@ export function BoardingPaymentModal({
   const pay = useMutation();
   const currency = booking.currency ?? session.tenant.config.bookingCurrency;
   const balanceMinor = booking.guest_balance_minor ?? 0;
+  const rosterCount = Math.max(
+    1,
+    booking.passengers.length || booking.party_size || 1,
+  );
+  const attributed = useMemo(
+    () => attributionPassenger(booking, passenger),
+    [booking, passenger],
+  );
+  const splitMode = Boolean(passenger) && rosterCount >= 2;
+  const suggested = splitMode
+    ? suggestedBoardingShare(balanceMinor, rosterCount)
+    : balanceMinor;
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("");
   const [reference, setReference] = useState("");
@@ -42,9 +76,9 @@ export function BoardingPaymentModal({
 
   useEffect(() => {
     setAmount(
-      (balanceMinor / 10 ** digits(currency)).toFixed(digits(currency)),
+      (suggested / 10 ** digits(currency)).toFixed(digits(currency)),
     );
-  }, [balanceMinor, currency]);
+  }, [suggested, currency]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -76,8 +110,13 @@ export function BoardingPaymentModal({
         method,
         status: "settled",
         reference: reference.trim(),
-        reason: note.trim() || "Collected at boarding",
+        reason:
+          note.trim() ||
+          (attributed
+            ? `Collected at boarding · ${attributed.name}`
+            : "Collected at boarding"),
         occurredAt,
+        ...(attributed ? { passengerId: attributed.id } : {}),
       },
     );
     if (result) onPaid();
@@ -99,6 +138,16 @@ export function BoardingPaymentModal({
               {booking.booking_id.slice(0, 8).toUpperCase()} · Balance due{" "}
               {money(balanceMinor, currency, session.tenant.config.locale)}
             </p>
+            {splitMode ? (
+              <p className="muted">
+                Suggested share ·{" "}
+                {money(suggested, currency, session.tenant.config.locale)} (of{" "}
+                {rosterCount} travellers)
+                {attributed && attributed.id !== passenger?.id
+                  ? ` · attributed to ${attributed.name}`
+                  : null}
+              </p>
+            ) : null}
           </div>
           <button
             type="button"

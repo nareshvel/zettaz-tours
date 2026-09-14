@@ -16,7 +16,7 @@ Each confirmed booking has explicit passenger records. Staff can record arrival 
 - Passenger waiver evidence is now append-only and may be attributed to an adult passenger or to a minor with an eligible adult guardian from the same current roster. Existing booking-level waiver evidence remains available only for confirmed legacy bookings without a roster.
 - Passenger check-in events are append-only. Arrival, clearance, boarding, and no-show are recorded per passenger; clearance and boarding are rejected until the booking balance and that passenger's waiver requirements are satisfied.
 - Guides and drivers remain restricted to passengers on their actively assigned departure.
-- Web manifest boarding balance collection and partner financial-clearance policy are specified in [boarding-balance-collection.md](boarding-balance-collection.md).
+- Web manifest boarding balance collection and partner financial-clearance policy are specified in [boarding-balance-collection.md](boarding-balance-collection.md). Manual payments may optionally attribute a passenger for split pay-at-boarding clarity; financial clearance remains booking-level.
 
 ## Guards
 

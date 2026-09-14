@@ -84,13 +84,13 @@ For an unresolved pickup, open Amend reservation to arrange it before confirming
 
 ## Reservation amendments and cancellations
 
-Open a reservation and choose **Amend reservation** or **Cancel reservation**. Amendments quote the proposed guest/pickup and (for confirmed reservations) departure/party details before explicit acceptance. Quotes reserve no seats; the server rechecks inventory and the booking version. A failed acceptance preserves the original reservation. Contact/pickup-only changes keep the accepted price; commercial changes use current rates.
+Open a reservation and choose **Amend reservation** or **Cancel reservation**. **Amend** reuses the Make reservation page (same discovery layout and guest/stay/contact fields) in amend mode: review a change quote, then Accept or Revise. Amendments quote the proposed guest, phone, purchaser, emergency contact, stay, pickup and (for confirmed reservations) departure/party details before explicit acceptance. Quotes reserve no seats; the server rechecks inventory and the booking version. A failed acceptance preserves the original reservation. Contact/stay/pickup-only changes keep the accepted price; commercial changes use current rates. Source, partner, concession and overbook controls stay locked on amend. After a confirmed party-size change, the reservation detail prompts staff to update the traveller roster.
 
 Tenant settings include **Allow confirmed amendments to create an additional balance due**. This is false unless explicitly enabled; the synthetic tenants enable it for mock exploration. When disabled, the quote's minimum-paid policy must be met before acceptance. Additional balances can be recorded after accepting an allowed amendment. A reduction below paid money shows a credit for finance review, without issuing a refund.
 
 Cancellation requires a reason and UI acknowledgement. It releases seats and removes the booking from manifests, retaining historical prices and payment records. Cancelled bookings cannot collect payments or be reconfirmed. Settled or pending payment records trigger finance review; cancellation establishes neither a fee nor refund entitlement. No financial review completion or refund endpoint exists yet.
 
-Held reservations support guest/pickup corrections and cancellation before expiry. Changing their departure/party requires a new reservation; expiry is never extended by editing. Started or expired bookings are rejected by this pre-departure workflow. Accepted amendments and cancellations appear in booking change history and audit/outbox events.
+Held reservations support guest, stay, contact and pickup corrections and cancellation before expiry. Changing their departure/party requires confirmation first or a new reservation; expiry is never extended by editing. Started or expired bookings are rejected by this pre-departure workflow. Accepted amendments and cancellations appear in booking change history and audit/outbox events.
 
 ## Operations board and pickup planning
 

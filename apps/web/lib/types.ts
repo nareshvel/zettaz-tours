@@ -150,6 +150,7 @@ export type Reservation = {
   state: string;
   version: number;
   starts_at: string;
+  created_at?: string;
   product_name: string;
   party: Record<string, number>;
   currency: string;
@@ -205,6 +206,8 @@ export type Booking = {
     reference: string;
     reason: string;
     occurred_at: string;
+    passenger_id?: string | null;
+    passenger_name?: string | null;
     adjustment_id: string | null;
     adjustment_kind: "void" | "reversal" | null;
     adjustment_reference: string | null;

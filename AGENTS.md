@@ -6,12 +6,15 @@ This repository is **Zettaz Tours & Charters**, a multi-tenant SaaS platform for
 
 Start at [docs/README.md](docs/README.md) and [docs/AI_CONTEXT/README.md](docs/AI_CONTEXT/README.md).
 
+**Every new session / IDE switch:** read [docs/HANDOFF/agent-current-sprint.md](docs/HANDOFF/agent-current-sprint.md) for next task and git/deploy truth (prefer it over chat history), then [docs/HANDOFF/cross-ide-agent-resume.md](docs/HANDOFF/cross-ide-agent-resume.md).
+
 On conflict:
 
 - Scope and deferrals: [docs/STRATEGY/launch-contract.md](docs/STRATEGY/launch-contract.md)
 - States and entities: [docs/ARCHITECTURE/domain-and-states.md](docs/ARCHITECTURE/domain-and-states.md)
 - Stack and APIs: [docs/ARCHITECTURE/overview.md](docs/ARCHITECTURE/overview.md) and [docs/DECISIONS/](docs/DECISIONS/)
 - First slice: [docs/STRATEGY/delivery.md](docs/STRATEGY/delivery.md)
+- Execution focus vs chat: [docs/HANDOFF/agent-current-sprint.md](docs/HANDOFF/agent-current-sprint.md)
 
 [docs/archive/Zettaz_Tours_Charters_Product_Blueprint_v1.1.md](docs/archive/Zettaz_Tours_Charters_Product_Blueprint_v1.1.md) is historical. Do not implement from it.
 

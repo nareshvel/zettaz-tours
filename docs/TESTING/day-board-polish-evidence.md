@@ -17,3 +17,7 @@
 - Day Board + Plan pickups + Print pickup list reviewed across phone / tablet / desktop widths.
 - Weather hold / reopen reason flow and pickup plan vs print list labeling accepted.
 - Evidence file and backlog item 1 marked built.
+
+## Follow-up (14 September 2026)
+
+Location CRUD moved to **Settings → Pickup locations**; Plan pickups is sequencing-only. Print list uses sequence cards only (desktop table removed). Map preview + tenant address default: [pickup-location-modal-and-print-evidence.md](./pickup-location-modal-and-print-evidence.md).

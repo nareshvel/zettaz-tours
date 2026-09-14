@@ -1,6 +1,6 @@
 # Production deploy (VPS)
 
-**Updated:** 12 September 2026
+**Updated:** 14 September 2026
 
 App root on the server: `/var/www/zettaz-tours`  
 PM2 apps: `tours-api`, `tours-web`  
@@ -24,14 +24,13 @@ chmod +x deploy.sh deploy-quick.sh   # once after first pull
 
 Both `deploy.sh` and `deploy-quick.sh` already run **`npm run build`** (API/shared TypeScript → `dist/`). Without that, API code changes would not take effect after PM2 restart. Quick only skips dependency install and migrations.
 
-
 Optional branch: `./deploy.sh main` or `./deploy-quick.sh feature-branch`.
 
 Override PM2 names if needed: `PM2_API_APP=… PM2_WEB_APP=… ./deploy.sh`.
 
 ## Typical workflow
 
-1. Commit and push from your machine.
+1. Commit and push from your machine (`git push origin main`).
 2. SSH to the VPS.
 3. Full (deps or new migrations):
 
@@ -45,12 +44,26 @@ cd /var/www/zettaz-tours && ./deploy.sh
 cd /var/www/zettaz-tours && ./deploy-quick.sh
 ```
 
+## If `git pull` aborts on dirty files
+
+Server-side `npm install` often dirties `package-lock.json`. Discard that local drift, then redeploy:
+
+```sh
+cd /var/www/zettaz-tours
+git status --short
+git checkout -- package-lock.json
+./deploy.sh
+```
+
+Do not invent one-off `psql -f apps/api/migrations/NNN_….sql` steps — `./deploy.sh` runs `db:migrate:prod`. Only use raw SQL if migrate reports a failure.
+
+Scripts also reset a dirty `apps/web/next-env.d.ts` so `git pull --ff-only` is not blocked.
+
 ## Requirements on the server
 
 - `.env.production` present (never commit secrets).
 - `git` remote can fetch `origin`.
 - Node/npm and PM2 already configured for `tours-api` / `tours-web`.
-- Scripts reset a dirty `apps/web/next-env.d.ts` so `git pull --ff-only` is not blocked.
 
 ## After deploy
 
@@ -59,3 +72,5 @@ cd /var/www/zettaz-tours && ./deploy-quick.sh
 - If login mis-reports email verification, see [../ISSUES_FIXES/signin-email-verified-rls.md](../ISSUES_FIXES/signin-email-verified-rls.md).
 
 Gitignored seed SQL still needs a manual `scp` — see [demo-tenant-export.md](demo-tenant-export.md).
+
+Agent-facing deploy truth also lives in [agent-current-sprint.md](agent-current-sprint.md).

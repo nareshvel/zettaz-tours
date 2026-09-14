@@ -4,6 +4,13 @@ Keep under 200 lines. Update after sessions that change standing decisions.
 
 **Last updated:** 2026-09-14
 
+## Current focus (agents)
+
+- **Sprint board:** [../HANDOFF/agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) — prefer over chat history.
+- **Owner priority (14 Sep evening):** Operations menu group = complete until testing finds gaps. **Hold** Subscription messaging. Next: verify/improve Workspace / Insights / Administration (non-Ops).
+- **Deploy:** VPS at tip `a18e083` via `./deploy.sh` (migrations 067, Pending 0). Do not invent “push migration 060.”
+- Claude paste brief: [../HANDOFF/claude-handoff-2026-09-14.md](../HANDOFF/claude-handoff-2026-09-14.md).
+
 ## Standing decisions
 
 - **External partners/resellers:** means hotels/resellers belonging to a tenant's partner network, not tenant staff. Track A uses staff-managed partner records, evidence, obligations and remittances; no shared tenant-staff login for partners. Partner portal and automated settlement remain Track B.
@@ -16,7 +23,7 @@ Keep under 200 lines. Update after sessions that change standing decisions.
 - **Separate payment domains.** Zettaz SaaS subscriptions remain separate from tenant booking money. Rock selected Stripe Connect direct charges as its default online collection path, with USD online booking/collection/reporting. XCD is allowed as recorded local/manual tender but cannot settle a USD balance without an approved rate snapshot. Provider eligibility, fees/disputes and card-present evidence remain. See [../DECISIONS/016-rock-launch-operations.md](../DECISIONS/016-rock-launch-operations.md).
 
 - **Docs layout** follows the Zettaz shared tree (STRATEGY, ARCHITECTURE, DECISIONS, AI_CONTEXT, CLIENTS, FEATURES, MODULES, TESTING, HANDOFF, ISSUES_FIXES). New files go in the matching folder, never at `docs/` root.
-- **Cross-IDE continuity:** [../HANDOFF/cross-ide-agent-resume.md](../HANDOFF/cross-ide-agent-resume.md) is the portable resume packet for ChatGPT, Cursor, Claude, Devin or another IDE agent. Update it whenever current state, next task or handoff procedure changes.
+- **Cross-IDE continuity:** [../HANDOFF/agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) is the single “what next” board; [../HANDOFF/cross-ide-agent-resume.md](../HANDOFF/cross-ide-agent-resume.md) is the fuller resume packet. Update both when next task or git/deploy truth changes; prefer the sprint board over chat history.
 - **Stack is NestJS + Next.js + Expo + PostgreSQL + Redis + S3 + outbox.** Herd is only a folder location. ADR 001. Do not introduce Laravel as the application runtime.
 - **Track A vs Track B.** Spreadsheet cutover first. Reseller portal, certified OTAs, fleet suite, new public checkout, and second-tenant SaaS packaging are Track B. [../STRATEGY/launch-contract.md](../STRATEGY/launch-contract.md) wins on scope.
 - **Three state machines.** Booking never means boarded. [../ARCHITECTURE/domain-and-states.md](../ARCHITECTURE/domain-and-states.md) wins on states.
@@ -68,7 +75,7 @@ See [../STRATEGY/delivery.md](../STRATEGY/delivery.md).
 - **Day Board / Manifest IA (14 September 2026):** Status filter is one dropdown beside the date control. Trip card keeps **View / Board** + **Start trip** only. Manifest **Options** holds Weather hold / Close / Reopen, Pickup list, Plan pickups, and Recovery. Print/Download are icon-only across doc toolbars.
 - **Plan pickups Phase 1 (14 September 2026):** Header shows product + departure time + readiness metrics; Needs attention strip for unresolved / not-in-plan; smart Add (match selected location, seed times); Add all; reorder; per-stop notes; unsaved badge + print confirm. GET pickups now returns `departure` + `exceptions`.
 - **Pickup IA (14 September 2026):** Location CRUD moved to Settings → Pickup locations; Plan pickups is sequencing-only. Day Board drops redundant eyebrow; no Pickup Plans card button. Mental model: [../FEATURES/operations/pickup-disposition-and-plans.md](../FEATURES/operations/pickup-disposition-and-plans.md). Shared multi-product van runs deferred.
-- **Pickup location modal (14 September 2026):** Settings pickups/resellers tabs render outside the tenant-config `<form>`; FormDialog/ConfirmDialog portal to `document.body` (fixes nested-form hydration). Modal sections Identity / Location / Operations; hyphenated codes; Open in Maps + fill map URL from coords; **Leaflet pin preview on Esri World Street Map** (no API key; click to place). Places/routing deferred (ADR 012).
+- **Pickup location modal (14 September 2026):** Settings pickups/resellers tabs render outside the tenant-config `<form>`; FormDialog/ConfirmDialog portal to `document.body` (fixes nested-form hydration). Modal sections Identity / Location / Operations; hyphenated codes; address defaults from tenant city/country; Leaflet pin preview on **Esri World Street Map** + Esri geocode center (no API key; click to place). Open in Maps + fill map URL from coords. Places/routing deferred (ADR 012). Evidence: [../TESTING/pickup-location-modal-and-print-evidence.md](../TESTING/pickup-location-modal-and-print-evidence.md).
 - **Print pickup list (14 September 2026):** Matches Plan pickups header/metrics/Needs attention; driver sequence cards (no duplicate desktop table). Seed creates four planned stops plus unresolved + not-in-plan guests on the rolling demo day.
 - **Finance polish (11 September 2026):** Partner collections metrics, accept/reject confirm dialog, currency tags, mobile statement cards. Claim decision API unchanged.
 - **Reports polish (11 September 2026):** Departure-date presets, currency/timezone basis copy, exception emphasis, mobile daily cards. Report API unchanged.

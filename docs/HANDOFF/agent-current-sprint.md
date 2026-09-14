@@ -1,0 +1,132 @@
+# Agent current sprint board
+
+**Updated:** 14 September 2026 (evening) · **Audience:** any IDE agent (Cursor, Claude, Codex, Devin, ChatGPT)
+
+This is the **single “what next” page**. Read it before inventing a deploy or backlog plan from chat history.
+
+Authority on conflict: [launch-contract.md](../STRATEGY/launch-contract.md) → [implementation-backlog.md](../STRATEGY/implementation-backlog.md) → [ui-waiver-launch-task-list.md](../STRATEGY/ui-waiver-launch-task-list.md) → this file (execution focus only).
+
+Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Standing decisions: [MEMORY.md](../AI_CONTEXT/MEMORY.md).
+
+---
+
+## Owner priority (14 September 2026 — supersedes earlier “do Subscription next”)
+
+1. **Operations menu group = functionally complete for now.** Do not open new Ops feature work unless testing finds a clear bug/gap. Treat polish as closed until further owner testing.
+2. **Hold Subscription messaging** (ui row 17) until remaining functional features/modules elsewhere are in better shape. Do not start subscription copy/banners unless the owner reopens that task.
+3. **Next agent work:** verify and improve **non-Operations** menu groups as required (Workspace, Insights, Administration — and Profile). Find gaps, fix bounded issues, document evidence; one surface at a time.
+
+---
+
+## Git / deploy truth (do not invent)
+
+| Fact | Value |
+| --- | --- |
+| Branch | `main` |
+| Tip deployed | `a18e083` (*add pickup location improvement*) |
+| Mac ↔ `origin/main` | Was in sync at deploy time; **local handoff-doc commits may still be unpushed** — check `git status` before claiming docs are on GitHub |
+| Migrations | Through **`067_booking_created_at.sql`**; prod migrate **COMPLETE**, Pending: 0 |
+| Email verification / trial auth | **Already on `main`** (`060`–`061`); do not invent “never pushed” |
+
+**VPS deploy completed 14 September 2026** (`/var/www/zettaz-tours`):
+
+- Dirty `package-lock.json` blocked first pull → `git checkout -- package-lock.json` → `./deploy.sh` succeeded.
+- Fast-forward `2187c6d..a18e083`, npm install, API + web build, migrations all SKIP/already applied, PM2 `tours-api` + `tours-web` restarted online.
+- Smoke: https://tours.zettaz.com/login
+
+If a later pull fails on dirty lockfile again:
+
+```sh
+cd /var/www/zettaz-tours
+git checkout -- package-lock.json
+./deploy.sh
+```
+
+Do **not** hand-apply migrations with raw `psql` unless `db:migrate:prod` fails. See [deploy.md](deploy.md).
+
+Server may still show local-only drift (`apps/mobile/package.json`, `ecosystem.config.cjs`) — leave alone unless owner asks.
+
+---
+
+## Operations menu group — closed pending testing
+
+Nav group **Operations** (aside): Day Board, Departures, Reservations, Catalog — plus Day Board child flows (manifest/boarding gate, Plan pickups, Print pickup list, Start trip, weather hold/close/reopen). Pickup location library lives under **Tenant settings → Pickup locations** (not Ops aside).
+
+**Owner directive:** consider this group **complete until further testing identifies issues or gaps.** Agents should not invent new Ops epics, Google routing, GPS, or Plan pickups Phase 2.
+
+Shipped recently (treat as done):
+
+- Day Board IA: View/Board + Start trip; Options hold weather/pickups; status filter
+- Plan pickups Phase 1; Print list sequence cards
+- Settings → Pickup locations (Esri map, tenant city/country address default, FormDialog portal)
+- Demo seed multi-stop pickup day
+- Manifest boarding toolbar / start-trip docs
+
+Evidence / feature docs: [pickup-disposition-and-plans.md](../FEATURES/operations/pickup-disposition-and-plans.md), [printable-pickup-list.md](../FEATURES/operations/printable-pickup-list.md), [pickup-location-modal-and-print-evidence.md](../TESTING/pickup-location-modal-and-print-evidence.md), [manifest-boarding-toolbar.md](../FEATURES/operations/manifest-boarding-toolbar.md), [departure-start-and-no-shows.md](../FEATURES/operations/departure-start-and-no-shows.md), [day-board-polish-evidence.md](../TESTING/day-board-polish-evidence.md).
+
+**If testing finds a bug:** fix the bounded defect, add evidence, update this file. Do not expand scope into Track B Ops (live GPS, Google Places/routing).
+
+---
+
+## Held — do not start unless owner reopens
+
+- **Subscription messaging polish** (row 17) — billing-cycle / failed payment / grace / post-suspension copy in `apps/web/components/subscription.tsx`
+- Dependency-blocked Track A: Stripe eligibility, XCD→USD rate, Rock printers, Rock waiver legal text, WP payload / import ID reconciliation
+- Track B: public checkout, reseller portal, GPS/ETAs, OTA cert, rich analytics — [launch-contract.md](../STRATEGY/launch-contract.md)
+
+---
+
+## Sprint now — non-Operations verification & improvement
+
+Work **outside** the Operations aside group. Suggested order (adjust with owner):
+
+### 1. Workspace
+- Home / overview — exceptions, setup checklist, role-appropriate dashboard
+
+### 2. Insights
+- Reports
+- Customers (search/detail; create/edit may still be limited by product truth)
+
+### 3. Administration
+- Finance (overview, payments, partner statements — slim Track A)
+- Fleet (assets / readiness)
+- Staff & access
+- Document library
+- Tenant settings (incl. Pickup locations already shipped — settings polish pass only if needed)
+- Integrations / Partners if exposed under Admin
+- Audit (if present)
+
+### 4. Profile (account shell)
+- Profile / Security — MFA still deferred honestly
+- Subscription tab: **hold messaging polish**; only fix blockers if broken
+
+For each surface: verify against [ui-waiver-launch-task-list.md](../STRATEGY/ui-waiver-launch-task-list.md), fix clear UX/functional gaps in one bounded pass, write/extend `docs/TESTING/*-evidence.md`, update row status.
+
+Owner visual acceptance still outstanding on many polished pages — when verifying, note “needs owner pass” vs “agent found defect.”
+
+---
+
+## Later Track A engineering (after menu-group quality)
+
+Not the current focus. When owner returns to platform/track work:
+
+| # | Epic | What’s left |
+| --- | --- | --- |
+| 1 | E01 Identity | Privileged MFA/TOTP + recovery codes |
+| 2 | E10 Finance | Live Stripe Connect Checkout (USD) + webhooks; XCD rate policy |
+| 3 | E06 Ops print | Go print-agent + live printer routing |
+| 4 | Comms | Tenant-editable templates, suppression, delivery webhooks |
+| 5 | Boarding money | Complimentary/prepaid flags, mixed allocation, per-passenger owed, crew-mobile Pay |
+| 6 | E07/E08 Crew | Encrypted offline sync; retained waiver PDFs |
+| 7 | E12/E13 | WP/OTA transforms (blocked on payload evidence) |
+| 8 | Cutover | Parallel run + Rock workbook sign-off |
+
+---
+
+## Agent checklist when ending a session
+
+1. Update this file if **next task**, **owner priority**, or **git/deploy truth** changed.  
+2. Update [MEMORY.md](../AI_CONTEXT/MEMORY.md) only for durable decisions.  
+3. Add/extend `docs/TESTING/*-evidence.md` for the epic.  
+4. Update [ui-waiver-launch-task-list.md](../STRATEGY/ui-waiver-launch-task-list.md) row status.  
+5. Commit and push so the next IDE and VPS share the same docs.

@@ -1,6 +1,6 @@
 # Pickup disposition, plans, and print lists
 
-**Status:** Track A model · documented 14 September 2026
+**Status:** Track A model · updated 14 September 2026
 
 ## Two layers (do not merge)
 
@@ -10,7 +10,7 @@
 | **Departure pickup plan** | Ops sequence for **one departure** | Dispatcher / admin / owner (`operations.write`) | Ordered stops, times, stop notes, dispatcher notes for that trip |
 | **Print pickup list** | Paper/PDF handoff | Anyone with `manifest.read` | Read-only view of the **saved** plan + exceptions |
 
-Controlled **pickup locations** are tenant master data (Settings → Pickup locations). They are reused across products. Plan pickups only **selects** from that library; it does not create locations. Staff may store an optional address, lat/lng pair, and map URL for dispatch context. The Add/Edit modal shows a free **Leaflet** pin preview on **Esri World Street Map** tiles (no API key; click to place when editing). Direct OSM.org / CARTO public CDNs are avoided (block or key required). Those fields do **not** activate Google Places geocoding, live GPS, or route optimization (deferred; see [ADR 012](../../DECISIONS/012-operations-pickup-planning.md)).
+Controlled **pickup locations** are tenant master data (**Settings → Pickup locations**). They are reused across products. Plan pickups only **selects** from that library; it does not create locations.
 
 ```mermaid
 flowchart TB
@@ -32,18 +32,46 @@ flowchart TB
   plan --> print
 ```
 
+## Settings → Pickup locations (library CRUD)
+
+- Tab renders **outside** the tenant-config save `<form>` (same pattern as Integrations / Partners) so Add/Edit `FormDialog` is not nested.
+- `FormDialog` / `ConfirmDialog` portal to `document.body`.
+- Modal sections: **Identity** (name; code + kind in one row) → **Location** (address, lat/lng, map preview, map link) → **Operations** (notes, visibility).
+- **Address default (create):** prefills from Tenant settings → General (`city`, parish/state, country display name).
+- **Map preview:** Leaflet + **Esri World Street Map** tiles (no API key). Click to place/move pin. When no pin, map centers via Esri World Geocoding on the address / tenant place. Do **not** use `tile.openstreetmap.org` or CARTO public CDN (block / key required).
+- Optional map URL + “Open in Maps” / fill-from-coordinates helpers remain. Coordinates are dispatch context only.
+
+## Plan pickups (Phase 1 — complete)
+
+- Header: product name, departure time badge, plan version, Print list (unsaved confirm).
+- Metrics: stops planned, unresolved, not in plan, location count.
+- Needs attention strip for unresolved / arranged-not-in-plan.
+- Smart Add (match selected location, seed times), Add all, reorder, per-stop notes, dispatcher notes, save footer.
+- Locations managed only via Settings link — no location CRUD on this page.
+- Breadcrumb: `Workspace / Day Board / Plan pickups`.
+
+## Print pickup list (Phase 1 polish — complete)
+
+- Same header/metrics pattern as Plan pickups; Plan pickups + Print/PDF actions.
+- Needs attention (screen); dispatcher note panel; numbered **sequence cards** for screen and print (no separate desktop table).
+- Breadcrumb leaf: `Pickup list`.
+
 ## Day-of path
 
-1. Day Board — readiness counts; **View / Board** + **Start trip** (no separate Pickup Plans button).
+1. Day Board — readiness counts; **View / Board** + **Start trip** (no Pickup Plans card button).
 2. Manifest **Options** — Plan pickups / Pickup list / weather-close.
-3. Plan pickups — sequence guests who already have `selected` pickup; chase `unresolved` on the reservation.
+3. Plan pickups — sequence guests with `selected` pickup; chase `unresolved` on the reservation.
 4. Print list — driver handoff for that departure.
+
+## Demo seed
+
+On the rolling demo day (seed `day` = tomorrow Antigua), product 0 (Clear Boat / Sample Coastal) gets four planned stops (Port → hotel → Jolly → Club) plus one unresolved and one not-in-plan guest. See [Rock demo data](../../CLIENTS/rock-adventures/demo-data.md).
 
 ## Shared hotels vs shared van runs
 
-- **Same location, many products:** supported. Jolly Beach is one library row used by many bookings and plans.
-- **One plan per departure:** Kayak 9:00 and Clear Boat 11:00 each get their own sequence, even if they share hotels.
-- **One van serving multiple products on one run:** **not** Track A. That needs a future day-route / shared-run entity. Deferred explicitly ([ADR 012](../../DECISIONS/012-operations-pickup-planning.md)).
+- **Same location, many products:** supported.
+- **One plan per departure:** each product departure has its own sequence.
+- **One van serving multiple products on one run:** **not** Track A ([ADR 012](../../DECISIONS/012-operations-pickup-planning.md)).
 
 ## Authorization
 
@@ -54,8 +82,8 @@ flowchart TB
 | Create/edit/deactivate locations | `operations.write` (Settings UI) |
 | Set booking disposition | booking create/amend permissions |
 
-## Explicit non-goals here
+## Explicit non-goals
 
-- Route optimization, GPS, live driver re-plan
+- Google Places autocomplete, Directions, Distance Matrix, live GPS, ETA SMS
+- Auto-ordering stops by travel time
 - Shared multi-product pickup runs
-- SMS ETAs / customer pickup messaging from this surface

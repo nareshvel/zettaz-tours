@@ -1,7 +1,9 @@
 # UI quality and departure-waiver launch task list
 
-**Updated:** 11 September 2026  
+**Updated:** 14 September 2026  
 **Scope:** Track A launch quality for web, tablet, and the Expo crew app
+
+**Agent execution focus:** [../HANDOFF/agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) (prefer over chat history).
 
 ## Current truth
 
@@ -9,7 +11,7 @@ The web workspace and connected crew client provide broad development functional
 
 The API stores versioned waiver templates, append-only passenger/guardian waiver evidence, stay details, pending passenger identity, and passenger clearance states. The web manifest can record waiver/check-in evidence, collect remaining guest balances via an on-manifest Pay sheet, and clear partner invoice/collect bookings by policy. The Expo client lists assigned trips and passengers, scans check-in tokens, captures pending passenger names and cruise/hotel/private/local stay information, renders the active waiver, collects a drawn signature, and records check-in/trip events. Encrypted offline operation, retained waiver PDFs, drive copies, crew-mobile Pay, and physical-device acceptance remain open. See [boarding balance collection](../FEATURES/operations/boarding-balance-collection.md).
 
-**Next owner-directed surface:** finish **Subscription** polish (billing-cycle / failed-payment/grace messaging). Profile polish + responsive flush follow-up are implemented and await a short owner visual pass. Subscription responsive plan grid + profile embedding are done (see evidence). Day Board / pickups are owner-accepted. Tenant settings polish is implemented (country list, tax/currency copy, denser meta) and awaits a short owner visual pass.
+**Next owner-directed surface:** verify and improve **non-Operations** menu groups (Workspace, Insights, Administration, Profile). **Operations** (Day Board / Departures / Reservations / Catalog + child flows) is considered functionally complete until further testing finds gaps — do not open new Ops feature work. **Subscription messaging polish (row 17) is held** until other modules are in better shape. Day Board / pickups owner-accepted 11 Sep; Settings pickup modal + Print + Esri map shipped 14 Sep and deployed to VPS (`a18e083`). See [agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) and [claude-handoff-2026-09-14.md](../HANDOFF/claude-handoff-2026-09-14.md).
 
 ## Delivery order
 
@@ -43,13 +45,13 @@ Catalog and Departures are promoted ahead of further reservation-detail work bec
 | 9 | **Reservation detail, amend, cancel — polish implemented 11 September 2026; needs owner visual pass** | Money strip, destructive Cancel + confirm dialog, sticky amend/cancel actions, tablet single-column, denser history |
 | 10 | Customers list/detail | Search, duplicate cues, contact and history privacy, responsive timeline |
 | 11 | **Manifest boarding — gate toolbar 14 September 2026; needs owner visual pass** | Search + Scan + Crew replace setup cards; Board guests primary; Pay/Waiver/Board contracts unchanged; camera QR when BarcodeDetector available |
-| 11a | **Operations (dispatch / pickup) — built 11 September 2026** | Day board weather/close/reopen confirm dialog, Plan pickups vs Print pickup list, location modal CRUD, print list polish; owner-accepted across widths |
+| 11a | **Operations (dispatch / pickup) — functionally complete pending further testing (14 Sep 2026)** | Day board weather/close/reopen; Plan pickups Phase 1; Print list; Settings locations + Esri map; VPS tip `a18e083`. Reopen only for found bugs/gaps — no new Ops features |
 | 12 | **Finance — polish implemented 11 September 2026; needs owner visual pass** | Metrics, confirm dialog for claim decisions, currency clarity, mobile statement cards |
 | 13 | **Reports — polish implemented 11 September 2026; needs owner visual pass** | Date presets, currency/date-basis clarity, exception emphasis, mobile daily cards |
 | 14 | **Team & resources — polish implemented 11 September 2026; needs owner visual pass** | Tabbed Crew/Resources/Documents/Assignments, FormDialog CRUD, ConfirmDialog remove |
 | 15 | **Staff & access / roles — polish implemented 11 September 2026; needs owner visual pass** | Metrics, Staff↔Roles tabs, invite/create modals, revoke ConfirmDialog, mobile cards |
 | 16 | **Tenant settings — polish + follow-up 11 September 2026; needs owner visual pass** | Aside facts, `?tab=` sync, short mobile nav labels, sticky saves, support ConfirmDialog; shared country list dropdown; locked Track A currency copy; exclusive tax-rate explanation; denser desktop meta / tighter mobile tab spacing |
-| 17 | **Subscription — partial polish 11 September 2026; finish messaging + owner visual pass** | Profile-embedded owner tab; responsive plan grid (4→2→1); remaining: billing-cycle / failed-payment/grace messaging |
+| 17 | **Subscription — held 14 Sep 2026** (plan grid + embedding done 11 Sep; messaging deferred) | Do not start billing-cycle / failed-payment/grace copy until owner reopens; see [agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) |
 | 18 | **Profile — polish + responsive follow-up 11 September 2026; needs owner visual pass** | Account shell (identity rail + Profile/Security/Subscription tabs); flush stacked rail/content ≤1366px; MFA deferred honestly |
 | 19 | Audit trail | Filterability, actor/action clarity, detail disclosure and mobile event cards |
 
@@ -112,4 +114,4 @@ The connected API and Expo sub-increment is implemented and integration-verified
 
 ## Recommended starting point
 
-**Next polish implementation:** finish Subscription messaging (row 17 — plan grid/embedding already done). Profile (18) polish + responsive flush are implemented and need an owner visual pass. Day Board / pickups (11a) are owner-accepted. Tenant settings (16) polish is implemented and only needs a short owner visual pass. Parallel owner visual passes remain for rows still marked “needs owner visual pass.” After Subscription: Audit, then Customers if not already accepted. Offline waiver sync, retained PDFs, and launch integrations remain later slices.
+**Next polish implementation:** verify/improve **non-Operations** menu groups (Workspace, Insights, Administration, Profile). Operations (11a) closed pending testing. Subscription (17) messaging **held**. Profile (18) / Tenant settings (16) await owner visual passes. Parallel owner passes remain for Finance, Reports, Staff, Fleet, etc. Offline waiver sync, retained PDFs, and launch integrations remain later slices. Authority: [agent-current-sprint.md](../HANDOFF/agent-current-sprint.md).

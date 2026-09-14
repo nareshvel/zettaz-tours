@@ -57,4 +57,4 @@ Do not create a product-named folder at `docs/` root (no `timeclock`-style excep
 
 ## Coding agents
 
-Start at [AI_CONTEXT/README.md](AI_CONTEXT/README.md). When work moves between ChatGPT, Cursor, Claude, Devin or another IDE agent, use [HANDOFF/cross-ide-agent-resume.md](HANDOFF/cross-ide-agent-resume.md) as the portable resume packet. Then read the launch contract and [STRATEGY/delivery.md](STRATEGY/delivery.md) before writing application code. Root [AGENTS.md](../AGENTS.md) restates the same rule.
+Start at [AI_CONTEXT/README.md](AI_CONTEXT/README.md). When work moves between ChatGPT, Cursor, Claude, Devin or another IDE agent, read [HANDOFF/agent-current-sprint.md](HANDOFF/agent-current-sprint.md) first (next task + deploy truth), then [HANDOFF/cross-ide-agent-resume.md](HANDOFF/cross-ide-agent-resume.md). Prefer the sprint board over chat history. Then read the launch contract and [STRATEGY/delivery.md](STRATEGY/delivery.md) before writing application code. Root [AGENTS.md](../AGENTS.md) restates the same rule.

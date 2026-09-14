@@ -1,7 +1,8 @@
 # Subscription polish — implementation evidence
 
-**Date:** 11 September 2026  
-**Status:** Partial — responsive plan grid + profile embedding done; billing-cycle / grace messaging polish still open; owner visual acceptance outstanding
+**Date:** 11 September 2026 · **Updated:** 14 September 2026  
+**Status:** Partial — responsive plan grid + profile embedding done; billing-cycle / grace messaging polish still open; owner visual acceptance outstanding  
+**Next:** [../HANDOFF/agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) Sprint 1 item 2 — finish messaging in `apps/web/components/subscription.tsx`.
 
 ## Changes completed
 

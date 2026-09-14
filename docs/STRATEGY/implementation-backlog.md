@@ -1,13 +1,13 @@
 # Ordered implementation backlog
 
-**Updated:** 11 September 2026  
+**Updated:** 14 September 2026  
 **Scope authority:** [launch contract](launch-contract.md) · **epic authority:** [delivery](delivery.md)
 
 This is the working execution order. It records actual completion boundaries so a partially built screen is not mistaken for a launch-ready module.
 
 ## Current foundations
 
-The persistent local PostgreSQL database is current through migration 056. Tenant settings, the responsive workspace, normalized catalog and availability foundation, operational departure views, ordinary and authorized overbook availability, manual reservations, customer records, manifests (including boarding Pay and partner clearance), pickup planning, waiver templates, subscription read model, tenant RBAC, resources, partner finance, integration inbox, reports, PDF output, and the connected Expo crew client exist. They are tested development foundations, not a completed Track A cutover.
+The persistent local PostgreSQL database is current through migration **067** in the repo (apply with `npm run db:migrate` / `./deploy.sh` → `db:migrate:prod`). Tenant settings, the responsive workspace, normalized catalog and availability foundation, operational departure views, ordinary and authorized overbook availability, manual reservations, customer records, manifests (including boarding Pay and partner clearance), pickup planning (Plan pickups Phase 1 + Print list polish + Settings location library with Esri map preview), waiver templates, subscription read model, tenant RBAC, resources, partner finance, integration inbox, reports, PDF output, and the connected Expo crew client exist. They are tested development foundations, not a completed Track A cutover.
 
 The current email/password entry screen authenticates through the API against the persistent database. The removed local access-file fallback cannot grant access. This is the first completed portion of E01; production lifecycle controls remain below.
 
@@ -27,23 +27,26 @@ The current email/password entry screen authenticates through the API against th
 
 ## Verification baseline
 
-- Persistent database: migrations 001–055 applied; `Pending: 0`.
-- API/PostgreSQL suite: 43 of 43 tests pass, including normalized catalog storage, availability rules, product/rule read-and-update, migration rerun, tenant isolation, support access, account recovery, authenticated crew sessions, payment correction, import reconciliation and retry consumption, PDF, reports, finance, integrations, and connected crew workflows.
-- TypeScript application build: passes.
-- Migration output now identifies the sanitized target, each script state, rollback, completed count, and pending count.
+- Persistent database: migrations through **067** in the repo; after migrate, local/prod should report `Pending: 0`.
+- API/PostgreSQL suite: run `npm test` after substantive API changes (do not treat a stale “43 of 43” count as authoritative).
+- TypeScript application build: `npm run build` / `npm run web:build`.
+- Agent execution focus: [../HANDOFF/agent-current-sprint.md](../HANDOFF/agent-current-sprint.md).
 
 ## Next executable work
 
-1. **Subscription polish (partial — finish messaging).** Responsive plan grid (4→2→1) and owner-only profile embedding done 11 September 2026. Remaining: billing-cycle and failed-payment/grace messaging across phone/tablet/desktop. Tracked as row 17 in [ui-waiver-launch-task-list.md](ui-waiver-launch-task-list.md); evidence in `docs/TESTING/subscription-polish-evidence.md`.
-2. **Profile polish + responsive follow-up implemented 11 September 2026.** Identity rail, sticky saves, ConfirmDialog for sign-out-everywhere; MFA/recovery deferred honestly; stacked ≤1366px flush rail/content. Owner visual acceptance outstanding; see `docs/TESTING/profile-polish-evidence.md`.
-3. **Owner visual acceptance backlog (no new build required until feedback).** Surfaces already polished and waiting a pass: Reservation detail (9), Manifest (11), Finance (12), Reports (13), Team & resources (14), Staff & access (15), Tenant settings (16), Profile (18), plus earlier Catalog / Departures / New reservation / Reservations list rows still marked for review. Subscription (17) needs a pass after messaging polish lands.
-3. **Hard-refresh landing flash fixed 11 September 2026.** Workspace SSR-bootstraps session; unknown session shows a neutral loader instead of public landing. Spot-check with hard refresh on `/operations` while signed in.
-4. **Day Board / pickups — built and owner-accepted 11 September 2026.** Evidence: `docs/TESTING/day-board-polish-evidence.md`. Includes location modal CRUD and print-list polish.
-5. **Tenant settings follow-up 11 September 2026.** Shared ISO country list (`packages/shared/src/countries.ts` / `@/lib/countries`), General & branding country dropdown, locked Track A currency explanation, exclusive tax-rate copy, denser desktop meta type, tighter mobile/tablet tab-to-content spacing. Evidence: `docs/TESTING/tenant-settings-polish-evidence.md`.
-6. **Departures Book → locked New reservation 11 September 2026.** Book deep-links with departure/product/date; New reservation shows only that trip until Change. Workspace departures accept `departureId`.
-7. Complete the departure passenger waiver vertical slice: encrypted offline command/media sync, authoritative retained PDF, and optional drive-copy adapters. The connected name/stay/signature workflow and web boarding Pay path are already implemented.
-8. Complete privileged-action TOTP MFA, encrypted seed storage, one-time recovery codes and production platform identity entry using the standard policy accepted in [ADR 016](../DECISIONS/016-rock-launch-operations.md).
-9. **Tenant-one import held for source reconciliation.** The August 2026 internal workbook has been profiled and its provisional mappings documented. Obtain a representative WordPress export/API payload, then reconcile stable booking IDs and financial facts before validating rows or implementing the separately permissioned apply workflow. See [workbook discovery](../CLIENTS/rock-adventures-august-2026-workbook-discovery.md).
+0. **Agent sprint board** — [../HANDOFF/agent-current-sprint.md](../HANDOFF/agent-current-sprint.md). Prefer it over chat summaries (they go stale).
+1. **Owner priority (14 Sep evening):** Operations menu group complete pending testing. **Hold** Subscription messaging. **Next:** verify/improve Workspace / Insights / Administration (non-Ops) — see sprint board and [../HANDOFF/claude-handoff-2026-09-14.md](../HANDOFF/claude-handoff-2026-09-14.md).
+2. **VPS** already deployed tip `a18e083` (migrations 067, Pending 0). Redeploy only after new pushes; dirty lockfile → [../HANDOFF/deploy.md](../HANDOFF/deploy.md).
+3. **Subscription polish (held).** Responsive plan grid + profile embedding done 11 September 2026. Messaging (billing-cycle / failed-payment/grace) deferred until owner reopens row 17.
+4. **Profile polish + responsive follow-up implemented 11 September 2026.** Identity rail, sticky saves, ConfirmDialog for sign-out-everywhere; MFA/recovery deferred honestly; stacked ≤1366px flush rail/content. Owner visual acceptance outstanding; see `docs/TESTING/profile-polish-evidence.md`.
+5. **Owner visual acceptance backlog.** Reservation detail (9), Manifest (11), Finance (12), Reports (13), Team & resources (14), Staff & access (15), Tenant settings (16), Profile (18), plus Catalog / Departures / New reservation / Reservations list as needed. Ops (11a) closed pending testing — only reopen on found gaps.
+6. **Hard-refresh landing flash fixed 11 September 2026.** Workspace SSR-bootstraps session; unknown session shows a neutral loader instead of public landing. Spot-check with hard refresh on `/operations` while signed in.
+7. **Day Board / pickups — owner-accepted 11 September 2026; Plan/Print/Settings location polish 14 September 2026; VPS deployed.** Evidence: `docs/TESTING/day-board-polish-evidence.md`, `docs/TESTING/pickup-location-modal-and-print-evidence.md`.
+8. **Tenant settings follow-up 11 September 2026.** Shared ISO country list (`packages/shared/src/countries.ts` / `@/lib/countries`), General & branding country dropdown, locked Track A currency explanation, exclusive tax-rate copy, denser desktop meta type, tighter mobile/tablet tab-to-content spacing. Evidence: `docs/TESTING/tenant-settings-polish-evidence.md`.
+9. **Departures Book → locked New reservation 11 September 2026.** Book deep-links with departure/product/date; New reservation shows only that trip until Change. Workspace departures accept `departureId`.
+10. Complete the departure passenger waiver vertical slice: encrypted offline command/media sync, authoritative retained PDF, and optional drive-copy adapters. The connected name/stay/signature workflow and web boarding Pay path are already implemented.
+11. Complete privileged-action TOTP MFA, encrypted seed storage, one-time recovery codes and production platform identity entry using the standard policy accepted in [ADR 016](../DECISIONS/016-rock-launch-operations.md).
+12. **Tenant-one import held for source reconciliation.** The August 2026 internal workbook has been profiled and its provisional mappings documented. Obtain a representative WordPress export/API payload, then reconcile stable booking IDs and financial facts before validating rows or implementing the separately permissioned apply workflow. See [workbook discovery](../CLIENTS/rock-adventures-august-2026-workbook-discovery.md).
 
 WordPress event mapping can remain paused. Live Stripe enablement, SMTP credentials/DNS verification, printer inventory, offline mobile implementation, and cutover execution are the active dependency-bound items in [ADR 016](../DECISIONS/016-rock-launch-operations.md).
 
@@ -63,7 +66,11 @@ Do not grant these roles broad booking, payment, tenant-setting or customer-hist
 
 Location improves the departure detail, dispatch planning, guide briefing and guest pickup coordination. Track A therefore includes tenant-controlled, non-live map views for tour/charter itinerary points, controlled pickup locations, meeting points and relevant port/marina locations.
 
-Each location must have a name, address or directions, latitude/longitude when supplied, optional map link, visibility policy, and tenant ownership. A map is an aid, not proof of route completion. Live staff/vehicle GPS, breadcrumbs and ETAs remain Track B pending privacy, consent, battery, retention and local legal decisions, as required by the launch contract.
+Each location must have a name, address or directions, latitude/longitude when supplied, optional map link, visibility policy, and tenant ownership. A map is an aid, not proof of route completion.
+
+**Shipped (14 September 2026):** Settings → Pickup locations Add/Edit uses Leaflet + Esri World Street Map tiles and Esri World Geocoding to center on tenant city/country (no API key). Click-to-place sets lat/lng. Google Places, Directions, OSM.org volunteer tiles, and CARTO keyless CDN are not used.
+
+Live staff/vehicle GPS, breadcrumbs and ETAs remain Track B pending privacy, consent, battery, retention and local legal decisions, as required by the launch contract.
 
 ## Outstanding product decisions
 

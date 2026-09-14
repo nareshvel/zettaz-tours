@@ -8,15 +8,45 @@ import type {
 } from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-/** Antigua-ish default when coords are empty but the map is shown for placement. */
-const DEFAULT_CENTER = { lat: 17.1274, lng: -61.8468 };
+/** Antigua-ish fallback when tenant place cannot be geocoded. */
+const FALLBACK_CENTER = { lat: 17.1274, lng: -61.8468 };
 const DEFAULT_ZOOM = 11;
+const PLACE_ZOOM = 12;
 const PIN_ZOOM = 15;
 
 function parseCoord(value: string, min: number, max: number) {
   const n = Number(value.trim());
   if (!Number.isFinite(n) || n < min || n > max) return null;
   return n;
+}
+
+async function geocodePlace(place: string): Promise<{ lat: number; lng: number } | null> {
+  const query = place.trim();
+  if (!query) return null;
+  try {
+    const url = new URL(
+      "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates",
+    );
+    url.searchParams.set("f", "json");
+    url.searchParams.set("singleLine", query);
+    url.searchParams.set("maxLocations", "1");
+    const response = await fetch(url.toString());
+    if (!response.ok) return null;
+    const data = (await response.json()) as {
+      candidates?: Array<{ location?: { x: number; y: number } }>;
+    };
+    const location = data.candidates?.[0]?.location;
+    if (
+      !location ||
+      !Number.isFinite(location.x) ||
+      !Number.isFinite(location.y)
+    ) {
+      return null;
+    }
+    return { lat: location.y, lng: location.x };
+  } catch {
+    return null;
+  }
 }
 
 function markerIcon(L: {
@@ -44,18 +74,21 @@ function markerIcon(L: {
 }
 
 /**
- * OpenStreetMap + Leaflet preview. No API key.
- * Optional click-to-place updates lat/lng; never geocodes or routes.
+ * Leaflet map preview with Esri tiles (no API key).
+ * Optional click-to-place updates lat/lng; never routes.
  * Remount with a React `key` when the dialog target changes.
  */
 export function LocationMapPreview({
   latitude,
   longitude,
+  defaultPlace = "",
   interactive = false,
   onPositionChange,
 }: {
   latitude: string;
   longitude: string;
+  /** City/country text used to center the map when no pin is set. */
+  defaultPlace?: string;
   interactive?: boolean;
   onPositionChange?: (latitude: string, longitude: string) => void;
 }) {
@@ -68,8 +101,10 @@ export function LocationMapPreview({
   const markerRef = useRef<LeafletMarker | null>(null);
   const onChangeRef = useRef(onPositionChange);
   const coordsRef = useRef({ lat, lng });
+  const defaultPlaceRef = useRef(defaultPlace);
   onChangeRef.current = onPositionChange;
   coordsRef.current = { lat, lng };
+  defaultPlaceRef.current = defaultPlace;
 
   async function syncMarker(
     map: LeafletMap,
@@ -100,7 +135,7 @@ export function LocationMapPreview({
       const map = L.map(containerRef.current, {
         zoomControl: true,
         attributionControl: true,
-      }).setView([DEFAULT_CENTER.lat, DEFAULT_CENTER.lng], DEFAULT_ZOOM);
+      }).setView([FALLBACK_CENTER.lat, FALLBACK_CENTER.lng], DEFAULT_ZOOM);
 
       // OSM.org and CARTO public CDNs block or require keys for app clients.
       // Esri World Street Map is a no-key raster XYZ suitable for light admin previews.
@@ -131,6 +166,11 @@ export function LocationMapPreview({
       const current = coordsRef.current;
       if (current.lat !== null && current.lng !== null) {
         await syncMarker(map, current.lat, current.lng);
+      } else {
+        const place = await geocodePlace(defaultPlaceRef.current);
+        if (!cancelled && place) {
+          map.setView([place.lat, place.lng], PLACE_ZOOM);
+        }
       }
       if (cancelled) return;
       requestAnimationFrame(() => map.invalidateSize());
@@ -172,14 +212,18 @@ export function LocationMapPreview({
         aria-label={
           hasPin
             ? `Map preview at ${lat}, ${lng}`
-            : "Map preview — click to place a pin"
+            : defaultPlace
+              ? `Map preview near ${defaultPlace}`
+              : "Map preview — click to place a pin"
         }
       />
       <p className="muted location-map-preview-caption">
         {interactive
           ? hasPin
             ? "Map preview (Esri). Click the map to move the pin."
-            : "Map preview (Esri). Click the map to place a pin."
+            : defaultPlace
+              ? `Centered on ${defaultPlace}. Click the map to place a pin.`
+              : "Map preview (Esri). Click the map to place a pin."
           : hasPin
             ? "Map preview (Esri)."
             : "Enter latitude and longitude to preview the pin."}

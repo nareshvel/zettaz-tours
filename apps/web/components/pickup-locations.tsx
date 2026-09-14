@@ -409,6 +409,7 @@ export function PickupLocationsSettings({ session }: { session: Session }) {
                 }
                 latitude={locationForm.latitude}
                 longitude={locationForm.longitude}
+                defaultPlace={locationForm.address.trim() || tenantPlace}
                 interactive={canWrite}
                 onPositionChange={(latitude, longitude) =>
                   setLocationForm((v) => ({ ...v, latitude, longitude }))

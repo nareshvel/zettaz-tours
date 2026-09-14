@@ -80,14 +80,18 @@ export class ProblemFilter implements ExceptionFilter {
     const res = host.switchToHttp().getResponse<Response>();
     const code = (error as { code?: string }).code;
     let status = error instanceof HttpException ? error.getStatus() : 500;
-    if (code === "23505" || code === "40001" || code === "55P03") status = 409;
-    if (code === "23503" || code === "23514" || code === "22007") status = 400;
+    if (code === "23505" || code === "23P01" || code === "40001" || code === "55P03")
+      status = 409;
+    if (code === "23503" || code === "23514" || code === "22007" || code === "23502")
+      status = 400;
     const detail =
       error instanceof HttpException
         ? error.getResponse()
-        : status === 500
-          ? "Unexpected server error"
-          : "Constraint or concurrency conflict";
+        : code === "23P01"
+          ? "That crew member or asset is already assigned during this time"
+          : status === 500
+            ? "Unexpected server error"
+            : "Constraint or concurrency conflict";
     res
       .status(status)
       .type("application/problem+json")

@@ -555,13 +555,18 @@ export class ResourceService {
         const {
           rows: [departure],
         } = await tx.query(
-          `SELECT d.starts_at,d.local_date,(d.starts_at + make_interval(mins => (p.definition->>'durationMinutes')::int)) AS ends_at
+          `SELECT d.starts_at,d.local_date,
+            (d.starts_at + make_interval(mins => GREATEST(1, COALESCE(NULLIF(p.definition->>'durationMinutes','')::int, 120)))) AS ends_at
          FROM departures d JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id
          WHERE d.tenant_id=$1 AND d.id=$2`,
           [actor.tenantId, input.departureId],
         );
         if (!departure)
           throw new BadRequestException("Departure is unavailable");
+        if (!departure.ends_at)
+          throw new BadRequestException(
+            "Departure duration is missing; set duration on the product before assigning",
+          );
         const { rows: expired } = await tx.query(
           `SELECT id,document_type FROM compliance_documents WHERE tenant_id=$1
          AND (($2::uuid IS NOT NULL AND resource_id=$2) OR ($3::uuid IS NOT NULL AND crew_actor_id=$3))
@@ -600,21 +605,29 @@ export class ResourceService {
             "Inactive crew or resources cannot be assigned",
           );
         const id = randomUUID();
-        await tx.query(
-          "INSERT INTO departure_assignments(tenant_id,id,departure_id,resource_id,crew_actor_id,assignment_role,starts_at,ends_at,override_reason,assigned_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
-          [
-            actor.tenantId,
-            id,
-            input.departureId,
-            input.resourceId ?? null,
-            input.crewActorId ?? null,
-            input.assignmentRole,
-            departure.starts_at,
-            departure.ends_at,
-            overrideReason,
-            actor.actorId,
-          ],
-        );
+        try {
+          await tx.query(
+            "INSERT INTO departure_assignments(tenant_id,id,departure_id,resource_id,crew_actor_id,assignment_role,starts_at,ends_at,override_reason,assigned_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+            [
+              actor.tenantId,
+              id,
+              input.departureId,
+              input.resourceId ?? null,
+              input.crewActorId ?? null,
+              input.assignmentRole,
+              departure.starts_at,
+              departure.ends_at,
+              overrideReason,
+              actor.actorId,
+            ],
+          );
+        } catch (error) {
+          if ((error as { code?: string }).code === "23P01")
+            throw new ConflictException(
+              "That crew member or asset is already assigned during this time",
+            );
+          throw error;
+        }
         await record(tx, actor, "departure_assignment.created", id, null, {
           ...input,
           overrideReason,

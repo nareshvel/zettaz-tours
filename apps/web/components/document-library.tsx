@@ -291,10 +291,12 @@ export function DocumentLibrary({ session }: { session: Session }) {
       {!documents.data ? (
         <Loading />
       ) : items.length === 0 ? (
-        <Empty
-          title="No compliance documents yet"
-          description="Upload licenses, insurance, and other expiry documents for staff or fleet assets."
-        />
+        <Empty title="No compliance documents yet">
+          <p>
+            Upload licenses, insurance, and other expiry documents for staff or
+            fleet assets.
+          </p>
+        </Empty>
       ) : (
         <>
           <div className="table-scroll">

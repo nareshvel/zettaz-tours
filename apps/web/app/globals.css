@@ -1979,9 +1979,9 @@ textarea:focus-visible {
 }
 .stat strong {
   display: block;
-  font-size: 34px;
+  font-size: 24px;
   font-weight: 600;
-  letter-spacing: -1px;
+  letter-spacing: -0.6px;
   margin: 9px 0 6px;
 }
 .stat small {
@@ -2033,7 +2033,7 @@ textarea:focus-visible {
 }
 .dashboard-stats .stat strong {
   overflow-wrap: anywhere;
-  font-size: clamp(22px, 2.2vw, 34px);
+  font-size: clamp(18px, 1.6vw, 24px);
 }
 .dashboard-capacity .capacity-track {
   width: min(180px, 34vw);

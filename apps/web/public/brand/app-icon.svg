@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="t d">
+  <title id="t">Zettaz Tours &amp; Charters</title>
+  <desc id="d">The Zettaz route mark on the brand navy, as the installed app icon</desc>
+  <defs>
+    <linearGradient id="ring" x1="13" y1="10" x2="84" y2="88" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#71E2C7"/>
+      <stop offset="1" stop-color="#168A88"/>
+    </linearGradient>
+    <linearGradient id="z" x1="37" y1="19" x2="58" y2="76" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E6FFFA"/>
+    </linearGradient>
+  </defs>
+  <!-- Full bleed, no transparency: iOS and Android apply their own mask, and a
+       transparent icon is composited onto whatever colour the OS chooses. The
+       mark is inset so a circular mask cannot clip the ring. -->
+  <rect width="512" height="512" fill="#11343B"/>
+  <g transform="translate(256,256) scale(4.1) translate(-48,-48)">
+    <path fill="url(#ring)" d="M48 10c21 0 38 17 38 38S69 86 48 86 10 69 10 48 27 10 48 10Zm0 7C30.9 17 17 30.9 17 48s13.9 31 31 31 31-13.9 31-31-13.9-31-31-31Z"/>
+    <path fill="url(#z)" d="M29 27h38L47.5 48H67L29 70l19.5-21.5H29L48.5 27H29Z"/>
+    <circle cx="71" cy="26" r="4" fill="#F7C965"/>
+  </g>
+</svg>

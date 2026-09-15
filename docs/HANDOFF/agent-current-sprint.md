@@ -81,6 +81,7 @@ Owner-directed pass over the Administration group. Shipped this session, all typ
 | **Localization** | Three-column layout, timezone surfaced, live preview strip; `locale` + `numberFormat` actually wired into formatting |
 | **Sidebar** | Currency / date-format / hold-window facts replaced with a setup checklist (`GET admin/v1/tenant/readiness`) |
 | **Reservations** | Pickup location is a dropdown from the tenant catalog; amend-page party steppers fixed (they used a CSS class that does not exist) |
+| **Installable app / link preview** | `Zettaz Tours & Charters` title, `Zettaz Tours` home-screen label, real PNG app icons (iOS ignores SVG), web manifest with standalone display, OG/Twitter share card |
 | **Payments tab** | Renamed **Payment integrations**; still a placeholder pending finance decisions |
 
 **Migrations added: 079** (`print_jobs.media_size`), **080** (print permissions for `reservations` / `finance`). Owner has applied through 080. A member of those roles needs a fresh session before print buttons appear.

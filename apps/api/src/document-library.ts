@@ -6,7 +6,10 @@ import {
 import { randomUUID } from "node:crypto";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Actor, TenantConfig } from "../../../packages/shared/src/contracts";
+import type {
+  Actor,
+  TenantConfig,
+} from "../../../packages/shared/src/contracts";
 import { Database } from "./database";
 
 export const LIBRARY_MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -56,7 +59,11 @@ export function assertLibraryFile(file: UploadedLibraryFile) {
   return ext;
 }
 
-export function assertLibraryQuota(usedBytes: number, incoming: number, quota: number) {
+export function assertLibraryQuota(
+  usedBytes: number,
+  incoming: number,
+  quota: number,
+) {
   if (usedBytes + incoming > quota)
     throw new PayloadTooLargeException(
       "Document library storage quota exceeded. Remove files or increase the allowance.",
@@ -137,7 +144,9 @@ export class DocumentLibraryService {
     await writeFile(absolute, file.buffer);
     return {
       storageKey,
-      fileName: path.basename(file.originalname || `document.${ext}`).slice(0, 200),
+      fileName: path
+        .basename(file.originalname || `document.${ext}`)
+        .slice(0, 200),
       contentType: file.mimetype,
       byteSize: file.size,
     };

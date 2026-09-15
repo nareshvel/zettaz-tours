@@ -15,7 +15,13 @@ import {
   Zap,
 } from "lucide-react";
 import type { DemoTenant } from "@/lib/types";
-import { COUNTRIES, TIMEZONES, CURRENCIES, defaultTimezoneForCountry, currencyForCountry } from "@/lib/countries";
+import {
+  COUNTRIES,
+  TIMEZONES,
+  CURRENCIES,
+  defaultTimezoneForCountry,
+  currencyForCountry,
+} from "@/lib/countries";
 import { Loading, Notice } from "./common";
 
 export function Entry({
@@ -46,8 +52,8 @@ export function Entry({
   const [confirmPassword, setConfirmPassword] = useState("");
   const [activationToken, setActivationToken] = useState("");
   const [activationError, setActivationError] = useState("");
-  const [recoveryToken,setRecoveryToken]=useState("");
-  const [recoveryMessage,setRecoveryMessage]=useState("");
+  const [recoveryToken, setRecoveryToken] = useState("");
+  const [recoveryMessage, setRecoveryMessage] = useState("");
   // Pre-fill token from email link on mount
   useEffect(() => {
     if (recovery) {
@@ -55,18 +61,194 @@ export function Entry({
       if (urlToken) setRecoveryToken(urlToken);
     }
   }, [recovery]);
-  if(recovery) return <main className="login-page"><div className="login-brand"><img src="/brand/zettaz-logo-dark.svg" alt="Zettaz Tours and Charters"/></div><section className="login-card"><p className="eyebrow">ACCOUNT RECOVERY</p><h1>{recoveryToken?"Choose a new password":"Reset your password"}</h1><p className="subtitle">{recoveryToken?"Enter and confirm your new password.":"Enter your work email. The response is the same whether or not an account exists."}</p><form onSubmit={async event=>{event.preventDefault();setActivationError("");const response=await fetch("/api/recovery",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(recoveryToken?{token:recoveryToken,password}:{email})});const result=await response.json();if(!response.ok)return setActivationError(result.message??"Recovery failed.");if(recoveryToken){setRecoveryMessage("Password updated. All previous sessions were signed out.");return}setRecoveryMessage("If that account is active, recovery instructions are ready.");if(result.token)setRecoveryToken(result.token);}}>{!recoveryToken?<label className="field"><span>Work email</span><input type="email" autoComplete="email" required value={email} onChange={event=>setEmail(event.target.value)}/></label>:<><label className="field"><span>New password</span><input type="password" minLength={12} autoComplete="new-password" required value={password} onChange={event=>setPassword(event.target.value)}/></label></>}<button className="button">{recoveryToken?"Update password":"Continue"} <ArrowRight size={17}/></button></form>{recoveryMessage&&<Notice>{recoveryMessage}</Notice>}{activationError&&<Notice error>{activationError}</Notice>}<p className="login-note">A recovery email will be sent if that address is linked to an active account. Check your inbox and spam folder.</p><Link className="text-link" href="/login">Return to sign in</Link></section></main>;
+  if (recovery)
+    return (
+      <main className="login-page">
+        <div className="login-brand">
+          <img
+            src="/brand/zettaz-logo-dark.svg"
+            alt="Zettaz Tours and Charters"
+          />
+        </div>
+        <section className="login-card">
+          <p className="eyebrow">ACCOUNT RECOVERY</p>
+          <h1>
+            {recoveryToken ? "Choose a new password" : "Reset your password"}
+          </h1>
+          <p className="subtitle">
+            {recoveryToken
+              ? "Enter and confirm your new password."
+              : "Enter your work email. The response is the same whether or not an account exists."}
+          </p>
+          <form
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setActivationError("");
+              const response = await fetch("/api/recovery", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(
+                  recoveryToken
+                    ? { token: recoveryToken, password }
+                    : { email },
+                ),
+              });
+              const result = await response.json();
+              if (!response.ok)
+                return setActivationError(result.message ?? "Recovery failed.");
+              if (recoveryToken) {
+                setRecoveryMessage(
+                  "Password updated. All previous sessions were signed out.",
+                );
+                return;
+              }
+              setRecoveryMessage(
+                "If that account is active, recovery instructions are ready.",
+              );
+              if (result.token) setRecoveryToken(result.token);
+            }}
+          >
+            {!recoveryToken ? (
+              <label className="field">
+                <span>Work email</span>
+                <input
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+              </label>
+            ) : (
+              <>
+                <label className="field">
+                  <span>New password</span>
+                  <input
+                    type="password"
+                    minLength={12}
+                    autoComplete="new-password"
+                    required
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                  />
+                </label>
+              </>
+            )}
+            <button className="button">
+              {recoveryToken ? "Update password" : "Continue"}{" "}
+              <ArrowRight size={17} />
+            </button>
+          </form>
+          {recoveryMessage && <Notice>{recoveryMessage}</Notice>}
+          {activationError && <Notice error>{activationError}</Notice>}
+          <p className="login-note">
+            A recovery email will be sent if that address is linked to an active
+            account. Check your inbox and spam folder.
+          </p>
+          <Link className="text-link" href="/login">
+            Return to sign in
+          </Link>
+        </section>
+      </main>
+    );
   if (activation)
-    return <main className="login-page"><div className="login-brand"><img src="/brand/zettaz-logo-dark.svg" alt="Zettaz Tours and Charters" /></div><section className="login-card"><p className="eyebrow">ACCOUNT ACTIVATION</p><h1>Activate your account</h1><p className="subtitle">Enter the one-time token supplied by your tenant administrator and choose a password.</p>{busy ? <Loading /> : <form onSubmit={async (event) => { event.preventDefault(); if (password !== confirmPassword) return; setActivationError(""); const response = await fetch("/api/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ activationToken, password }) }); const result = await response.json(); if (response.ok) window.location.href = "/"; else setActivationError(result.message ?? "Activation failed."); }}><label className="field"><span>Activation token</span><input required value={activationToken} onChange={(event) => setActivationToken(event.target.value)} /></label><label className="field"><span>Password</span><input type="password" minLength={12} required value={password} onChange={(event) => setPassword(event.target.value)} /></label><label className="field"><span>Confirm password</span><input type="password" minLength={12} required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>{confirmPassword && password !== confirmPassword && <Notice error>Passwords do not match.</Notice>}{activationError && <Notice error>{activationError}</Notice>}<button className="button" disabled={password !== confirmPassword}>Activate account <ArrowRight size={17} /></button></form>}{error && <Notice error>{error}</Notice>}</section></main>;
+    return (
+      <main className="login-page">
+        <div className="login-brand">
+          <img
+            src="/brand/zettaz-logo-dark.svg"
+            alt="Zettaz Tours and Charters"
+          />
+        </div>
+        <section className="login-card">
+          <p className="eyebrow">ACCOUNT ACTIVATION</p>
+          <h1>Activate your account</h1>
+          <p className="subtitle">
+            Enter the one-time token supplied by your tenant administrator and
+            choose a password.
+          </p>
+          {busy ? (
+            <Loading />
+          ) : (
+            <form
+              onSubmit={async (event) => {
+                event.preventDefault();
+                if (password !== confirmPassword) return;
+                setActivationError("");
+                const response = await fetch("/api/session", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ activationToken, password }),
+                });
+                const result = await response.json();
+                if (response.ok) window.location.href = "/";
+                else setActivationError(result.message ?? "Activation failed.");
+              }}
+            >
+              <label className="field">
+                <span>Activation token</span>
+                <input
+                  required
+                  value={activationToken}
+                  onChange={(event) => setActivationToken(event.target.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Password</span>
+                <input
+                  type="password"
+                  minLength={12}
+                  required
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Confirm password</span>
+                <input
+                  type="password"
+                  minLength={12}
+                  required
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                />
+              </label>
+              {confirmPassword && password !== confirmPassword && (
+                <Notice error>Passwords do not match.</Notice>
+              )}
+              {activationError && <Notice error>{activationError}</Notice>}
+              <button
+                className="button"
+                disabled={password !== confirmPassword}
+              >
+                Activate account <ArrowRight size={17} />
+              </button>
+            </form>
+          )}
+          {error && <Notice error>{error}</Notice>}
+        </section>
+      </main>
+    );
   if (!login)
     return (
       <main className="landing">
         {/* Header */}
         <header className="landing-header">
-          <img src="/brand/zettaz-logo-dark.svg" alt="Zettaz Tours and Charters" />
+          <img
+            src="/brand/zettaz-logo-dark.svg"
+            alt="Zettaz Tours and Charters"
+          />
           <nav style={{ display: "flex", gap: 12, alignItems: "center" }}>
-            <Link href="/login" className="button secondary" style={{ fontSize: 14 }}>Sign in</Link>
-            <Link href="/signup" className="button" style={{ fontSize: 14 }}>Start free trial</Link>
+            <Link
+              href="/login"
+              className="button secondary"
+              style={{ fontSize: 14 }}
+            >
+              Sign in
+            </Link>
+            <Link href="/signup" className="button" style={{ fontSize: 14 }}>
+              Start free trial
+            </Link>
           </nav>
         </header>
 
@@ -75,78 +257,150 @@ export function Entry({
           <p className="eyebrow">TOUR OPERATOR PLATFORM</p>
           <h1>Run every departure with confidence.</h1>
           <p>
-            From first booking to final check-in — reservations, manifest, payments,
-            waivers, crew dispatch, and partner billing in one operator-grade workspace.
+            From first booking to final check-in — reservations, manifest,
+            payments, waivers, crew dispatch, and partner billing in one
+            operator-grade workspace.
           </p>
           <div className="landing-cta-row">
-            <Link href="/signup" className="button" style={{ fontSize: 16, padding: "13px 28px" }}>
+            <Link
+              href="/signup"
+              className="button"
+              style={{ fontSize: 16, padding: "13px 28px" }}
+            >
               Start your free trial <ArrowRight size={18} />
             </Link>
-            <Link href="/login" className="button secondary" style={{ fontSize: 16, padding: "13px 28px" }}>
+            <Link
+              href="/login"
+              className="button secondary"
+              style={{ fontSize: 16, padding: "13px 28px" }}
+            >
               Sign in to your workspace
             </Link>
           </div>
-          <p className="landing-trial-note">14-day free trial · No credit card required · Cancel any time</p>
+          <p className="landing-trial-note">
+            14-day free trial · No credit card required · Cancel any time
+          </p>
         </section>
 
         {/* Social proof bar */}
         <div className="landing-social-proof">
           <div className="landing-social-proof-inner">
-            <div className="landing-stat"><strong>2,400+</strong><span>Departures managed</span></div>
-            <div className="landing-stat"><strong>98%</strong><span>On-time manifests</span></div>
-            <div className="landing-stat"><strong>$0</strong><span>Setup cost</span></div>
-            <div className="landing-stat"><strong>14 days</strong><span>Free trial</span></div>
+            <div className="landing-stat">
+              <strong>2,400+</strong>
+              <span>Departures managed</span>
+            </div>
+            <div className="landing-stat">
+              <strong>98%</strong>
+              <span>On-time manifests</span>
+            </div>
+            <div className="landing-stat">
+              <strong>$0</strong>
+              <span>Setup cost</span>
+            </div>
+            <div className="landing-stat">
+              <strong>14 days</strong>
+              <span>Free trial</span>
+            </div>
           </div>
         </div>
 
         {/* Feature grid */}
-        <section style={{ maxWidth: 1040, margin: "0 auto", padding: "0 24px 80px" }}>
-          <p className="landing-features-title">Everything you need to run your operation</p>
+        <section
+          style={{ maxWidth: 1040, margin: "0 auto", padding: "0 24px 80px" }}
+        >
+          <p className="landing-features-title">
+            Everything you need to run your operation
+          </p>
           <div className="landing-features">
             <div className="feature-card">
-              <div className="feature-card-icon"><CheckCircle2 size={20} /></div>
+              <div className="feature-card-icon">
+                <CheckCircle2 size={20} />
+              </div>
               <strong>Reservations & manifest</strong>
-              <span>Take bookings, manage holds, print day manifests and departure PDFs — all linked automatically.</span>
+              <span>
+                Take bookings, manage holds, print day manifests and departure
+                PDFs — all linked automatically.
+              </span>
             </div>
             <div className="feature-card">
-              <div className="feature-card-icon"><Zap size={20} /></div>
+              <div className="feature-card-icon">
+                <Zap size={20} />
+              </div>
               <strong>Payments & balance collection</strong>
-              <span>Deposits, balances, cash, card links and adjustments. Full audit trail for every transaction.</span>
+              <span>
+                Deposits, balances, cash, card links and adjustments. Full audit
+                trail for every transaction.
+              </span>
             </div>
             <div className="feature-card">
-              <div className="feature-card-icon"><Map size={20} /></div>
+              <div className="feature-card-icon">
+                <Map size={20} />
+              </div>
               <strong>Dispatch & pickup routing</strong>
-              <span>Assign vehicles, plan pickup routes and send crew the right itinerary before every departure.</span>
+              <span>
+                Assign vehicles, plan pickup routes and send crew the right
+                itinerary before every departure.
+              </span>
             </div>
             <div className="feature-card">
-              <div className="feature-card-icon"><Shield size={20} /></div>
+              <div className="feature-card-icon">
+                <Shield size={20} />
+              </div>
               <strong>Digital waivers & check-in</strong>
-              <span>Customisable waiver templates, guest e-sign flow and real-time check-in from any device.</span>
+              <span>
+                Customisable waiver templates, guest e-sign flow and real-time
+                check-in from any device.
+              </span>
             </div>
             <div className="feature-card">
-              <div className="feature-card-icon"><UsersRound size={20} /></div>
+              <div className="feature-card-icon">
+                <UsersRound size={20} />
+              </div>
               <strong>Role-based staff access</strong>
-              <span>11 built-in roles — from owner to guide — with permission-level controls for every action.</span>
+              <span>
+                11 built-in roles — from owner to guide — with permission-level
+                controls for every action.
+              </span>
             </div>
             <div className="feature-card">
-              <div className="feature-card-icon"><Globe size={20} /></div>
+              <div className="feature-card-icon">
+                <Globe size={20} />
+              </div>
               <strong>Partner & reseller billing</strong>
-              <span>Track agent attribution, record collections, reconcile partner statements and export invoices.</span>
+              <span>
+                Track agent attribution, record collections, reconcile partner
+                statements and export invoices.
+              </span>
             </div>
             <div className="feature-card">
-              <div className="feature-card-icon"><BarChart3 size={20} /></div>
+              <div className="feature-card-icon">
+                <BarChart3 size={20} />
+              </div>
               <strong>Reporting & audit log</strong>
-              <span>Revenue by product, occupancy trends, and a complete tamper-evident audit trail for every event.</span>
+              <span>
+                Revenue by product, occupancy trends, and a complete
+                tamper-evident audit trail for every event.
+              </span>
             </div>
             <div className="feature-card">
-              <div className="feature-card-icon"><LockKeyhole size={20} /></div>
+              <div className="feature-card-icon">
+                <LockKeyhole size={20} />
+              </div>
               <strong>Tenant-secure architecture</strong>
-              <span>Every read and write is scoped to your organisation. Your data never touches another operator&apos;s.</span>
+              <span>
+                Every read and write is scoped to your organisation. Your data
+                never touches another operator&apos;s.
+              </span>
             </div>
             <div className="feature-card">
-              <div className="feature-card-icon"><Clock size={20} /></div>
+              <div className="feature-card-icon">
+                <Clock size={20} />
+              </div>
               <strong>Availability & scheduling</strong>
-              <span>Define availability rules, seasonal blackouts and capacity by option — inventory updates in real time.</span>
+              <span>
+                Define availability rules, seasonal blackouts and capacity by
+                option — inventory updates in real time.
+              </span>
             </div>
           </div>
         </section>
@@ -154,39 +408,61 @@ export function Entry({
         {/* Pricing teaser */}
         <section className="landing-pricing-teaser">
           <h2>Simple, transparent pricing</h2>
-          <p>Start free, scale as you grow. Every plan includes the full feature set — limits only vary by team size.</p>
+          <p>
+            Start free, scale as you grow. Every plan includes the full feature
+            set — limits only vary by team size.
+          </p>
           <div className="landing-pricing-cards">
             <div className="landing-pricing-card">
               <p className="plan-name">Essentials</p>
-              <p className="plan-price">$79<span>/mo</span></p>
+              <p className="plan-price">
+                $79<span>/mo</span>
+              </p>
               <p className="plan-desc">3 staff · 1 location · 50 products</p>
             </div>
             <div className="landing-pricing-card popular">
               <p className="plan-name">Operations ★</p>
-              <p className="plan-price">$149<span>/mo</span></p>
+              <p className="plan-price">
+                $149<span>/mo</span>
+              </p>
               <p className="plan-desc">10 staff · 2 locations · 200 products</p>
             </div>
             <div className="landing-pricing-card">
               <p className="plan-name">Growth</p>
-              <p className="plan-price">$249<span>/mo</span></p>
-              <p className="plan-desc">25 staff · 5 locations · 1,000 products</p>
+              <p className="plan-price">
+                $249<span>/mo</span>
+              </p>
+              <p className="plan-desc">
+                25 staff · 5 locations · 1,000 products
+              </p>
             </div>
             <div className="landing-pricing-card">
               <p className="plan-name">Enterprise</p>
-              <p className="plan-price">$599<span>/mo</span></p>
+              <p className="plan-price">
+                $599<span>/mo</span>
+              </p>
               <p className="plan-desc">Unlimited everything · Priority SLA</p>
             </div>
           </div>
           <p style={{ marginTop: 20 }}>
-            <Link href="/signup" className="button">Try free for 14 days <ArrowRight size={17} /></Link>
+            <Link href="/signup" className="button">
+              Try free for 14 days <ArrowRight size={17} />
+            </Link>
           </p>
         </section>
 
         {/* Footer */}
         <footer className="landing-footer">
           <div className="landing-footer-inner">
-            <img src="/brand/zettaz-logo-dark.svg" alt="Zettaz" style={{ width: 120 }} />
-            <small>© {new Date().getFullYear()} Zettaz Tours &amp; Charters. All rights reserved.</small>
+            <img
+              src="/brand/zettaz-logo-dark.svg"
+              alt="Zettaz"
+              style={{ width: 120 }}
+            />
+            <small>
+              © {new Date().getFullYear()} Zettaz Tours &amp; Charters. All
+              rights reserved.
+            </small>
             <nav className="landing-footer-links">
               <Link href="/login">Sign in</Link>
               <Link href="/signup">Free trial</Link>
@@ -240,8 +516,16 @@ export function Entry({
             <button className="button">
               Continue <ArrowRight size={17} />
             </button>
-            <Link className="text-link" href="/forgot-password">Forgot password?</Link>
-            <Link className="text-link" href="/signup" style={{marginTop:"8px"}}>No account yet? Start free trial →</Link>
+            <Link className="text-link" href="/forgot-password">
+              Forgot password?
+            </Link>
+            <Link
+              className="text-link"
+              href="/signup"
+              style={{ marginTop: "8px" }}
+            >
+              No account yet? Start free trial →
+            </Link>
           </form>
         )}
         {error && <Notice error>{error}</Notice>}
@@ -257,10 +541,34 @@ export function Entry({
 
 // Plan definitions shown in the trial selector
 const TRIAL_PLANS = [
-  { id: "4e0e6cc1-89b1-4dcb-a627-bfccb14f0af9", name: "Essentials", price: "$79/mo", limits: "3 staff · 1 location · 50 products", recommended: false },
-  { id: "f7317df1-086a-4ad9-a9c9-c229a5995dcd", name: "Operations", price: "$149/mo", limits: "10 staff · 2 locations · 200 products", recommended: false },
-  { id: "3e595412-81e5-4c76-8216-25321d7ba56a", name: "Growth", price: "$249/mo", limits: "25 staff · 5 locations · 1,000 products", recommended: true },
-  { id: "70a106d7-1977-48a4-aa6d-d816470e477f", name: "Enterprise", price: "$599/mo", limits: "Unlimited · Priority SLA", recommended: false },
+  {
+    id: "4e0e6cc1-89b1-4dcb-a627-bfccb14f0af9",
+    name: "Essentials",
+    price: "$79/mo",
+    limits: "3 staff · 1 location · 50 products",
+    recommended: false,
+  },
+  {
+    id: "f7317df1-086a-4ad9-a9c9-c229a5995dcd",
+    name: "Operations",
+    price: "$149/mo",
+    limits: "10 staff · 2 locations · 200 products",
+    recommended: false,
+  },
+  {
+    id: "3e595412-81e5-4c76-8216-25321d7ba56a",
+    name: "Growth",
+    price: "$249/mo",
+    limits: "25 staff · 5 locations · 1,000 products",
+    recommended: true,
+  },
+  {
+    id: "70a106d7-1977-48a4-aa6d-d816470e477f",
+    name: "Enterprise",
+    price: "$599/mo",
+    limits: "Unlimited · Priority SLA",
+    recommended: false,
+  },
 ];
 
 export function Signup() {
@@ -270,7 +578,9 @@ export function Signup() {
   const [error, setError] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [country, setCountry] = useState("US");
-  const [timezone, setTimezone] = useState(() => defaultTimezoneForCountry("US"));
+  const [timezone, setTimezone] = useState(() =>
+    defaultTimezoneForCountry("US"),
+  );
   const [currency, setCurrency] = useState(() => currencyForCountry("US"));
   const [planId, setPlanId] = useState("3e595412-81e5-4c76-8216-25321d7ba56a");
   const [ownerName, setOwnerName] = useState("");
@@ -286,143 +596,414 @@ export function Signup() {
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (password !== confirmPassword) { setError("Passwords do not match."); return; }
-    setBusy(true); setError("");
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+    setBusy(true);
+    setError("");
     try {
       const res = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ companyName, country, timezone, currency, planId, ownerName, email, password }),
+        body: JSON.stringify({
+          companyName,
+          country,
+          timezone,
+          currency,
+          planId,
+          ownerName,
+          email,
+          password,
+        }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.message ?? "Registration failed. Please try again."); return; }
+      if (!res.ok) {
+        setError(data.message ?? "Registration failed. Please try again.");
+        return;
+      }
       setDone(true);
-    } catch { setError("Something went wrong. Please try again."); }
-    finally { setBusy(false); }
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  if (done) return (
-    <main className="login-page">
-      <div className="login-brand"><img src="/brand/zettaz-logo-dark.svg" alt="Zettaz Tours and Charters" /></div>
-      <section className="login-card" style={{maxWidth:"460px",textAlign:"center"}}>
-        <div style={{width:64,height:64,borderRadius:"50%",background:"#edfaf8",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px"}}>
-          <CheckCircle2 size={32} color="#176c63" />
+  if (done)
+    return (
+      <main className="login-page">
+        <div className="login-brand">
+          <img
+            src="/brand/zettaz-logo-dark.svg"
+            alt="Zettaz Tours and Charters"
+          />
         </div>
-        <h1 style={{fontSize:"22px",marginBottom:8}}>Check your inbox</h1>
-        <p className="subtitle" style={{marginBottom:24}}>
-          We sent a verification link to <strong>{email}</strong>.<br />
-          Click it to activate your 14-day free trial.
-        </p>
-        <div style={{background:"#f5f8f7",border:"1px solid #ddecea",borderRadius:10,padding:"16px 20px",textAlign:"left",fontSize:13,color:"#45676b",marginBottom:24}}>
-          <strong style={{color:"#142f36"}}>Can&apos;t find it?</strong> Check your spam folder. The link expires in 24 hours.
-        </div>
-        <Link href="/login" className="text-link" style={{fontSize:14}}>← Back to sign in</Link>
-      </section>
-    </main>
-  );
+        <section
+          className="login-card"
+          style={{ maxWidth: "460px", textAlign: "center" }}
+        >
+          <div
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: "50%",
+              background: "#edfaf8",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 20px",
+            }}
+          >
+            <CheckCircle2 size={32} color="#176c63" />
+          </div>
+          <h1 style={{ fontSize: "22px", marginBottom: 8 }}>
+            Check your inbox
+          </h1>
+          <p className="subtitle" style={{ marginBottom: 24 }}>
+            We sent a verification link to <strong>{email}</strong>.<br />
+            Click it to activate your 14-day free trial.
+          </p>
+          <div
+            style={{
+              background: "#f5f8f7",
+              border: "1px solid #ddecea",
+              borderRadius: 10,
+              padding: "16px 20px",
+              textAlign: "left",
+              fontSize: 13,
+              color: "#45676b",
+              marginBottom: 24,
+            }}
+          >
+            <strong style={{ color: "#142f36" }}>Can&apos;t find it?</strong>{" "}
+            Check your spam folder. The link expires in 24 hours.
+          </div>
+          <Link href="/login" className="text-link" style={{ fontSize: 14 }}>
+            ← Back to sign in
+          </Link>
+        </section>
+      </main>
+    );
 
   return (
-    <main className="login-page" style={{paddingBottom:48}}>
+    <main className="login-page" style={{ paddingBottom: 48 }}>
       <div className="login-brand">
-        <img src="/brand/zettaz-logo-dark.svg" alt="Zettaz Tours and Charters" />
+        <img
+          src="/brand/zettaz-logo-dark.svg"
+          alt="Zettaz Tours and Charters"
+        />
       </div>
-      <section className="login-card" style={{maxWidth:step===1?"800px":"480px"}}>
+      <section
+        className="login-card"
+        style={{ maxWidth: step === 1 ? "800px" : "480px" }}
+      >
         <p className="eyebrow">FREE 14-DAY TRIAL · NO CARD REQUIRED</p>
         <h1>{step === 1 ? "Set up your workspace" : "Create your account"}</h1>
-        <p className="subtitle">{step === 1 ? "Tell us about your operation and choose your trial plan." : "You’ll use these credentials to sign in."}</p>
-        <div style={{display:"flex",gap:"8px",marginBottom:"24px"}}>
-          <span style={{height:"4px",flex:1,borderRadius:"2px",background:"#176c63"}}/>
-          <span style={{height:"4px",flex:1,borderRadius:"2px",background:step>=2?"#176c63":"#dde3e4"}}/>
+        <p className="subtitle">
+          {step === 1
+            ? "Tell us about your operation and choose your trial plan."
+            : "You’ll use these credentials to sign in."}
+        </p>
+        <div style={{ display: "flex", gap: "8px", marginBottom: "24px" }}>
+          <span
+            style={{
+              height: "4px",
+              flex: 1,
+              borderRadius: "2px",
+              background: "#176c63",
+            }}
+          />
+          <span
+            style={{
+              height: "4px",
+              flex: 1,
+              borderRadius: "2px",
+              background: step >= 2 ? "#176c63" : "#dde3e4",
+            }}
+          />
         </div>
-        {busy ? <Loading /> : step === 1 ? (
-          <form onSubmit={e=>{e.preventDefault();setStep(2);}}>
-            <label className="field"><span>Company / operator name</span>
-              <input required value={companyName} onChange={e=>setCompanyName(e.target.value)} placeholder="Blue Horizon Tours" />
+        {busy ? (
+          <Loading />
+        ) : step === 1 ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              setStep(2);
+            }}
+          >
+            <label className="field">
+              <span>Company / operator name</span>
+              <input
+                required
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                placeholder="Blue Horizon Tours"
+              />
             </label>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px",marginBottom:"4px"}}>
-              <label className="field" style={{margin:0}}><span>Country</span>
-                <select value={country} onChange={e=>setCountry(e.target.value)}>
-                  {COUNTRIES.map(c=><option key={c.code} value={c.code}>{c.name}</option>)}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "12px",
+                marginBottom: "4px",
+              }}
+            >
+              <label className="field" style={{ margin: 0 }}>
+                <span>Country</span>
+                <select
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                >
+                  {COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.name}
+                    </option>
+                  ))}
                 </select>
               </label>
-              <label className="field" style={{margin:0}}><span>Booking currency</span>
-                <select value={currency} onChange={e=>setCurrency(e.target.value)}>
-                  {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
+              <label className="field" style={{ margin: 0 }}>
+                <span>Booking currency</span>
+                <select
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value)}
+                >
+                  {CURRENCIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
                 </select>
               </label>
             </div>
-            <label className="field"><span>Timezone</span>
-              <select value={timezone} onChange={e=>setTimezone(e.target.value)}>
-                {TIMEZONES.map(tz=><option key={tz} value={tz}>{tz}</option>)}
+            <label className="field">
+              <span>Timezone</span>
+              <select
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+              >
+                {TIMEZONES.map((tz) => (
+                  <option key={tz} value={tz}>
+                    {tz}
+                  </option>
+                ))}
               </select>
             </label>
 
             {/* Plan selector */}
-            <div style={{margin:"20px 0 8px"}}>
-              <p style={{margin:"0 0 10px",fontWeight:700,fontSize:13,color:"#142f36",letterSpacing:".02em"}}>
+            <div style={{ margin: "20px 0 8px" }}>
+              <p
+                style={{
+                  margin: "0 0 10px",
+                  fontWeight: 700,
+                  fontSize: 13,
+                  color: "#142f36",
+                  letterSpacing: ".02em",
+                }}
+              >
                 TRIAL PLAN&nbsp;
-                <span style={{fontWeight:400,color:"#65777b",fontSize:12}}>— try any plan free for 14 days, upgrade anytime</span>
+                <span
+                  style={{ fontWeight: 400, color: "#65777b", fontSize: 12 }}
+                >
+                  — try any plan free for 14 days, upgrade anytime
+                </span>
               </p>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
-                {TRIAL_PLANS.map(plan=>{
-                  const sel = planId===plan.id;
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2,1fr)",
+                  gap: 10,
+                }}
+              >
+                {TRIAL_PLANS.map((plan) => {
+                  const sel = planId === plan.id;
                   return (
                     <button
                       key={plan.id}
                       type="button"
-                      onClick={()=>setPlanId(plan.id)}
+                      onClick={() => setPlanId(plan.id)}
                       style={{
-                        position:"relative",textAlign:"left",
-                        border:`2px solid ${sel?"#176c63":"#dde3e4"}`,
-                        borderRadius:10,padding:"14px 16px",
-                        background:sel?"#edfaf8":"#fff",
-                        cursor:"pointer",transition:"border-color .15s,background .15s",
+                        position: "relative",
+                        textAlign: "left",
+                        border: `2px solid ${sel ? "#176c63" : "#dde3e4"}`,
+                        borderRadius: 10,
+                        padding: "14px 16px",
+                        background: sel ? "#edfaf8" : "#fff",
+                        cursor: "pointer",
+                        transition: "border-color .15s,background .15s",
                       }}
                     >
                       {plan.recommended && (
-                        <span style={{position:"absolute",top:-11,right:12,background:"#176c63",color:"#fff",fontSize:10,fontWeight:700,padding:"2px 9px",borderRadius:20,letterSpacing:".05em",whiteSpace:"nowrap"}}>
+                        <span
+                          style={{
+                            position: "absolute",
+                            top: -11,
+                            right: 12,
+                            background: "#176c63",
+                            color: "#fff",
+                            fontSize: 10,
+                            fontWeight: 700,
+                            padding: "2px 9px",
+                            borderRadius: 20,
+                            letterSpacing: ".05em",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
                           DEFAULT TRIAL
                         </span>
                       )}
-                      <div style={{fontWeight:700,fontSize:14,color:"#142f36",marginBottom:2}}>{plan.name}</div>
-                      <div style={{fontSize:17,fontWeight:800,color:sel?"#176c63":"#142f36",marginBottom:4}}>{plan.price}</div>
-                      <div style={{fontSize:11,color:"#65777b",lineHeight:1.4}}>{plan.limits}</div>
-                      {sel && <CheckCircle2 size={15} color="#176c63" style={{position:"absolute",top:12,right:12}} />}
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          fontSize: 14,
+                          color: "#142f36",
+                          marginBottom: 2,
+                        }}
+                      >
+                        {plan.name}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 17,
+                          fontWeight: 800,
+                          color: sel ? "#176c63" : "#142f36",
+                          marginBottom: 4,
+                        }}
+                      >
+                        {plan.price}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "#65777b",
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {plan.limits}
+                      </div>
+                      {sel && (
+                        <CheckCircle2
+                          size={15}
+                          color="#176c63"
+                          style={{ position: "absolute", top: 12, right: 12 }}
+                        />
+                      )}
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            <button className="button" type="submit" style={{width:"100%",marginTop:8}}>Continue <ArrowRight size={17}/></button>
+            <button
+              className="button"
+              type="submit"
+              style={{ width: "100%", marginTop: 8 }}
+            >
+              Continue <ArrowRight size={17} />
+            </button>
           </form>
         ) : (
           <form onSubmit={handleSubmit}>
-            <label className="field"><span>Your full name</span>
-              <input required value={ownerName} onChange={e=>setOwnerName(e.target.value)} placeholder="Alex Morgan" />
+            <label className="field">
+              <span>Your full name</span>
+              <input
+                required
+                value={ownerName}
+                onChange={(e) => setOwnerName(e.target.value)}
+                placeholder="Alex Morgan"
+              />
             </label>
-            <label className="field"><span>Work email</span>
-              <input type="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@company.com" autoComplete="email" />
+            <label className="field">
+              <span>Work email</span>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@company.com"
+                autoComplete="email"
+              />
             </label>
-            <label className="field"><span>Password <small>(12+ characters)</small></span>
-              <input type="password" minLength={12} required value={password} onChange={e=>setPassword(e.target.value)} autoComplete="new-password" />
+            <label className="field">
+              <span>
+                Password <small>(12+ characters)</small>
+              </span>
+              <input
+                type="password"
+                minLength={12}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+              />
             </label>
-            <label className="field"><span>Confirm password</span>
-              <input type="password" minLength={12} required value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} autoComplete="new-password" />
+            <label className="field">
+              <span>Confirm password</span>
+              <input
+                type="password"
+                minLength={12}
+                required
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                autoComplete="new-password"
+              />
             </label>
-            {confirmPassword && password !== confirmPassword && <Notice error>Passwords do not match.</Notice>}
-            <label className="checkbox" style={{margin:"8px 0 16px",cursor:"pointer"}}>
-              <input type="checkbox" required checked={agreed} onChange={e=>setAgreed(e.target.checked)}/>
-              <span>I agree to the <a href="/terms" style={{color:"#176c63"}}>Terms of Service</a> and <a href="/privacy" style={{color:"#176c63"}}>Privacy Policy</a>.</span>
+            {confirmPassword && password !== confirmPassword && (
+              <Notice error>Passwords do not match.</Notice>
+            )}
+            <label
+              className="checkbox"
+              style={{ margin: "8px 0 16px", cursor: "pointer" }}
+            >
+              <input
+                type="checkbox"
+                required
+                checked={agreed}
+                onChange={(e) => setAgreed(e.target.checked)}
+              />
+              <span>
+                I agree to the{" "}
+                <a href="/terms" style={{ color: "#176c63" }}>
+                  Terms of Service
+                </a>{" "}
+                and{" "}
+                <a href="/privacy" style={{ color: "#176c63" }}>
+                  Privacy Policy
+                </a>
+                .
+              </span>
             </label>
             {error && <Notice error>{error}</Notice>}
-            <button className="button" disabled={password !== confirmPassword || !agreed} type="submit" style={{width:"100%"}}>
-              Create my workspace <ArrowRight size={17}/>
+            <button
+              className="button"
+              disabled={password !== confirmPassword || !agreed}
+              type="submit"
+              style={{ width: "100%" }}
+            >
+              Create my workspace <ArrowRight size={17} />
             </button>
-            <button type="button" className="text-link" style={{border:"none",background:"none",cursor:"pointer",padding:"8px 0 0",display:"block"}} onClick={()=>setStep(1)}>← Back</button>
+            <button
+              type="button"
+              className="text-link"
+              style={{
+                border: "none",
+                background: "none",
+                cursor: "pointer",
+                padding: "8px 0 0",
+                display: "block",
+              }}
+              onClick={() => setStep(1)}
+            >
+              ← Back
+            </button>
           </form>
         )}
-        <p className="login-note" style={{marginTop:16}}>Already have an account? <Link href="/login" className="text-link">Sign in →</Link></p>
+        <p className="login-note" style={{ marginTop: 16 }}>
+          Already have an account?{" "}
+          <Link href="/login" className="text-link">
+            Sign in →
+          </Link>
+        </p>
       </section>
     </main>
   );
@@ -431,20 +1012,33 @@ export function Signup() {
 // ─── VerifyEmail ──────────────────────────────────────────────────────────────
 
 export function VerifyEmail() {
-  const [state, setState] = useState<"verifying" | "success" | "error">("verifying");
+  const [state, setState] = useState<"verifying" | "success" | "error">(
+    "verifying",
+  );
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
     const token = new URLSearchParams(window.location.search).get("token");
-    if (!token) { setState("error"); setErrorMsg("Invalid verification link."); return; }
+    if (!token) {
+      setState("error");
+      setErrorMsg("Invalid verification link.");
+      return;
+    }
     fetch(`/api/verify-email?token=${encodeURIComponent(token)}`)
-      .then(res => res.json().then(body => ({ ok: res.ok, body })))
+      .then((res) => res.json().then((body) => ({ ok: res.ok, body })))
       .then(async ({ ok, body }) => {
-        if (!ok) { setState("error"); setErrorMsg(body.message ?? "Verification failed."); return; }
+        if (!ok) {
+          setState("error");
+          setErrorMsg(body.message ?? "Verification failed.");
+          return;
+        }
         const sessionRes = await fetch("/api/session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ _rawToken: body.token, tenantId: body.tenantId }),
+          body: JSON.stringify({
+            _rawToken: body.token,
+            tenantId: body.tenantId,
+          }),
         });
         if (!sessionRes.ok) {
           const sessionBody = await sessionRes.json().catch(() => null);
@@ -456,37 +1050,83 @@ export function VerifyEmail() {
           return;
         }
         setState("success");
-        setTimeout(() => { window.location.href = "/?welcome=1"; }, 1200);
+        setTimeout(() => {
+          window.location.href = "/?welcome=1";
+        }, 1200);
       })
-      .catch(() => { setState("error"); setErrorMsg("Something went wrong. Please try again."); });
+      .catch(() => {
+        setState("error");
+        setErrorMsg("Something went wrong. Please try again.");
+      });
   }, []);
 
   return (
     <main className="login-page">
-      <div className="login-brand"><img src="/brand/zettaz-logo-dark.svg" alt="Zettaz Tours and Charters" /></div>
-      <section className="login-card" style={{maxWidth:460,textAlign:"center"}}>
+      <div className="login-brand">
+        <img
+          src="/brand/zettaz-logo-dark.svg"
+          alt="Zettaz Tours and Charters"
+        />
+      </div>
+      <section
+        className="login-card"
+        style={{ maxWidth: 460, textAlign: "center" }}
+      >
         {state === "verifying" && (
           <>
             <Loading />
-            <p style={{marginTop:16,color:"#65777b"}}>Verifying your email…</p>
+            <p style={{ marginTop: 16, color: "#65777b" }}>
+              Verifying your email…
+            </p>
           </>
         )}
         {state === "success" && (
           <>
-            <div style={{width:64,height:64,borderRadius:"50%",background:"#edfaf8",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px"}}>
+            <div
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: "50%",
+                background: "#edfaf8",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 20px",
+              }}
+            >
               <CheckCircle2 size={32} color="#176c63" />
             </div>
-            <h1 style={{fontSize:"22px",marginBottom:8}}>Email verified!</h1>
-            <p className="subtitle">Your workspace is ready. Taking you to the dashboard…</p>
+            <h1 style={{ fontSize: "22px", marginBottom: 8 }}>
+              Email verified!
+            </h1>
+            <p className="subtitle">
+              Your workspace is ready. Taking you to the dashboard…
+            </p>
           </>
         )}
         {state === "error" && (
           <>
-            <h1 style={{fontSize:"20px",marginBottom:8}}>Verification failed</h1>
-            <p className="subtitle" style={{color:"#c0392b"}}>{errorMsg}</p>
-            <Link href="/signup" className="button" style={{marginTop:20,display:"inline-block"}}>Start a new trial</Link>
-            <br/>
-            <Link href="/login" className="text-link" style={{marginTop:12,display:"inline-block"}}>Back to sign in</Link>
+            <h1 style={{ fontSize: "20px", marginBottom: 8 }}>
+              Verification failed
+            </h1>
+            <p className="subtitle" style={{ color: "#c0392b" }}>
+              {errorMsg}
+            </p>
+            <Link
+              href="/signup"
+              className="button"
+              style={{ marginTop: 20, display: "inline-block" }}
+            >
+              Start a new trial
+            </Link>
+            <br />
+            <Link
+              href="/login"
+              className="text-link"
+              style={{ marginTop: 12, display: "inline-block" }}
+            >
+              Back to sign in
+            </Link>
           </>
         )}
       </section>

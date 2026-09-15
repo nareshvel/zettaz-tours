@@ -70,21 +70,52 @@ async function runTrialReminderJob(db: Pool): Promise<void> {
 
       // 7-day reminder window: 6d 23h – 7d 1h
       if (!row.reminder_7d_sent && daysLeft >= 6 && daysLeft <= 8) {
-        await sendTrialEnding({ to: row.owner_email, tenantName: row.tenant_name, planName: row.plan_name, trialEndsAt: row.trial_ends_at, daysLeft: 7, manageUrl: MANAGE_URL });
-        await db.query(`UPDATE tenant_subscriptions SET reminder_7d_sent = true WHERE tenant_id = $1`, [row.tenant_id]).catch(() => {});
-        console.log(`[SubscriptionJobs] 7-day trial reminder sent to ${row.owner_email}`);
+        await sendTrialEnding({
+          to: row.owner_email,
+          tenantName: row.tenant_name,
+          planName: row.plan_name,
+          trialEndsAt: row.trial_ends_at,
+          daysLeft: 7,
+          manageUrl: MANAGE_URL,
+        });
+        await db
+          .query(
+            `UPDATE tenant_subscriptions SET reminder_7d_sent = true WHERE tenant_id = $1`,
+            [row.tenant_id],
+          )
+          .catch(() => {});
+        console.log(
+          `[SubscriptionJobs] 7-day trial reminder sent to ${row.owner_email}`,
+        );
       }
 
       // 1-day reminder window: <2 days left, not yet sent
       if (!row.reminder_1d_sent && daysLeft <= 2) {
-        await sendTrialEnding({ to: row.owner_email, tenantName: row.tenant_name, planName: row.plan_name, trialEndsAt: row.trial_ends_at, daysLeft, manageUrl: MANAGE_URL });
-        await db.query(`UPDATE tenant_subscriptions SET reminder_1d_sent = true WHERE tenant_id = $1`, [row.tenant_id]).catch(() => {});
-        console.log(`[SubscriptionJobs] 1-day trial reminder sent to ${row.owner_email}`);
+        await sendTrialEnding({
+          to: row.owner_email,
+          tenantName: row.tenant_name,
+          planName: row.plan_name,
+          trialEndsAt: row.trial_ends_at,
+          daysLeft,
+          manageUrl: MANAGE_URL,
+        });
+        await db
+          .query(
+            `UPDATE tenant_subscriptions SET reminder_1d_sent = true WHERE tenant_id = $1`,
+            [row.tenant_id],
+          )
+          .catch(() => {});
+        console.log(
+          `[SubscriptionJobs] 1-day trial reminder sent to ${row.owner_email}`,
+        );
       }
     }
   } catch (err: unknown) {
     // Columns may not exist if migration hasn't run — log and move on
-    console.warn("[SubscriptionJobs] Trial reminder job error (non-fatal):", err instanceof Error ? err.message : err);
+    console.warn(
+      "[SubscriptionJobs] Trial reminder job error (non-fatal):",
+      err instanceof Error ? err.message : err,
+    );
   }
 }
 
@@ -120,10 +151,12 @@ async function runGracePeriodJob(db: Pool): Promise<void> {
 
     for (const row of res.rows) {
       // Suspend the subscription
-      await db.query(
-        `UPDATE tenant_subscriptions SET status = 'canceled', suspension_notified_at = NOW() WHERE tenant_id = $1`,
-        [row.tenant_id],
-      ).catch(() => {});
+      await db
+        .query(
+          `UPDATE tenant_subscriptions SET status = 'canceled', suspension_notified_at = NOW() WHERE tenant_id = $1`,
+          [row.tenant_id],
+        )
+        .catch(() => {});
 
       // Send final payment failed / suspension warning
       await sendPaymentFailed({
@@ -136,10 +169,15 @@ async function runGracePeriodJob(db: Pool): Promise<void> {
         manageUrl: MANAGE_URL,
       });
 
-      console.warn(`[SubscriptionJobs] Suspended past_due tenant ${row.tenant_id} and notified ${row.owner_email}`);
+      console.warn(
+        `[SubscriptionJobs] Suspended past_due tenant ${row.tenant_id} and notified ${row.owner_email}`,
+      );
     }
   } catch (err: unknown) {
-    console.warn("[SubscriptionJobs] Grace period job error (non-fatal):", err instanceof Error ? err.message : err);
+    console.warn(
+      "[SubscriptionJobs] Grace period job error (non-fatal):",
+      err instanceof Error ? err.message : err,
+    );
   }
 }
 
@@ -147,7 +185,9 @@ async function runGracePeriodJob(db: Pool): Promise<void> {
 
 export function startSubscriptionJobs(db: Pool): void {
   if (process.env.SUBSCRIPTION_JOBS_DISABLED === "true") {
-    console.log("[SubscriptionJobs] Disabled via SUBSCRIPTION_JOBS_DISABLED=true");
+    console.log(
+      "[SubscriptionJobs] Disabled via SUBSCRIPTION_JOBS_DISABLED=true",
+    );
     return;
   }
 
@@ -159,5 +199,7 @@ export function startSubscriptionJobs(db: Pool): void {
 
   setTimeout(runAll, 15_000); // 15s after startup
   setInterval(runAll, SIX_HOURS);
-  console.log("[SubscriptionJobs] Trial-reminder and grace-period jobs scheduled (every 6 hours)");
+  console.log(
+    "[SubscriptionJobs] Trial-reminder and grace-period jobs scheduled (every 6 hours)",
+  );
 }

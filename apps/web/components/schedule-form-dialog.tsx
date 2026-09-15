@@ -4,19 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { AvailabilityRule, Product, Session } from "@/lib/types";
 import { modeLabel, weekdayLabels } from "@/lib/types";
-import {
-  money,
-  priceFromMinor,
-  useMutation,
-  useResource,
-} from "@/lib/client";
+import { money, priceFromMinor, useMutation, useResource } from "@/lib/client";
 import { Field, FormDialog, Notice, TenantDateInput } from "./common";
 
-function clockLabel(
-  time: string,
-  locale: string,
-  timeFormat: "12h" | "24h",
-) {
+function clockLabel(time: string, locale: string, timeFormat: "12h" | "24h") {
   const [hours, minutes] = time.split(":").map(Number);
   const date = new Date();
   date.setHours(hours || 0, minutes || 0, 0, 0);
@@ -74,21 +65,26 @@ function paintWeekdays(
   );
 }
 
-function deriveWeekdaysAndBlackouts(start: string, end: string, selected: Set<string>) {
+function deriveWeekdaysAndBlackouts(
+  start: string,
+  end: string,
+  selected: Set<string>,
+) {
   const weekdays = new Set<number>();
   for (const day of selected) {
     if (day >= start && day <= end) weekdays.add(weekdayMon1(day));
   }
   const weekdayList = [...weekdays].sort((a, b) => a - b);
   const blackoutDates = daysInRange(start, end).filter(
-    (day) =>
-      weekdayList.includes(weekdayMon1(day)) && !selected.has(day),
+    (day) => weekdayList.includes(weekdayMon1(day)) && !selected.has(day),
   );
   return { weekdays: weekdayList, blackoutDates };
 }
 
 function selectedDaysFromRule(rule: AvailabilityRule) {
-  const painted = new Set(paintWeekdays(rule.start_date, rule.end_date, rule.weekdays));
+  const painted = new Set(
+    paintWeekdays(rule.start_date, rule.end_date, rule.weekdays),
+  );
   for (const day of rule.blackouts ?? []) painted.delete(day);
   return painted;
 }
@@ -129,7 +125,10 @@ export function ScheduleFormDialog({
     [times, setTimes] = useState<string[]>(["09:00"]),
     [capacity, setCapacity] = useState(""),
     [selectedDays, setSelectedDays] = useState<Set<string>>(
-      () => new Set(paintWeekdays(today, shiftDay(today, 89), [1, 2, 3, 4, 5, 6, 7])),
+      () =>
+        new Set(
+          paintWeekdays(today, shiftDay(today, 89), [1, 2, 3, 4, 5, 6, 7]),
+        ),
     ),
     [monthCursor, setMonthCursor] = useState(today.slice(0, 7));
 
@@ -206,9 +205,7 @@ export function ScheduleFormDialog({
       end,
       selectedDays,
     ).weekdays;
-    const paint = weekdays.length
-      ? weekdays
-      : [1, 2, 3, 4, 5, 6, 7];
+    const paint = weekdays.length ? weekdays : [1, 2, 3, 4, 5, 6, 7];
     setSelectedDays(new Set(paintWeekdays(nextStart, nextEnd, paint)));
   }
 
@@ -308,10 +305,7 @@ export function ScheduleFormDialog({
   }
 
   const tourLabel =
-    selected?.customer_title ??
-    selected?.name ??
-    rule?.product_name ??
-    "";
+    selected?.customer_title ?? selected?.name ?? rule?.product_name ?? "";
 
   return (
     <FormDialog
@@ -455,10 +449,7 @@ export function ScheduleFormDialog({
           )}
         </div>
         {times.slice(1).map((time, index) => (
-          <div
-            className="schedule-extra-time-row"
-            key={`time-${index + 1}`}
-          >
+          <div className="schedule-extra-time-row" key={`time-${index + 1}`}>
             <Field label={`Start time ${index + 2}`}>
               <input
                 type="time"
@@ -478,9 +469,7 @@ export function ScheduleFormDialog({
               className="icon-link danger"
               aria-label={`Remove start time ${index + 2}`}
               onClick={() =>
-                setTimes((current) =>
-                  current.filter((_, i) => i !== index + 1),
-                )
+                setTimes((current) => current.filter((_, i) => i !== index + 1))
               }
             >
               <Trash2 size={16} />
@@ -572,15 +561,15 @@ export function ScheduleFormDialog({
           })}
         </div>
         <p className="muted">
-          {operatingDays.length}{" "}
-          {operatingDays.length === 1 ? "day" : "days"} selected · Times in{" "}
-          {session.tenant.timezone}
+          {operatingDays.length} {operatingDays.length === 1 ? "day" : "days"}{" "}
+          selected · Times in {session.tenant.timezone}
         </p>
       </div>
       {isEdit ? (
         <Notice>
           Extending dates or times adds departures. Shortening or clearing days
-          cancels only empty upcoming departures. Past trips are left as history.
+          cancels only empty upcoming departures. Past trips are left as
+          history.
         </Notice>
       ) : null}
       {spanDays > 365 && (
@@ -589,9 +578,7 @@ export function ScheduleFormDialog({
         </Notice>
       )}
       {!operatingDays.length && start && end && (
-        <Notice>
-          Select at least one operating day on the calendar.
-        </Notice>
+        <Notice>Select at least one operating day on the calendar.</Notice>
       )}
     </FormDialog>
   );

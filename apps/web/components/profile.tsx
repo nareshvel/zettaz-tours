@@ -13,13 +13,7 @@ import {
 } from "lucide-react";
 import type { Session } from "@/lib/types";
 import { label, useMutation } from "@/lib/client";
-import {
-  ConfirmDialog,
-  Field,
-  FormActions,
-  Heading,
-  Notice,
-} from "./common";
+import { ConfirmDialog, Field, FormActions, Heading, Notice } from "./common";
 import { Subscription } from "./subscription";
 
 type ProfileSection = "profile" | "security" | "subscription";
@@ -120,7 +114,13 @@ export function Profile({
           {active === "security" && <SecurityDetails session={session} />}
           {active === "subscription" && isOwner(session) && (
             <div className="panel form-panel account-profile-panel">
-              <Suspense fallback={<div style={{ padding: "40px 24px" }}><div className="spinner" /></div>}>
+              <Suspense
+                fallback={
+                  <div style={{ padding: "40px 24px" }}>
+                    <div className="spinner" />
+                  </div>
+                }
+              >
                 <Subscription embedded />
               </Suspense>
             </div>

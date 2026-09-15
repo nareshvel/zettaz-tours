@@ -56,7 +56,7 @@ const crewSignature = z
       z
         .object({
           kind: z.literal("cruise"),
-          vesselName: z.string().trim().min(1).max(160),
+          vesselName: z.string().trim().min(1).max(160).optional(),
           cabinNumber: z.string().trim().max(40).default(""),
         })
         .strict(),

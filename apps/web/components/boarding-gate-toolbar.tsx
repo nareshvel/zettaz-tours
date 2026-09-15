@@ -27,16 +27,14 @@ type Assignments = {
 };
 
 type BarcodeDetectorLike = {
-  detect: (
-    source: ImageBitmapSource,
-  ) => Promise<Array<{ rawValue?: string }>>;
+  detect: (source: ImageBitmapSource) => Promise<Array<{ rawValue?: string }>>;
 };
 
 function barcodeDetectorAvailable() {
   return (
     typeof window !== "undefined" &&
-    typeof (window as Window & { BarcodeDetector?: unknown }).BarcodeDetector ===
-      "function"
+    typeof (window as Window & { BarcodeDetector?: unknown })
+      .BarcodeDetector === "function"
   );
 }
 
@@ -348,7 +346,10 @@ export function BoardingGateToolbar({
                   placeholder="Paste check-in code"
                   autoComplete="off"
                 />
-                <button className="button" disabled={resolve.busy || !scanToken.trim()}>
+                <button
+                  className="button"
+                  disabled={resolve.busy || !scanToken.trim()}
+                >
                   Find
                 </button>
               </form>

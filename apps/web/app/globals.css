@@ -460,8 +460,11 @@ textarea:focus-visible {
   text-align: center;
   gap: 6px;
   padding: 28px 20px 22px;
-  background:
-    linear-gradient(160deg, color-mix(in srgb, var(--nav) 92%, #000), var(--nav));
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--nav) 92%, #000),
+    var(--nav)
+  );
   color: #e8f0f2;
 }
 .account-profile-hero .profile-avatar {
@@ -915,7 +918,10 @@ textarea:focus-visible {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.subscription-status-banner svg { flex: none; margin-top: 1px; }
+.subscription-status-banner svg {
+  flex: none;
+  margin-top: 1px;
+}
 .subscription-status-banner.warning {
   background: #fff8e1;
   border: 1px solid #ffe082;
@@ -932,13 +938,37 @@ textarea:focus-visible {
   color: #1a3a6e;
 }
 @media (prefers-color-scheme: dark) {
-  .subscription-status-banner.warning { background: #332800; border-color: #7a5c00; color: #ffe082; }
-  .subscription-status-banner.danger  { background: #330d0d; border-color: #7b2c2c; color: #f5c6cb; }
-  .subscription-status-banner.info    { background: #0d1e42; border-color: #3a6bbf; color: #aecbfa; }
+  .subscription-status-banner.warning {
+    background: #332800;
+    border-color: #7a5c00;
+    color: #ffe082;
+  }
+  .subscription-status-banner.danger {
+    background: #330d0d;
+    border-color: #7b2c2c;
+    color: #f5c6cb;
+  }
+  .subscription-status-banner.info {
+    background: #0d1e42;
+    border-color: #3a6bbf;
+    color: #aecbfa;
+  }
 }
-:root[data-theme="dark"] .subscription-status-banner.warning { background: #332800; border-color: #7a5c00; color: #ffe082; }
-:root[data-theme="dark"] .subscription-status-banner.danger  { background: #330d0d; border-color: #7b2c2c; color: #f5c6cb; }
-:root[data-theme="dark"] .subscription-status-banner.info    { background: #0d1e42; border-color: #3a6bbf; color: #aecbfa; }
+:root[data-theme="dark"] .subscription-status-banner.warning {
+  background: #332800;
+  border-color: #7a5c00;
+  color: #ffe082;
+}
+:root[data-theme="dark"] .subscription-status-banner.danger {
+  background: #330d0d;
+  border-color: #7b2c2c;
+  color: #f5c6cb;
+}
+:root[data-theme="dark"] .subscription-status-banner.info {
+  background: #0d1e42;
+  border-color: #3a6bbf;
+  color: #aecbfa;
+}
 /* ── Yearly savings badge ─────────────────────────────────────────────────── */
 .plan-savings-badge {
   display: inline-flex;
@@ -954,9 +984,15 @@ textarea:focus-visible {
   vertical-align: middle;
 }
 @media (prefers-color-scheme: dark) {
-  .plan-savings-badge { background: #0c2e17; color: #6fcf97; }
+  .plan-savings-badge {
+    background: #0c2e17;
+    color: #6fcf97;
+  }
 }
-:root[data-theme="dark"] .plan-savings-badge { background: #0c2e17; color: #6fcf97; }
+:root[data-theme="dark"] .plan-savings-badge {
+  background: #0c2e17;
+  color: #6fcf97;
+}
 .landing,
 .login-page {
   min-height: 100vh;
@@ -1877,7 +1913,8 @@ textarea:focus-visible {
   }
 }
 @media (max-width: 1200px) and (max-height: 860px) {
-  .confirm-dialog-root.assignment-planner-root .form-dialog-sheet.assignment-planner-sheet {
+  .confirm-dialog-root.assignment-planner-root
+    .form-dialog-sheet.assignment-planner-sheet {
     max-height: none;
   }
 }
@@ -2900,7 +2937,10 @@ td small {
   .schedule-calendar-weekdays {
     display: none;
   }
-  .catalog-view-bar .catalog-view-actions .filter-menu > .button.catalog-add-btn,
+  .catalog-view-bar
+    .catalog-view-actions
+    .filter-menu
+    > .button.catalog-add-btn,
   .catalog-view-bar .catalog-view-actions > .button.catalog-add-btn,
   .schedule-detail-actions .filter-menu > .button.catalog-add-btn,
   .schedule-detail-actions > .button.catalog-add-btn {
@@ -2912,8 +2952,15 @@ td small {
     justify-content: center;
     position: relative;
   }
-  .catalog-view-bar .catalog-view-actions .filter-menu > .button.catalog-add-btn .button-label,
-  .catalog-view-bar .catalog-view-actions > .button.catalog-add-btn .button-label,
+  .catalog-view-bar
+    .catalog-view-actions
+    .filter-menu
+    > .button.catalog-add-btn
+    .button-label,
+  .catalog-view-bar
+    .catalog-view-actions
+    > .button.catalog-add-btn
+    .button-label,
   .schedule-detail-actions .filter-menu > .button.catalog-add-btn .button-label,
   .schedule-detail-actions > .button.catalog-add-btn .button-label {
     position: absolute;
@@ -2972,7 +3019,10 @@ td small {
 }
 .schedule-modal-dates {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(7.5rem, 0.85fr);
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(
+      7.5rem,
+      0.85fr
+    );
   gap: 12px 10px;
   align-items: start;
   margin-bottom: 8px;
@@ -3942,7 +3992,10 @@ td small {
     justify-content: center;
     position: relative;
   }
-  .list-action-bar .departure-view-actions > .button.catalog-add-btn .button-label,
+  .list-action-bar
+    .departure-view-actions
+    > .button.catalog-add-btn
+    .button-label,
   .list-action-bar .filter-menu > .button.catalog-add-btn .button-label {
     position: absolute;
     width: 1px;
@@ -4972,7 +5025,11 @@ textarea {
 /* Safari keeps native select/date chrome unless appearance is cleared.
    Do not reset checkbox/radio/file/range — those need native appearance. */
 select,
-input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"]),
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(
+    [type="file"]
+  ):not([type="color"]):not([type="submit"]):not([type="button"]):not(
+    [type="reset"]
+  ):not([type="image"]),
 textarea {
   -webkit-appearance: none;
   appearance: none;
@@ -6513,12 +6570,7 @@ fieldset {
   border-radius: 12px;
   background:
     linear-gradient(#fff, #fff),
-    repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 23px,
-      #eef3f1 24px
-    );
+    repeating-linear-gradient(0deg, transparent, transparent 23px, #eef3f1 24px);
   touch-action: none;
   cursor: crosshair;
 }
@@ -8361,8 +8413,10 @@ dd {
   }
 }
 .departure-toolbar {
-  grid-template-columns:
-    minmax(180px, 1.5fr) minmax(150px, 1fr) repeat(2, minmax(140px, 0.85fr));
+  grid-template-columns: minmax(180px, 1.5fr) minmax(150px, 1fr) repeat(
+      2,
+      minmax(140px, 0.85fr)
+    );
   align-items: end;
 }
 .departure-toolbar .compact-control .search {
@@ -9611,7 +9665,8 @@ dd {
     place-items: stretch;
     align-items: stretch;
   }
-  .confirm-dialog-root.assignment-planner-root .form-dialog-sheet.assignment-planner-sheet {
+  .confirm-dialog-root.assignment-planner-root
+    .form-dialog-sheet.assignment-planner-sheet {
     width: 100%;
     max-width: none;
     height: 100%;

@@ -34,11 +34,7 @@ function currencyDigits(currency: string) {
   }
 }
 
-function moneyMinor(
-  amountMinor: number,
-  currency: string,
-  locale = "en",
-) {
+function moneyMinor(amountMinor: number, currency: string, locale = "en") {
   const digits = currencyDigits(currency);
   return new Intl.NumberFormat(locale, {
     style: "currency",

@@ -198,7 +198,11 @@ test("resources are tenant-scoped, expired compliance blocks assignment, and che
       active: true,
     },
   );
-  assert.equal(updatedResource.status, 200, JSON.stringify(updatedResource.body));
+  assert.equal(
+    updatedResource.status,
+    200,
+    JSON.stringify(updatedResource.body),
+  );
   assert.equal(updatedResource.body.name, "Mock ready boat updated");
   assert.equal(updatedResource.body.capacity, 14);
   const doc = await post("/ops/v1/compliance-documents", t.token, {
@@ -440,12 +444,8 @@ test("compliance document library uploads, quotas, downloads and tenant isolatio
   assert.equal(overQuota.status, 413, JSON.stringify(overQuota.body));
 
   assert.equal(
-    (
-      await del(
-        `/ops/v1/compliance-documents/${uploaded.body.id}`,
-        t.token,
-      )
-    ).status,
+    (await del(`/ops/v1/compliance-documents/${uploaded.body.id}`, t.token))
+      .status,
     200,
   );
   const usageCleared = await get("/ops/v1/document-library/usage", t.token);
@@ -1551,12 +1551,20 @@ test("catalog creation normalizes options, passenger units, rates and availabili
   });
   const rules = await get("/admin/v1/availability-rules", a.token);
   assert.equal(rules.status, 200, JSON.stringify(rules.body));
-  assert.ok(rules.body.some((rule: { capacity: number; times: string[] }) =>
-    rule.capacity === 12 && rule.times.includes("09:00")));
+  assert.ok(
+    rules.body.some(
+      (rule: { capacity: number; times: string[] }) =>
+        rule.capacity === 12 && rule.times.includes("09:00"),
+    ),
+  );
   const otherTenantRules = await get("/admin/v1/availability-rules", b.token);
   assert.equal(otherTenantRules.status, 200);
-  assert.equal(otherTenantRules.body.some((rule: { id: string }) =>
-    rules.body.some((own: { id: string }) => own.id === rule.id)), false);
+  assert.equal(
+    otherTenantRules.body.some((rule: { id: string }) =>
+      rules.body.some((own: { id: string }) => own.id === rule.id),
+    ),
+    false,
+  );
 
   const requested = await post("/admin/v1/products", a.token, {
     ...mockProduct,
@@ -1631,22 +1639,27 @@ test("catalog product and availability rule can be opened and updated", async ()
   assert.equal(product.status, 200, JSON.stringify(product.body));
   assert.equal(product.body.id, created.productId);
   const definition = product.body.definition;
-  const updated = await patch(`/admin/v1/products/${created.productId}`, a.token, {
-    version: product.body.version,
-    name: "Harbor sunset",
-    description: "Evening shared departure",
-    status: "active",
-    productKind: product.body.product_kind ?? "tour",
-    optionName: definition.optionName,
-    durationMinutes: definition.durationMinutes,
-    pricingModel: definition.pricingModel ?? "per_person",
-    privateBooking: Boolean(definition.privateBooking),
-    confirmationMode: definition.confirmationMode ?? "instant",
-    categories: definition.categories,
-    rates: definition.rates.map((rate: { amountMinor: number }, index: number) =>
-      index === 0 ? { ...rate, amountMinor: 12000 } : rate,
-    ),
-  });
+  const updated = await patch(
+    `/admin/v1/products/${created.productId}`,
+    a.token,
+    {
+      version: product.body.version,
+      name: "Harbor sunset",
+      description: "Evening shared departure",
+      status: "active",
+      productKind: product.body.product_kind ?? "tour",
+      optionName: definition.optionName,
+      durationMinutes: definition.durationMinutes,
+      pricingModel: definition.pricingModel ?? "per_person",
+      privateBooking: Boolean(definition.privateBooking),
+      confirmationMode: definition.confirmationMode ?? "instant",
+      categories: definition.categories,
+      rates: definition.rates.map(
+        (rate: { amountMinor: number }, index: number) =>
+          index === 0 ? { ...rate, amountMinor: 12000 } : rate,
+      ),
+    },
+  );
   assert.equal(updated.status, 200, JSON.stringify(updated.body));
   assert.equal(updated.body.name, "Harbor sunset");
   assert.equal(updated.body.definition.rates[0].amountMinor, 12000);
@@ -1685,25 +1698,41 @@ test("catalog product and availability rule can be opened and updated", async ()
       (item: { id: string }) => item.id === created.departureId,
     ),
   );
-  const paused = await patch(`/admin/v1/availability-rules/${rule.id}`, a.token, {
-    version: detail.body.version,
-    status: "paused",
-  });
+  const paused = await patch(
+    `/admin/v1/availability-rules/${rule.id}`,
+    a.token,
+    {
+      version: detail.body.version,
+      status: "paused",
+    },
+  );
   assert.equal(paused.status, 200, JSON.stringify(paused.body));
   assert.equal(paused.body.status, "paused");
-  const resumed = await patch(`/admin/v1/availability-rules/${rule.id}`, a.token, {
-    version: paused.body.version,
-    status: "active",
-  });
+  const resumed = await patch(
+    `/admin/v1/availability-rules/${rule.id}`,
+    a.token,
+    {
+      version: paused.body.version,
+      status: "active",
+    },
+  );
   assert.equal(resumed.status, 200, JSON.stringify(resumed.body));
   await heldBooking(created.departureId);
-  const blocked = await patch(`/admin/v1/availability-rules/${rule.id}`, a.token, {
-    version: resumed.body.version,
-    status: "paused",
-  });
+  const blocked = await patch(
+    `/admin/v1/availability-rules/${rule.id}`,
+    a.token,
+    {
+      version: resumed.body.version,
+      status: "paused",
+    },
+  );
   assert.equal(blocked.status, 400, JSON.stringify(blocked.body));
   assert.match(
-    String(blocked.body.message ?? blocked.body.error ?? JSON.stringify(blocked.body)),
+    String(
+      blocked.body.message ??
+        blocked.body.error ??
+        JSON.stringify(blocked.body),
+    ),
     /active bookings/i,
   );
   assert.equal(
@@ -2527,7 +2556,11 @@ test("amendment persists stay, purchaser and emergency contacts; held rejects de
   const heldPartyReject = await changeQuote(booking.bookingId, {
     party: { adult: 2 },
   });
-  assert.equal(heldPartyReject.status, 409, JSON.stringify(heldPartyReject.body));
+  assert.equal(
+    heldPartyReject.status,
+    409,
+    JSON.stringify(heldPartyReject.body),
+  );
   const other = await departure(a.token, 4);
   const heldDepartureReject = await changeQuote(booking.bookingId, {
     departureId: other.departureId,
@@ -2587,13 +2620,8 @@ test("amendment persists stay, purchaser and emergency contacts; held rejects de
     ).status,
     201,
   );
-  const cruise = await post("/ops/v1/stays/cruise-calls", a.token, {
-    vesselName: "Mock Amend Voyager",
-    callDate: DateTime.utc().plus({ days: 12 }).toISODate(),
-    portName: "Mock Port",
-    scheduledDeparture: DateTime.utc().plus({ days: 12, hours: 20 }).toISO(),
-    allAboardAt: DateTime.utc().plus({ days: 12, hours: 19 }).toISO(),
-    tenderRequired: false,
+  const cruise = await post("/ops/v1/stays/vessels", a.token, {
+    name: "Mock Amend Voyager",
   });
   assert.equal(cruise.status, 201, JSON.stringify(cruise.body));
   const confirmedQuote = await changeQuote(booking.bookingId, {
@@ -2611,7 +2639,7 @@ test("amendment persists stay, purchaser and emergency contacts; held rejects de
     },
     stay: {
       kind: "cruise",
-      cruiseCallId: cruise.body.id,
+      vesselId: cruise.body.id,
       vesselName: "Untrusted vessel",
       cabinNumber: "B4",
     },
@@ -2632,10 +2660,13 @@ test("amendment persists stay, purchaser and emergency contacts; held rejects de
   ).body;
   assert.deepEqual(confirmedRead.party, { adult: 2 });
   assert.equal(confirmedRead.purchaser.name, "Mock Confirmed Buyer");
-  assert.equal(confirmedRead.emergency_contact.name, "Mock Confirmed Emergency");
+  assert.equal(
+    confirmedRead.emergency_contact.name,
+    "Mock Confirmed Emergency",
+  );
   assert.equal(confirmedRead.stay.kind, "cruise");
   assert.equal(confirmedRead.stay.vesselName, "Mock Amend Voyager");
-  assert.equal(confirmedRead.cruise_call_id, cruise.body.id);
+  assert.equal(confirmedRead.vessel_id, cruise.body.id);
   const history = await get(
     `/staff/v1/bookings/${booking.bookingId}/changes`,
     a.token,
@@ -2645,10 +2676,7 @@ test("amendment persists stay, purchaser and emergency contacts; held rejects de
   assert.equal(latest.kind, "amendment");
   assert.equal(latest.after_data.stay.kind, "cruise");
   assert.equal(latest.after_data.purchaser.name, "Mock Confirmed Buyer");
-  assert.equal(
-    latest.after_data.emergency_contact.relationship,
-    "Spouse",
-  );
+  assert.equal(latest.after_data.emergency_contact.relationship, "Spouse");
 });
 
 test("amendment policy, role denial and rollback on history failure protect commercial changes", async () => {
@@ -2856,20 +2884,16 @@ test("boarding payments may attribute a passenger and receipt PDF prints a booki
   assert.equal(first.body.passengerId, firstPassenger);
   assert.equal(
     (
-      await post(
-        `/staff/v1/bookings/${booking.bookingId}/payments`,
-        t.token,
-        {
-          amountMinor: share,
-          currency: "USD",
-          method: "cash",
-          status: "settled",
-          reference: "bad-passenger",
-          reason: "Wrong booking passenger",
-          occurredAt: new Date().toISOString(),
-          passengerId: randomUUID(),
-        },
-      )
+      await post(`/staff/v1/bookings/${booking.bookingId}/payments`, t.token, {
+        amountMinor: share,
+        currency: "USD",
+        method: "cash",
+        status: "settled",
+        reference: "bad-passenger",
+        reason: "Wrong booking passenger",
+        occurredAt: new Date().toISOString(),
+        passengerId: randomUUID(),
+      })
     ).status,
     400,
   );
@@ -4061,11 +4085,7 @@ test("customer communication requests are durable, auditable, held without SMTP 
     [a.tenantId, prepared.body.id],
   );
   assert.equal(audit.rows[0].action, "notification.requested");
-  const retried = await post(
-    `${path}/${prepared.body.id}/retry`,
-    a.token,
-    {},
-  );
+  const retried = await post(`${path}/${prepared.body.id}/retry`, a.token, {});
   assert.equal(retried.status, 201, JSON.stringify(retried.body));
   assert.equal(retried.body.status, "held_provider");
 });
@@ -4126,14 +4146,9 @@ test("payment request is blocked when balance is paid in full and confirm auto-q
   );
 });
 
-test("bookings link tenant-controlled cruise calls and accommodations without cross-tenant references", async () => {
-  const cruise = await post("/ops/v1/stays/cruise-calls", a.token, {
-    vesselName: "Mock Voyager",
-    callDate: DateTime.utc().plus({ days: 10 }).toISODate(),
-    portName: "Mock Port",
-    scheduledDeparture: DateTime.utc().plus({ days: 10, hours: 20 }).toISO(),
-    allAboardAt: DateTime.utc().plus({ days: 10, hours: 19 }).toISO(),
-    tenderRequired: false,
+test("bookings link vessels and accommodations without cross-tenant references", async () => {
+  const cruise = await post("/ops/v1/stays/vessels", a.token, {
+    name: "Mock Voyager",
   });
   assert.equal(cruise.status, 201, JSON.stringify(cruise.body));
   const hotel = await post("/ops/v1/stays/accommodations", a.token, {
@@ -4144,7 +4159,7 @@ test("bookings link tenant-controlled cruise calls and accommodations without cr
   const options = await get("/ops/v1/stays/options", a.token);
   assert.equal(options.status, 200);
   assert.ok(
-    options.body.cruiseCalls.some(
+    options.body.vessels.some(
       (item: { id: string }) => item.id === cruise.body.id,
     ),
   );
@@ -4166,7 +4181,7 @@ test("bookings link tenant-controlled cruise calls and accommodations without cr
     pickup: { kind: "none" },
     stay: {
       kind: "cruise",
-      cruiseCallId: cruise.body.id,
+      vesselId: cruise.body.id,
       vesselName: "Untrusted vessel",
       cabinNumber: "A12",
     },
@@ -4176,7 +4191,7 @@ test("bookings link tenant-controlled cruise calls and accommodations without cr
     `/staff/v1/bookings/${booking.body.bookingId}`,
     a.token,
   );
-  assert.equal(detail.body.cruise_call_id, cruise.body.id);
+  assert.equal(detail.body.vessel_id, cruise.body.id);
   assert.equal(detail.body.stay.vesselName, "Mock Voyager");
   const foreignDeparture = await departure(b.token, 5);
   const foreignHold = await post("/staff/v1/holds", b.token, {

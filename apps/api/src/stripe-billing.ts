@@ -10,12 +10,26 @@
  *   STRIPE_WEBHOOK_SECRET    — whsec_...   (from Stripe dashboard → Webhooks)
  */
 
-import { Module, Injectable, Controller, Post, Headers, Req, Res, Body, HttpCode, BadRequestException } from "@nestjs/common";
+import {
+  Module,
+  Injectable,
+  Controller,
+  Post,
+  Headers,
+  Req,
+  Res,
+  Body,
+  HttpCode,
+  BadRequestException,
+} from "@nestjs/common";
 import { z } from "zod";
 import { Database } from "./database";
 import { Actor } from "../../../packages/shared/src/contracts";
 import { Access, CurrentActor } from "./http";
-import type { Request as ExpressRequest, Response as ExpressResponse } from "express";
+import type {
+  Request as ExpressRequest,
+  Response as ExpressResponse,
+} from "express";
 import {
   sendCheckoutConfirmation,
   sendPlanSwitched,
@@ -54,7 +68,8 @@ export class StripeBillingService {
       }
       case "invoice.payment_failed": {
         const inv = event.data.object as Stripe.Invoice;
-        const subId1 = (inv as unknown as { subscription: string | null }).subscription;
+        const subId1 = (inv as unknown as { subscription: string | null })
+          .subscription;
         if (subId1) {
           await this.setSubscriptionStatus(subId1, "past_due");
           // Send dunning email (non-blocking)
@@ -64,7 +79,8 @@ export class StripeBillingService {
       }
       case "invoice.paid": {
         const inv = event.data.object as Stripe.Invoice;
-        const subId2 = (inv as unknown as { subscription: string | null }).subscription;
+        const subId2 = (inv as unknown as { subscription: string | null })
+          .subscription;
         if (subId2) {
           await this.setSubscriptionStatus(subId2, "active");
         }
@@ -78,9 +94,16 @@ export class StripeBillingService {
 
   // ── DB helpers ──────────────────────────────────────────────────────────────
 
-  private async sendPaymentFailedEmail(stripeSubId: string, inv: Stripe.Invoice): Promise<void> {
+  private async sendPaymentFailedEmail(
+    stripeSubId: string,
+    inv: Stripe.Invoice,
+  ): Promise<void> {
     const res = await this.db.pool.query<{
-      email: string; tenantName: string; planName: string; amountDue: number; currency: string;
+      email: string;
+      tenantName: string;
+      planName: string;
+      amountDue: number;
+      currency: string;
     }>(
       `SELECT s.email, t.name AS "tenantName", p.name AS "planName"
          FROM tenant_subscriptions ts
@@ -93,7 +116,11 @@ export class StripeBillingService {
     );
     const row = res.rows[0];
     if (!row) return;
-    const invObj = inv as unknown as { amount_due: number; currency: string; attempt_count?: number };
+    const invObj = inv as unknown as {
+      amount_due: number;
+      currency: string;
+      attempt_count?: number;
+    };
     await sendPaymentFailed({
       to: row.email,
       tenantName: row.tenantName,
@@ -125,8 +152,13 @@ export class StripeBillingService {
     const customerId = String(sub.customer);
     const status = sub.status as string;
     const billingCycle: "monthly" | "yearly" =
-      sub.items.data[0]?.price?.recurring?.interval === "year" ? "yearly" : "monthly";
-    const periodEndsAt = new Date(((sub as unknown as { current_period_end: number }).current_period_end) * 1000).toISOString();
+      sub.items.data[0]?.price?.recurring?.interval === "year"
+        ? "yearly"
+        : "monthly";
+    const periodEndsAt = new Date(
+      (sub as unknown as { current_period_end: number }).current_period_end *
+        1000,
+    ).toISOString();
     const trialEndsAt = sub.trial_end
       ? new Date(sub.trial_end * 1000).toISOString()
       : null;
@@ -145,7 +177,16 @@ export class StripeBillingService {
            period_ends_at = $4, trial_ends_at = $5,
            stripe_subscription_id = $6, cancel_at_period_end = $7, updated_at = NOW()
          WHERE stripe_customer_id = $8`,
-        [planId, status, billingCycle, periodEndsAt, trialEndsAt, sub.id, sub.cancel_at_period_end ?? false, customerId],
+        [
+          planId,
+          status,
+          billingCycle,
+          periodEndsAt,
+          trialEndsAt,
+          sub.id,
+          sub.cancel_at_period_end ?? false,
+          customerId,
+        ],
       );
     } else {
       console.warn(
@@ -154,7 +195,9 @@ export class StripeBillingService {
     }
   }
 
-  private async markSubscriptionCanceled(sub: Stripe.Subscription): Promise<void> {
+  private async markSubscriptionCanceled(
+    sub: Stripe.Subscription,
+  ): Promise<void> {
     await this.db.pool.query(
       `UPDATE tenant_subscriptions SET status = 'canceled', updated_at = NOW()
         WHERE stripe_subscription_id = $1`,
@@ -162,7 +205,10 @@ export class StripeBillingService {
     );
   }
 
-  private async setSubscriptionStatus(subscriptionId: string, status: string): Promise<void> {
+  private async setSubscriptionStatus(
+    subscriptionId: string,
+    status: string,
+  ): Promise<void> {
     await this.db.pool.query(
       `UPDATE tenant_subscriptions SET status = $1, updated_at = NOW()
         WHERE stripe_subscription_id = $2`,
@@ -198,7 +244,9 @@ export class StripeBillingService {
         ? plan.stripe_price_id_yearly
         : plan.stripe_price_id_monthly;
     if (!priceId || priceId.startsWith("price_REPLACE"))
-      throw new BadRequestException("Stripe price not configured for this plan");
+      throw new BadRequestException(
+        "Stripe price not configured for this plan",
+      );
 
     // Get or create Stripe customer for this tenant
     const subRes = await this.db.pool.query<{
@@ -211,7 +259,10 @@ export class StripeBillingService {
 
     if (!customerId) {
       // Pull tenant name + owner email for the customer record
-      const tenantRes = await this.db.pool.query<{ name: string; email: string }>(
+      const tenantRes = await this.db.pool.query<{
+        name: string;
+        email: string;
+      }>(
         `SELECT t.name, s.email
            FROM tenants t
            JOIN memberships m ON m.tenant_id = t.id AND m.role = 'owner' AND m.active
@@ -250,7 +301,10 @@ export class StripeBillingService {
     // Fire confirmation email (non-blocking)
     void (async () => {
       try {
-        const ownerRes = await this.db.pool.query<{ email: string; name: string }>(
+        const ownerRes = await this.db.pool.query<{
+          email: string;
+          name: string;
+        }>(
           `SELECT s.email, t.name
              FROM tenants t
              JOIN memberships m ON m.tenant_id = t.id AND m.role = 'owner' AND m.active
@@ -265,12 +319,17 @@ export class StripeBillingService {
             tenantName: owner.name,
             planName: plan.name,
             billingCycle: cycle,
-            trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+            trialEndsAt: new Date(
+              Date.now() + 14 * 24 * 60 * 60 * 1000,
+            ).toISOString(),
             manageUrl: successUrl,
           });
         }
       } catch (e) {
-        console.error("[StripeBilling] Checkout confirmation email failed:", e instanceof Error ? e.message : e);
+        console.error(
+          "[StripeBilling] Checkout confirmation email failed:",
+          e instanceof Error ? e.message : e,
+        );
       }
     })();
 
@@ -279,13 +338,17 @@ export class StripeBillingService {
 
   // ── Billing Portal ──────────────────────────────────────────────────────────
 
-  async createPortalSession(tenantId: string, returnUrl: string): Promise<string> {
+  async createPortalSession(
+    tenantId: string,
+    returnUrl: string,
+  ): Promise<string> {
     const res = await this.db.pool.query<{ stripe_customer_id: string }>(
       `SELECT stripe_customer_id FROM tenant_subscriptions WHERE tenant_id = $1 LIMIT 1`,
       [tenantId],
     );
     const customerId = res.rows[0]?.stripe_customer_id;
-    if (!customerId) throw new Error("No Stripe customer found for this tenant.");
+    if (!customerId)
+      throw new Error("No Stripe customer found for this tenant.");
 
     const stripe = getStripe();
     const session = await stripe.billingPortal.sessions.create({
@@ -333,10 +396,15 @@ export class StripeBillingService {
         ? plan.stripe_price_id_yearly
         : plan.stripe_price_id_monthly;
     if (!priceId || priceId.startsWith("price_REPLACE"))
-      throw new BadRequestException("Stripe price not configured for this plan");
+      throw new BadRequestException(
+        "Stripe price not configured for this plan",
+      );
 
     const stripeSubId = subRes.rows[0]?.stripe_subscription_id;
-    if (!stripeSubId) throw new BadRequestException("No active Stripe subscription found. Please start a new plan.");
+    if (!stripeSubId)
+      throw new BadRequestException(
+        "No active Stripe subscription found. Please start a new plan.",
+      );
 
     // Retrieve the Stripe subscription to get the item ID
     const stripeSub = await stripe.subscriptions.retrieve(stripeSubId);
@@ -362,7 +430,11 @@ export class StripeBillingService {
     // Fire plan-switched email (non-blocking)
     void (async () => {
       try {
-        const ownerRes = await this.db.pool.query<{ email: string; tenantName: string; oldPlanName: string }>(
+        const ownerRes = await this.db.pool.query<{
+          email: string;
+          tenantName: string;
+          oldPlanName: string;
+        }>(
           `SELECT s.email, t.name AS "tenantName", p.name AS "oldPlanName"
              FROM tenants t
              JOIN memberships m ON m.tenant_id = t.id AND m.role = 'owner' AND m.active
@@ -384,7 +456,10 @@ export class StripeBillingService {
           });
         }
       } catch (e) {
-        console.error("[StripeBilling] Plan switched email failed:", e instanceof Error ? e.message : e);
+        console.error(
+          "[StripeBilling] Plan switched email failed:",
+          e instanceof Error ? e.message : e,
+        );
       }
     })();
 
@@ -409,28 +484,41 @@ export class StripeWebhookController {
     const isProduction = process.env.NODE_ENV === "production";
     // Set STRIPE_WEBHOOK_SKIP_VERIFICATION=true in .env for local dev without Stripe CLI.
     // Never set this in production — webhook secret is always required there.
-    const skipVerification = process.env.STRIPE_WEBHOOK_SKIP_VERIFICATION === "true";
+    const skipVerification =
+      process.env.STRIPE_WEBHOOK_SKIP_VERIFICATION === "true";
 
     if (!webhookSecret) {
       if (isProduction) {
-        console.error("[StripeBilling] STRIPE_WEBHOOK_SECRET not configured — rejecting webhook in production");
-        res.status(500).json({ error: "Webhook not configured" }); return;
+        console.error(
+          "[StripeBilling] STRIPE_WEBHOOK_SECRET not configured — rejecting webhook in production",
+        );
+        res.status(500).json({ error: "Webhook not configured" });
+        return;
       }
       if (!skipVerification) {
-        console.error("[StripeBilling] STRIPE_WEBHOOK_SECRET not set. Use Stripe CLI (stripe listen --forward-to ...) or set STRIPE_WEBHOOK_SKIP_VERIFICATION=true for local dev.");
-        res.status(500).json({ error: "Webhook secret not configured" }); return;
+        console.error(
+          "[StripeBilling] STRIPE_WEBHOOK_SECRET not set. Use Stripe CLI (stripe listen --forward-to ...) or set STRIPE_WEBHOOK_SKIP_VERIFICATION=true for local dev.",
+        );
+        res.status(500).json({ error: "Webhook secret not configured" });
+        return;
       }
-      console.warn("[StripeBilling] ⚠️  Webhook signature verification SKIPPED (STRIPE_WEBHOOK_SKIP_VERIFICATION=true) — dev only");
+      console.warn(
+        "[StripeBilling] ⚠️  Webhook signature verification SKIPPED (STRIPE_WEBHOOK_SKIP_VERIFICATION=true) — dev only",
+      );
     }
 
     if (webhookSecret && !sig) {
-      console.warn("[StripeBilling] Webhook rejected: missing stripe-signature header");
-      res.status(400).json({ error: "Missing stripe-signature header" }); return;
+      console.warn(
+        "[StripeBilling] Webhook rejected: missing stripe-signature header",
+      );
+      res.status(400).json({ error: "Missing stripe-signature header" });
+      return;
     }
 
     const rawBody = req.body as Buffer;
     if (!rawBody || rawBody.length === 0) {
-      res.status(400).json({ error: "Missing request body" }); return;
+      res.status(400).json({ error: "Missing request body" });
+      return;
     }
 
     let event: Stripe.Event;
@@ -445,11 +533,16 @@ export class StripeWebhookController {
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[StripeBilling] Webhook signature verification failed: ${msg}`);
-      res.status(400).json({ error: "Invalid signature" }); return;
+      console.warn(
+        `[StripeBilling] Webhook signature verification failed: ${msg}`,
+      );
+      res.status(400).json({ error: "Invalid signature" });
+      return;
     }
 
-    console.log(`[StripeBilling] Received Stripe webhook: ${event.type} (id: ${event.id})`);
+    console.log(
+      `[StripeBilling] Received Stripe webhook: ${event.type} (id: ${event.id})`,
+    );
 
     try {
       await this.billing.handleWebhookEvent(event);
@@ -476,7 +569,10 @@ export class BillingPortalController {
   ): Promise<{ url: string }> {
     const tenantId = req.tenantId;
     if (!tenantId) throw new Error("Unauthorized");
-    const url = await this.billing.createPortalSession(tenantId, body.returnUrl);
+    const url = await this.billing.createPortalSession(
+      tenantId,
+      body.returnUrl,
+    );
     return { url };
   }
 
@@ -486,12 +582,14 @@ export class BillingPortalController {
     @CurrentActor() actor: Actor,
     @Body() body: unknown,
   ): Promise<{ url: string }> {
-    const input = z.object({
-      planId: z.string().uuid(),
-      cycle: z.enum(["monthly", "yearly"]),
-      successUrl: z.string().url(),
-      cancelUrl: z.string().url(),
-    }).parse(body);
+    const input = z
+      .object({
+        planId: z.string().uuid(),
+        cycle: z.enum(["monthly", "yearly"]),
+        successUrl: z.string().url(),
+        cancelUrl: z.string().url(),
+      })
+      .parse(body);
 
     if (!actor.tenantId) throw new BadRequestException("No tenant context");
     const url = await this.billing.createCheckoutSession(
@@ -511,10 +609,12 @@ export class BillingPortalController {
     @Body() body: unknown,
   ): Promise<{ status: "switched"; planName: string }> {
     if (!actor.tenantId) throw new BadRequestException("No tenant context");
-    const input = z.object({
-      planId: z.string().uuid(),
-      cycle: z.enum(["monthly", "yearly"]),
-    }).parse(body);
+    const input = z
+      .object({
+        planId: z.string().uuid(),
+        cycle: z.enum(["monthly", "yearly"]),
+      })
+      .parse(body);
     return this.billing.switchPlan(actor.tenantId, input.planId, input.cycle);
   }
 }

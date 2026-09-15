@@ -72,7 +72,10 @@ function buildStay(
 function readableStaySnapshot(stay?: Stay | null) {
   if (!stay || stay.kind === "none") return "Not provided";
   if (stay.kind === "cruise")
-    return [stay.vesselName, stay.cabinNumber && `Cabin ${stay.cabinNumber}`]
+    return [
+      stay.vesselName || "Ship not recorded",
+      stay.cabinNumber && `Cabin ${stay.cabinNumber}`,
+    ]
       .filter(Boolean)
       .join(" · ");
   if (stay.kind === "hotel")
@@ -127,9 +130,7 @@ export function BoardingWaiverModal({
   const [signerName, setSignerName] = useState(
     passenger.is_minor ? "" : passenger.identity_pending ? "" : passenger.name,
   );
-  const [guardianId, setGuardianId] = useState(
-    adultGuardians[0]?.id ?? "",
-  );
+  const [guardianId, setGuardianId] = useState(adultGuardians[0]?.id ?? "");
   const [stayKind, setStayKind] = useState<Stay["kind"]>(seed.kind);
   const [stayName, setStayName] = useState(seed.name);
   const [stayUnit, setStayUnit] = useState(seed.unit);
@@ -199,7 +200,9 @@ export function BoardingWaiverModal({
     ctx.stroke();
   }, [displayStrokes]);
 
-  function pointFromEvent(event: React.PointerEvent<HTMLCanvasElement>): Point | null {
+  function pointFromEvent(
+    event: React.PointerEvent<HTMLCanvasElement>,
+  ): Point | null {
     const target = event.currentTarget ?? canvasRef.current;
     if (!target) return null;
     const rect = target.getBoundingClientRect();
@@ -222,21 +225,18 @@ export function BoardingWaiverModal({
     )
       return;
     if (stayKind === "private_accommodation" && !stayAddress.trim()) return;
-    const result = await sign.run(
-      `ops/v1/passengers/${passenger.id}/waiver`,
-      {
-        passengerName: passenger.identity_pending
-          ? passengerName.trim()
-          : undefined,
-        signerName: signerName.trim(),
-        guardianPassengerId: passenger.is_minor ? guardianId : undefined,
-        consentAccepted: true as const,
-        signatureStrokes: strokes,
-        capturedAt: new Date().toISOString(),
-        deviceCommandId: `web-${passenger.id}-${Date.now()}`,
-        stay,
-      },
-    );
+    const result = await sign.run(`ops/v1/passengers/${passenger.id}/waiver`, {
+      passengerName: passenger.identity_pending
+        ? passengerName.trim()
+        : undefined,
+      signerName: signerName.trim(),
+      guardianPassengerId: passenger.is_minor ? guardianId : undefined,
+      consentAccepted: true as const,
+      signatureStrokes: strokes,
+      capturedAt: new Date().toISOString(),
+      deviceCommandId: `web-${passenger.id}-${Date.now()}`,
+      stay,
+    });
     if (result) onSigned();
   }
 
@@ -294,7 +294,9 @@ export function BoardingWaiverModal({
             {evidence.data === null && !evidence.error ? (
               <p className="muted">Loading signed waiver…</p>
             ) : !viewSignature ? (
-              <Notice error>No signed waiver is stored for this passenger.</Notice>
+              <Notice error>
+                No signed waiver is stored for this passenger.
+              </Notice>
             ) : (
               <>
                 <section className="boarding-waiver-block">
@@ -505,9 +507,7 @@ export function BoardingWaiverModal({
                     stayKind === "local") && (
                     <Field
                       label={
-                        stayKind === "local"
-                          ? "Locality (optional)"
-                          : "Address"
+                        stayKind === "local" ? "Locality (optional)" : "Address"
                       }
                     >
                       <input

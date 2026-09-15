@@ -64,12 +64,7 @@ export function scheduleRangeBounds(
   return [customFrom || today, customTo || today];
 }
 
-function periodsOverlap(
-  start: string,
-  end: string,
-  from: string,
-  to: string,
-) {
+function periodsOverlap(start: string, end: string, from: string, to: string) {
   return start <= to && end >= from;
 }
 
@@ -151,13 +146,12 @@ export function SchedulesFilterButton({
 
   function selectRange(next: ScheduleRange) {
     if (next === "custom") {
-      const bounds =
-        scheduleRangeBounds(
-          filters.range,
-          today,
-          filters.customFrom,
-          filters.customTo,
-        ) ?? [today, shiftDay(today, 13)];
+      const bounds = scheduleRangeBounds(
+        filters.range,
+        today,
+        filters.customFrom,
+        filters.customTo,
+      ) ?? [today, shiftDay(today, 13)];
       onFiltersChange({
         ...filters,
         range: next,
@@ -187,7 +181,11 @@ export function SchedulesFilterButton({
         {count > 0 && <span className="filter-count">{count}</span>}
       </button>
       {open && (
-        <div className="filter-popover" role="dialog" aria-label="Schedule filters">
+        <div
+          className="filter-popover"
+          role="dialog"
+          aria-label="Schedule filters"
+        >
           <div className="filter-popover-head">
             <strong>Filters</strong>
             <span>{count ? `${count} active` : "None"}</span>
@@ -300,7 +298,9 @@ export function SchedulesFilterButton({
               />
             </div>
           )}
-          {filters.range !== "any" && filters.range !== "custom" && activeBounds ? (
+          {filters.range !== "any" &&
+          filters.range !== "custom" &&
+          activeBounds ? (
             <p className="filter-range-hint muted">
               Shows schedules whose operating period overlaps{" "}
               {formatMediumDateRange(activeBounds[0], activeBounds[1])}.

@@ -21,7 +21,12 @@ export type BookingEmailContext = {
   currency: string;
   totalMinor: number;
   paidMinor: number;
-  pickup: { kind: string; location?: string; note?: string; instructions?: string };
+  pickup: {
+    kind: string;
+    location?: string;
+    note?: string;
+    instructions?: string;
+  };
   stay: {
     kind: string;
     vesselName?: string;
@@ -43,7 +48,11 @@ export type RenderedCustomerEmail = {
 
 const KIND_META: Record<
   CustomerNotificationKind,
-  { subjectPrefix: string; headline: string; intro: (ctx: BookingEmailContext) => string }
+  {
+    subjectPrefix: string;
+    headline: string;
+    intro: (ctx: BookingEmailContext) => string;
+  }
 > = {
   booking_confirmation: {
     subjectPrefix: "Booking confirmation",
@@ -56,10 +65,7 @@ const KIND_META: Record<
     headline: "Payment is requested",
     intro: (ctx) => {
       const due = Math.max(0, ctx.totalMinor - ctx.paidMinor);
-      const dueNote =
-        due > 0
-          ? ` A balance remains on this booking.`
-          : "";
+      const dueNote = due > 0 ? ` A balance remains on this booking.` : "";
       return `Hello ${ctx.leadName}, ${ctx.tenantName} is requesting payment for the booking below.${dueNote} This message does not include an online payment link — please contact ${ctx.tenantName} for their approved payment instructions.`;
     },
   },
@@ -148,7 +154,9 @@ function formatDeparture(
       : DateTime.fromJSDate(startsAt);
   const zoned = dt.setZone(timezone || "UTC");
   if (!zoned.isValid) return String(startsAt);
-  return zoned.setLocale(locale || "en").toFormat("ccc, d LLL yyyy · h:mm a ZZZZ");
+  return zoned
+    .setLocale(locale || "en")
+    .toFormat("ccc, d LLL yyyy · h:mm a ZZZZ");
 }
 
 function formatParty(party: Record<string, number>): string {
@@ -165,7 +173,9 @@ function formatPickup(pickup: BookingEmailContext["pickup"]): string | null {
     return bits.join(" — ") || "Selected pickup";
   }
   if (pickup.kind === "unresolved") {
-    return pickup.note ? `Pickup TBD — ${pickup.note}` : "Pickup to be confirmed";
+    return pickup.note
+      ? `Pickup TBD — ${pickup.note}`
+      : "Pickup to be confirmed";
   }
   return null;
 }
@@ -174,7 +184,9 @@ function formatStay(stay: BookingEmailContext["stay"]): string | null {
   if (!stay || stay.kind === "none") return null;
   if (stay.kind === "cruise") {
     const cabin = stay.cabinNumber ? ` · Cabin ${stay.cabinNumber}` : "";
-    return stay.vesselName ? `Cruise · ${stay.vesselName}${cabin}` : `Cruise${cabin}`;
+    return stay.vesselName
+      ? `Cruise · ${stay.vesselName}${cabin}`
+      : `Cruise${cabin}`;
   }
   if (stay.kind === "hotel") {
     const room = stay.roomNumber ? ` · Room ${stay.roomNumber}` : "";
@@ -194,7 +206,9 @@ function labelState(state: string): string {
   return state.replace(/_/g, " ");
 }
 
-function detailRows(ctx: BookingEmailContext): Array<{ label: string; value: string }> {
+function detailRows(
+  ctx: BookingEmailContext,
+): Array<{ label: string; value: string }> {
   const rows: Array<{ label: string; value: string }> = [
     { label: "Tour", value: ctx.productName },
     {
@@ -227,7 +241,10 @@ function detailRows(ctx: BookingEmailContext): Array<{ label: string; value: str
   return rows;
 }
 
-function buildPlainText(ctx: BookingEmailContext, meta: (typeof KIND_META)[CustomerNotificationKind]): string {
+function buildPlainText(
+  ctx: BookingEmailContext,
+  meta: (typeof KIND_META)[CustomerNotificationKind],
+): string {
   const ref = shortBookingRef(ctx.bookingId);
   const lines = [
     meta.headline,

@@ -47,20 +47,37 @@ export async function POST(request: Request) {
     const existing = (await cookies()).get(sessionCookie)?.value;
     // _rawToken: set directly after self-registration (no additional auth call needed)
     if (input._rawToken) {
-      const res = await upstream("/staff/v1/workspace/session", {}, input._rawToken);
-      if (!res.ok) return Response.json({ message: "Registration session could not be established." }, { status: 401 });
-      (await cookies()).set(sessionCookie, input._rawToken, sessionCookieOptions());
+      const res = await upstream(
+        "/staff/v1/workspace/session",
+        {},
+        input._rawToken,
+      );
+      if (!res.ok)
+        return Response.json(
+          { message: "Registration session could not be established." },
+          { status: 401 },
+        );
+      (await cookies()).set(
+        sessionCookie,
+        input._rawToken,
+        sessionCookieOptions(),
+      );
       const tenants = input.tenantId
         ? [{ tenantId: input.tenantId, name: "", email: "" }]
         : [];
-      return Response.json({ session: await res.json(), tenants }, { headers: { "Cache-Control": "no-store" } });
+      return Response.json(
+        { session: await res.json(), tenants },
+        { headers: { "Cache-Control": "no-store" } },
+      );
     }
-    const auth =
-      input.activationToken
-        ? await upstream("/auth/v1/invitations/accept", {
-            method: "POST",
-            body: JSON.stringify({ token: input.activationToken, password: input.password }),
-          })
+    const auth = input.activationToken
+      ? await upstream("/auth/v1/invitations/accept", {
+          method: "POST",
+          body: JSON.stringify({
+            token: input.activationToken,
+            password: input.password,
+          }),
+        })
       : existing && !input.password
         ? await upstream(
             "/auth/v1/switch-tenant",
@@ -98,7 +115,11 @@ export async function POST(request: Request) {
         { message: "Sign-in session could not be established." },
         { status: 401 },
       );
-    (await cookies()).set(sessionCookie, signedIn.token, sessionCookieOptions());
+    (await cookies()).set(
+      sessionCookie,
+      signedIn.token,
+      sessionCookieOptions(),
+    );
     return Response.json(
       {
         session: await res.json(),

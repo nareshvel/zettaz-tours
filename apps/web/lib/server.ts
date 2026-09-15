@@ -66,10 +66,7 @@ export async function upstream(
     pathOnly === "/auth/v1/invitations/accept" ||
     pathOnly.startsWith("/auth/v1/password-recovery/");
   if (!credential && !publicAuth)
-    return Response.json(
-      { message: "Sign in to continue." },
-      { status: 401 },
-    );
+    return Response.json({ message: "Sign in to continue." }, { status: 401 });
   return fetch(apiBase() + path, {
     ...init,
     redirect: "error",

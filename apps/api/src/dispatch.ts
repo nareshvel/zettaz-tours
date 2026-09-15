@@ -25,7 +25,10 @@ const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const boardQuery = z.object({ date: day }).strict();
 // Zod v4: .omit() cannot be called on a schema that already has .refine().
 // Solution: share the raw object, derive the update shape first, then add .refine() to both.
-const pickupLocationLatLonCheck = (location: { latitude?: number; longitude?: number }) =>
+const pickupLocationLatLonCheck = (location: {
+  latitude?: number;
+  longitude?: number;
+}) =>
   (location.latitude === undefined && location.longitude === undefined) ||
   (location.latitude !== undefined && location.longitude !== undefined);
 const LAT_LON_MSG = "Latitude and longitude must be provided together";
@@ -581,9 +584,7 @@ export class DispatchService {
             "SELECT id,operational_status FROM departures WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
             [actor.tenantId, departureId],
           )
-        ).rows[0] as
-          | { id: string; operational_status: string }
-          | undefined;
+        ).rows[0] as { id: string; operational_status: string } | undefined;
         if (!departure) throw new NotFoundException();
         if (["guide", "driver"].includes(actor.role)) {
           const assigned = await tx.query(
@@ -635,10 +636,7 @@ export class DispatchService {
           throw new BadRequestException(
             "Cannot start a departure with no confirmed guests",
           );
-        if (
-          departure.operational_status !== "open" &&
-          boardedGuests <= 0
-        )
+        if (departure.operational_status !== "open" && boardedGuests <= 0)
           throw new BadRequestException(
             "Cannot start a weather-held or closed departure with nobody boarded",
           );
@@ -821,7 +819,10 @@ export class DispatchService {
 }
 @Controller("ops/v1")
 export class DispatchController {
-  constructor(private readonly service: DispatchService, private readonly limits: LimitsService) {}
+  constructor(
+    private readonly service: DispatchService,
+    private readonly limits: LimitsService,
+  ) {}
   @Get("board") @Access("manifest.read") board(
     @CurrentActor() a: Actor,
     @Query() q: unknown,

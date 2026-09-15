@@ -151,9 +151,7 @@ function rangeBounds(
 }
 
 export function assignmentFilterCount(filters: AssignmentListFilters) {
-  return (
-    (filters.range !== "week" ? 1 : 0) + (filters.productId ? 1 : 0)
-  );
+  return (filters.range !== "week" ? 1 : 0) + (filters.productId ? 1 : 0);
 }
 
 export function AssignmentsFilterButton({
@@ -424,9 +422,7 @@ export function CatalogAssignmentsPanel({
     "safety.assignment.override",
   );
   const canManageResources = session.permissions.includes("resources.write");
-  const canManageDocs = session.permissions.includes(
-    "documents.expiry.manage",
-  );
+  const canManageDocs = session.permissions.includes("documents.expiry.manage");
 
   const today = tenantDay(session.tenant.timezone);
   const range = filters.range;
@@ -670,7 +666,9 @@ export function CatalogAssignmentsPanel({
       setPlannerError(
         `Expired document${blocked.length > 1 ? "s" : ""} (${blocked
           .map((d) => d.document_type)
-          .join(", ")}). Update files in Document library or Staff, or ask for a safety override.`,
+          .join(
+            ", ",
+          )}). Update files in Document library or Staff, or ask for a safety override.`,
       );
       setPendingOverride(null);
       return;

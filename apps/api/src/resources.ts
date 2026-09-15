@@ -367,14 +367,12 @@ export class ResourceService {
     file?: UploadedLibraryFile,
   ) {
     const input = parse(documentSchema, coerceDocumentBody(raw));
-    let stored:
-      | {
-          storageKey: string;
-          fileName: string;
-          contentType: string;
-          byteSize: number;
-        }
-      | null = null;
+    let stored: {
+      storageKey: string;
+      fileName: string;
+      contentType: string;
+      byteSize: number;
+    } | null = null;
     if (file) {
       const usage = await this.library.usage(actor);
       assertLibraryQuota(usage.usedBytes, file.size, usage.quotaBytes);
@@ -506,8 +504,19 @@ export class ResourceService {
           "DELETE FROM compliance_documents WHERE tenant_id=$1 AND id=$2",
           [actor.tenantId, id],
         );
-        await record(tx, actor, "compliance_document.deleted", id, before, null);
-        return { id, deleted: true, storageKey: before.storage_key as string | null };
+        await record(
+          tx,
+          actor,
+          "compliance_document.deleted",
+          id,
+          before,
+          null,
+        );
+        return {
+          id,
+          deleted: true,
+          storageKey: before.storage_key as string | null,
+        };
       },
     );
     await this.library.deleteStoredFile(result.storageKey);
@@ -530,7 +539,8 @@ export class ResourceService {
           }
         | undefined;
     });
-    if (!row?.storage_key) throw new NotFoundException("Document file not found");
+    if (!row?.storage_key)
+      throw new NotFoundException("Document file not found");
     const absolute = absoluteLibraryPath(row.storage_key);
     try {
       await access(absolute);
@@ -590,7 +600,7 @@ export class ResourceService {
             "An authorized safety override is required for expired documents",
           );
         const overrideReason = expired.length
-          ? input.overrideReason ?? null
+          ? (input.overrideReason ?? null)
           : null;
         const subject = await tx.query(
           input.resourceId
@@ -685,16 +695,16 @@ export class ResourceService {
             document.resource_id ?? document.crew_actor_id,
           ),
       );
-        return {
-          items: rows,
-          expiredDocuments: blockingDocuments,
-          readiness: blockingDocuments.length
-            ? "blocked"
-            : rows.length
-              ? "ready"
-              : "unassigned",
-        };
-      });
+      return {
+        items: rows,
+        expiredDocuments: blockingDocuments,
+        readiness: blockingDocuments.length
+          ? "blocked"
+          : rows.length
+            ? "ready"
+            : "unassigned",
+      };
+    });
   }
   listAssignments(actor: Actor) {
     return this.db.transaction(actor, async (tx) => {
@@ -733,13 +743,22 @@ export class ResourceService {
         );
         if (!before) throw new NotFoundException("Assignment not found");
         if (before.status !== "active")
-          throw new BadRequestException("Only active assignments can be edited");
+          throw new BadRequestException(
+            "Only active assignments can be edited",
+          );
         await tx.query(
           `UPDATE departure_assignments SET assignment_role=$3
              WHERE tenant_id=$1 AND id=$2`,
           [actor.tenantId, id, input.assignmentRole],
         );
-        await record(tx, actor, "departure_assignment.updated", id, before, input);
+        await record(
+          tx,
+          actor,
+          "departure_assignment.updated",
+          id,
+          before,
+          input,
+        );
         return { id, assignmentRole: input.assignmentRole };
       },
     );
@@ -796,14 +815,8 @@ export class ResourceController {
   }
   @Get("compliance-documents/:id/file")
   @Access("documents.expiry.manage")
-  documentFile(
-    @CurrentActor() actor: Actor,
-    @Param("id") id: string,
-  ) {
-    return this.service.downloadDocument(
-      actor,
-      z.string().uuid().parse(id),
-    );
+  documentFile(@CurrentActor() actor: Actor, @Param("id") id: string) {
+    return this.service.downloadDocument(actor, z.string().uuid().parse(id));
   }
   @Post("resources") @Access("resources.write") resource(
     @CurrentActor() actor: Actor,

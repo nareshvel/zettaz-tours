@@ -137,7 +137,10 @@ function pngChunk(
 }
 
 function decodePng(buffer: Buffer): PdfImage | null {
-  if (buffer.length < 24 || buffer.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a")
+  if (
+    buffer.length < 24 ||
+    buffer.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a"
+  )
     return null;
   const ihdr = pngChunk(buffer, "IHDR");
   if (!ihdr || ihdr.data.length < 13) return null;
@@ -145,7 +148,13 @@ function decodePng(buffer: Buffer): PdfImage | null {
   const height = ihdr.data.readUInt32BE(4);
   const bitDepth = ihdr.data[8] ?? 0;
   const colorType = ihdr.data[9] ?? -1;
-  if (bitDepth !== 8 || width < 1 || height < 1 || width > 2000 || height > 2000)
+  if (
+    bitDepth !== 8 ||
+    width < 1 ||
+    height < 1 ||
+    width > 2000 ||
+    height > 2000
+  )
     return null;
   if (![0, 2, 6].includes(colorType)) return null;
   const idatParts: Buffer[] = [];
@@ -208,9 +217,7 @@ function decodePng(buffer: Buffer): PdfImage | null {
         const src = x * 4;
         const dst = (y * width + x) * 3;
         const alpha = sample(recon, src + 3) / 255;
-        rgb[dst] = Math.round(
-          255 * (1 - alpha) + sample(recon, src) * alpha,
-        );
+        rgb[dst] = Math.round(255 * (1 - alpha) + sample(recon, src) * alpha);
         rgb[dst + 1] = Math.round(
           255 * (1 - alpha) + sample(recon, src + 1) * alpha,
         );
@@ -441,7 +448,9 @@ export function receiptPdf(input: ReceiptPdfInput) {
   const guest: [string, string][] = [
     ["Lead guest", input.leadName],
     ["Email", input.leadEmail],
-    ...(input.leadPhone ? [["Phone", input.leadPhone] as [string, string]] : []),
+    ...(input.leadPhone
+      ? [["Phone", input.leadPhone] as [string, string]]
+      : []),
     ["Source", input.source],
     ["Party", input.party || "-"],
   ];
@@ -577,8 +586,7 @@ export function receiptPdf(input: ReceiptPdfInput) {
     `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] /Resources << /Font << /F1 ${regularFont} 0 R /F2 ${boldFont} 0 R >> ${imageResource} >> /Contents ${streamId} 0 R >>`,
   );
   objects[catalogId - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
-  objects[pagesId - 1] =
-    `<< /Type /Pages /Count 1 /Kids [${pageId} 0 R] >>`;
+  objects[pagesId - 1] = `<< /Type /Pages /Count 1 /Kids [${pageId} 0 R] >>`;
 
   if (!logo || !imageId) return assemblePdf(objects);
 

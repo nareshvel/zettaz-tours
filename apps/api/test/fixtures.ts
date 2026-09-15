@@ -17,7 +17,13 @@ export const mockConfig: TenantConfig = {
   taxBasisPoints: 0,
   allowUnresolvedPickup: false,
   allowAmendmentBalance: true,
-  manualPaymentMethods: ["cash", "card", "online", "bank_transfer", "reseller_payment"],
+  manualPaymentMethods: [
+    "cash",
+    "card",
+    "online",
+    "bank_transfer",
+    "reseller_payment",
+  ],
   bookingSources: ["phone", "walk_in", "website", "partner_reseller"],
   documentStorage: {
     hotProvider: "filesystem",

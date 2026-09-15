@@ -106,9 +106,7 @@ const sampleProducts: ProductInput[] = [
     pricingModel: "per_group",
     privateBooking: true,
     confirmationMode: "request",
-    categories: [
-      { slug: "adult", label: "Adult", countsTowardCapacity: true },
-    ],
+    categories: [{ slug: "adult", label: "Adult", countsTowardCapacity: true }],
     rates: [
       {
         category: "adult",
@@ -184,9 +182,7 @@ const rockProducts: ProductInput[] = [
     pricingModel: "per_group",
     privateBooking: true,
     confirmationMode: "request",
-    categories: [
-      { slug: "adult", label: "Adult", countsTowardCapacity: true },
-    ],
+    categories: [{ slug: "adult", label: "Adult", countsTowardCapacity: true }],
     rates: [
       {
         category: "adult",

@@ -64,7 +64,10 @@ function bearer(authorization?: string) {
 
 @Controller("auth/v1")
 export class AuthController {
-  constructor(private readonly db: Database, private readonly tenantSvc: TenantService) {}
+  constructor(
+    private readonly db: Database,
+    private readonly tenantSvc: TenantService,
+  ) {}
 
   @Post("password-recovery/request")
   @Access("public")
@@ -267,12 +270,17 @@ export class AuthController {
       [input.email],
     );
     if (existing.length > 0)
-      throw new ConflictException("An account with that email address already exists.");
-    const slug = input.companyName
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")
-      .slice(0, 60) + "-" + Date.now().toString(36);
+      throw new ConflictException(
+        "An account with that email address already exists.",
+      );
+    const slug =
+      input.companyName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 60) +
+      "-" +
+      Date.now().toString(36);
     const defaultConfig = {
       supportedLocales: ["en"],
       locale: "en",
@@ -291,7 +299,11 @@ export class AuthController {
       allowAmendmentBalance: true,
       manualPaymentMethods: ["cash", "card", "online", "bank_transfer"],
       bookingSources: ["phone", "walk_in", "website", "partner_reseller"],
-      documentStorage: { hotProvider: "filesystem", archiveProvider: "none", hotRetentionDays: 7 },
+      documentStorage: {
+        hotProvider: "filesystem",
+        archiveProvider: "none",
+        hotRetentionDays: 7,
+      },
       documentLibrary: { quotaBytes: 1073741824 },
     };
     const platformActor = {
@@ -312,28 +324,48 @@ export class AuthController {
     });
     // Store password (SECURITY DEFINER bypasses RLS on user_credentials)
     const passwordHash = await hashPassword(input.password);
-    await this.db.pool.query("SELECT upsert_user_credentials($1,$2)", [ownerId, passwordHash]);
+    await this.db.pool.query("SELECT upsert_user_credentials($1,$2)", [
+      ownerId,
+      passwordHash,
+    ]);
     // Create trial subscription (Growth plan by default; SECURITY DEFINER bypasses RLS)
     const planId = input.planId ?? "3e595412-81e5-4c76-8216-25321d7ba56a";
-    await this.db.pool.query("SELECT create_trial_subscription($1,$2)", [tenantId, planId]);
+    await this.db.pool.query("SELECT create_trial_subscription($1,$2)", [
+      tenantId,
+      planId,
+    ]);
     // Generate e-mail verification token (24 h TTL)
     const verifValue = token();
     const verifHash = digest(verifValue);
-    const verifExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    await this.db.pool.query(
-      "SELECT set_email_verification_token($1,$2,$3)",
-      [ownerId, verifHash, verifExpiry],
-    );
+    const verifExpiry = new Date(
+      Date.now() + 24 * 60 * 60 * 1000,
+    ).toISOString();
+    await this.db.pool.query("SELECT set_email_verification_token($1,$2,$3)", [
+      ownerId,
+      verifHash,
+      verifExpiry,
+    ]);
     const frontendUrl = process.env.FRONTEND_URL ?? "http://localhost:3000";
     const verifyUrl = `${frontendUrl}/verify-email?token=${verifValue}`;
-    void sendEmailVerification({ to: input.email, name: input.ownerName, verifyUrl }).catch(
-      (err) => {
-        console.error("[Auth] Verification email failed:", err instanceof Error ? err.message : err);
-        console.error("[Auth] Manual verify URL (dev/ops only):", verifyUrl);
-      },
-    );
-    if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
-      console.warn("[Auth] SMTP not configured — verification email was not delivered.");
+    void sendEmailVerification({
+      to: input.email,
+      name: input.ownerName,
+      verifyUrl,
+    }).catch((err) => {
+      console.error(
+        "[Auth] Verification email failed:",
+        err instanceof Error ? err.message : err,
+      );
+      console.error("[Auth] Manual verify URL (dev/ops only):", verifyUrl);
+    });
+    if (
+      !process.env.SMTP_HOST ||
+      !process.env.SMTP_USER ||
+      !process.env.SMTP_PASS
+    ) {
+      console.warn(
+        "[Auth] SMTP not configured — verification email was not delivered.",
+      );
       console.warn("[Auth] Manual verify URL:", verifyUrl);
     }
     return { pending: "email_verification" };
@@ -343,26 +375,32 @@ export class AuthController {
   @Access("public")
   async verifyEmail(@Query("token") rawToken: string) {
     if (!rawToken || rawToken.length < 40)
-      throw new UnauthorizedException("Verification link is invalid or expired.");
+      throw new UnauthorizedException(
+        "Verification link is invalid or expired.",
+      );
     const tokenHash = digest(rawToken);
     const { rows } = await this.db.pool.query(
       "SELECT consume_email_verification($1) AS user_id",
       [tokenHash],
     );
     const userId: string | null = rows[0]?.user_id ?? null;
-    if (!userId) throw new UnauthorizedException("Verification link is invalid or expired.");
+    if (!userId)
+      throw new UnauthorizedException(
+        "Verification link is invalid or expired.",
+      );
     const { rows: tenants } = await this.db.pool.query(
       "SELECT * FROM staff_login_tenants($1)",
       [userId],
     );
-    if (!tenants.length) throw new UnauthorizedException("No workspace found for this account.");
+    if (!tenants.length)
+      throw new UnauthorizedException("No workspace found for this account.");
     const tenantId = tenants[0].tenant_id;
     const value = token();
-    await this.db.pool.query(
-      "SELECT issue_staff_session($1,$2,$3) AS issued",
-      [userId, tenantId, digest(value)],
-    );
+    await this.db.pool.query("SELECT issue_staff_session($1,$2,$3) AS issued", [
+      userId,
+      tenantId,
+      digest(value),
+    ]);
     return { token: value, tenantId };
   }
-
 }

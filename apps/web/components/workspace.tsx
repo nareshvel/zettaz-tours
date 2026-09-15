@@ -185,11 +185,11 @@ export function Workspace({
   initialTenants?: DemoTenant[];
 } = {}) {
   const [session, setSessionState] = useState<Session | null>(() => {
-    const seed =
-      clientRetainedSession() ?? normalizeBootstrap(initialSession);
-    if (typeof window !== "undefined") retainedSession = seed;
-    return seed;
-  }),
+      const seed =
+        clientRetainedSession() ?? normalizeBootstrap(initialSession);
+      if (typeof window !== "undefined") retainedSession = seed;
+      return seed;
+    }),
     [tenants, setTenantsState] = useState<DemoTenant[]>(() => {
       const retained = clientRetainedTenants();
       const seed = retained.length ? retained : initialTenants;
@@ -198,9 +198,7 @@ export function Workspace({
     }),
     [loading, setLoading] = useState(
       () =>
-        !Boolean(
-          clientRetainedSession() ?? normalizeBootstrap(initialSession),
-        ),
+        !Boolean(clientRetainedSession() ?? normalizeBootstrap(initialSession)),
     ),
     [error, setError] = useState(""),
     [menu, setMenu] = useState(false),
@@ -401,12 +399,7 @@ export function Workspace({
     { label: "WORKSPACE", links: ["/", "/crew"] },
     {
       label: "OPERATIONS",
-      links: [
-        "/operations",
-        "/departures",
-        "/reservations",
-        "/catalog",
-      ],
+      links: ["/operations", "/departures", "/reservations", "/catalog"],
     },
     { label: "INSIGHTS", links: ["/reports", "/customers"] },
     {
@@ -469,7 +462,7 @@ export function Workspace({
   } else if (area === "reservations" && segments[1] === "new") {
     permission = "bookings.write";
     content = <NewReservation session={session} />;
-  } else   if (
+  } else if (
     area === "reservations" &&
     segments[1] &&
     segments[2] === "amend"
@@ -485,11 +478,7 @@ export function Workspace({
   ) {
     permission = "bookings.write";
     content = (
-      <BookingChangePage
-        session={session}
-        bookingId={segments[1]}
-        cancel
-      />
+      <BookingChangePage session={session} bookingId={segments[1]} cancel />
     );
   } else if (area === "reservations" && segments[1])
     content = <BookingDetail session={session} bookingId={segments[1]} />;
@@ -521,14 +510,20 @@ export function Workspace({
   } else if (area === "operations") {
     permission = "manifest.read";
     content = <OperationsBoard session={session} />;
-  } else if (area === "catalog" && segments[1] === "availability" && segments[2] === "new") {
+  } else if (
+    area === "catalog" &&
+    segments[1] === "availability" &&
+    segments[2] === "new"
+  ) {
     permission = "catalog.write";
     content = <NewSchedule session={session} />;
-  } else if (area === "catalog" && segments[1] === "availability" && segments[2]) {
+  } else if (
+    area === "catalog" &&
+    segments[1] === "availability" &&
+    segments[2]
+  ) {
     permission = "catalog.read";
-    content = (
-      <AvailabilityDetail session={session} ruleId={segments[2]} />
-    );
+    content = <AvailabilityDetail session={session} ruleId={segments[2]} />;
   } else if (area === "catalog" && segments[1] === "new") {
     permission = "catalog.write";
     content = <NewProduct session={session} />;
@@ -549,9 +544,7 @@ export function Workspace({
     content = <Settings session={session} refresh={load} />;
   } else if (area === "profile") {
     permission = "authenticated";
-    content = (
-      <Profile session={session} section={segments[1] ?? "profile"} />
-    );
+    content = <Profile session={session} section={segments[1] ?? "profile"} />;
   } else if (area === "subscription") {
     permission = "authenticated";
     content = <Profile session={session} section="subscription" />;
@@ -795,7 +788,10 @@ export function Workspace({
               </div>
               <div className="welcome-banner-actions">
                 {session.permissions.includes("config.write") && (
-                  <a className="welcome-banner-cta" href="/profile/subscription">
+                  <a
+                    className="welcome-banner-cta"
+                    href="/profile/subscription"
+                  >
                     Start free trial →
                   </a>
                 )}

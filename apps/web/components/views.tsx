@@ -448,12 +448,7 @@ export function Overview({ session }: { session: Session }) {
   );
 }
 type ReservationSort =
-  | "created_at"
-  | "starts_at"
-  | "lead_name"
-  | "state"
-  | "guests"
-  | "balance";
+  "created_at" | "starts_at" | "lead_name" | "state" | "guests" | "balance";
 
 function ReservationTable({
   items,
@@ -469,10 +464,16 @@ function ReservationTable({
   onSort?: (column: ReservationSort) => void;
 }) {
   function header(column: ReservationSort, labelText: string, numeric = false) {
-    if (!onSort) return <th className={numeric ? "numeric" : undefined}>{labelText}</th>;
+    if (!onSort)
+      return <th className={numeric ? "numeric" : undefined}>{labelText}</th>;
     const active = sort === column;
     return (
-      <th className={numeric ? "numeric" : undefined} aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"}>
+      <th
+        className={numeric ? "numeric" : undefined}
+        aria-sort={
+          active ? (dir === "asc" ? "ascending" : "descending") : "none"
+        }
+      >
         <button
           type="button"
           className={"sortable-th" + (active ? " is-active" : "")}
@@ -604,17 +605,10 @@ function lastMonthBounds(day: string): [string, string] {
   const [year, month] = day.split("-").map(Number);
   const prevMonth = month === 1 ? 12 : month! - 1;
   const prevYear = month === 1 ? year! - 1 : year!;
-  return monthBounds(
-    `${prevYear}-${String(prevMonth).padStart(2, "0")}-15`,
-  );
+  return monthBounds(`${prevYear}-${String(prevMonth).padStart(2, "0")}-15`);
 }
 type DateRangePreset =
-  | "today"
-  | "week"
-  | "month"
-  | "last_month"
-  | "past"
-  | "custom";
+  "today" | "week" | "month" | "last_month" | "past" | "custom";
 function rangeBounds(
   preset: DateRangePreset,
   today: string,
@@ -802,9 +796,7 @@ export function Reservations({ session }: { session: Session }) {
                     <strong>Filters</strong>
                     <span>
                       {rangeLabel}
-                      {activeFilters
-                        ? ` · ${activeFilters} active`
-                        : ""}
+                      {activeFilters ? ` · ${activeFilters} active` : ""}
                     </span>
                   </div>
                   <label className="compact-control">
@@ -1082,11 +1074,14 @@ export function Departures({ session }: { session: Session }) {
   }, [filtersOpen]);
   const booked = list.items.reduce((sum, item) => sum + item.committed, 0);
   const held = list.items.reduce((sum, item) => sum + (item.held ?? 0), 0);
-  const days = list.items.reduce<Record<string, Departure[]>>((result, item) => {
-    const day = tenantDay(session.tenant.timezone, new Date(item.starts_at));
-    (result[day] ??= []).push(item);
-    return result;
-  }, {});
+  const days = list.items.reduce<Record<string, Departure[]>>(
+    (result, item) => {
+      const day = tenantDay(session.tenant.timezone, new Date(item.starts_at));
+      (result[day] ??= []).push(item);
+      return result;
+    },
+    {},
+  );
   const filterCount = (productId ? 1 : 0) + (range === "today" ? 0 : 1);
   function resetView() {
     setProductId("");
@@ -1108,11 +1103,11 @@ export function Departures({ session }: { session: Session }) {
       weekDays.push(day);
       if (weekDays.length > 42) break;
     }
-    while (weekDays.length % 7)
-      weekDays.push(shiftDay(weekDays.at(-1)!, 1));
+    while (weekDays.length % 7) weekDays.push(shiftDay(weekDays.at(-1)!, 1));
   }
   const weeks: string[][] = [];
-  for (let i = 0; i < weekDays.length; i += 7) weeks.push(weekDays.slice(i, i + 7));
+  for (let i = 0; i < weekDays.length; i += 7)
+    weeks.push(weekDays.slice(i, i + 7));
   const canBook = session.permissions.includes("bookings.write");
   const canManifest = session.permissions.includes("manifest.read");
   const rangeLabel =
@@ -1131,7 +1126,9 @@ export function Departures({ session }: { session: Session }) {
       />
       <div className="catalog-metrics departure-metrics">
         <div>
-          <strong>{list.busy && !list.items.length ? "—" : list.items.length}</strong>
+          <strong>
+            {list.busy && !list.items.length ? "—" : list.items.length}
+          </strong>
           <span>Departures in view</span>
         </div>
         <div>
@@ -1153,7 +1150,11 @@ export function Departures({ session }: { session: Session }) {
       </div>
       <section className="panel">
         <div className="departure-view-bar view-action-bar">
-          <div className="view-tabs compact" role="tablist" aria-label="Departure views">
+          <div
+            className="view-tabs compact"
+            role="tablist"
+            aria-label="Departure views"
+          >
             {(["agenda", "week", "list"] as const).map((item) => (
               <button
                 key={item}
@@ -1313,13 +1314,22 @@ export function Departures({ session }: { session: Session }) {
           <Loading />
         ) : !list.items.length ? (
           <Empty title="No departures in this range">
-            <p>Try another date range or product, or add availability in Catalog.</p>
+            <p>
+              Try another date range or product, or add availability in Catalog.
+            </p>
             <div className="button-row">
-              <button type="button" className="button secondary" onClick={resetView}>
+              <button
+                type="button"
+                className="button secondary"
+                onClick={resetView}
+              >
                 Reset filters
               </button>
               {session.permissions.includes("catalog.write") && (
-                <Link className="button secondary" href="/catalog/availability/new">
+                <Link
+                  className="button secondary"
+                  href="/catalog/availability/new"
+                >
                   Add availability
                 </Link>
               )}
@@ -1343,12 +1353,15 @@ export function Departures({ session }: { session: Session }) {
                     >
                       <header>
                         <strong>
-                          {new Intl.DateTimeFormat(session.tenant.config.locale, {
-                            weekday: "short",
-                            month: "short",
-                            day: "numeric",
-                            timeZone: "UTC",
-                          }).format(new Date(`${day}T12:00:00Z`))}
+                          {new Intl.DateTimeFormat(
+                            session.tenant.config.locale,
+                            {
+                              weekday: "short",
+                              month: "short",
+                              day: "numeric",
+                              timeZone: "UTC",
+                            },
+                          ).format(new Date(`${day}T12:00:00Z`))}
                         </strong>
                         <span>{items.length}</span>
                       </header>
@@ -1525,7 +1538,13 @@ export function Departures({ session }: { session: Session }) {
                       <strong>{d.product_name}</strong>
                       <small>{d.option_name}</small>
                     </div>
-                    <Status state={d.available === 0 ? "sold_out" : (d.status ?? "scheduled")} />
+                    <Status
+                      state={
+                        d.available === 0
+                          ? "sold_out"
+                          : (d.status ?? "scheduled")
+                      }
+                    />
                   </div>
                   <div className="reservation-card-tour">
                     <span>
@@ -1686,8 +1705,7 @@ export function ManifestView({
     waiverSigned?: boolean,
   ) {
     const needsWaiver =
-      !waiverSigned &&
-      ["arrived", "waiver_pending"].includes(state);
+      !waiverSigned && ["arrived", "waiver_pending"].includes(state);
     if (needsWaiver) setWaiverTarget({ booking, passenger, mode: "sign" });
   }
 
@@ -1782,9 +1800,7 @@ export function ManifestView({
       (row) => row.id === hit.passengerId,
     );
     if (!booking || !passenger) {
-      setCheckinMessage(
-        "Passenger found, but not on this departure manifest.",
-      );
+      setCheckinMessage("Passenger found, but not on this departure manifest.");
       return;
     }
     await recordPassengerCheckin(booking, passenger, "arrived");
@@ -1809,9 +1825,13 @@ export function ManifestView({
       (sum, booking) =>
         sum +
         booking.passengers.filter((passenger) =>
-          ["arrived", "waiver_pending", "balance_pending", "cleared_to_board", "boarded"].includes(
-            passenger.checkin_state ?? "",
-          ),
+          [
+            "arrived",
+            "waiver_pending",
+            "balance_pending",
+            "cleared_to_board",
+            "boarded",
+          ].includes(passenger.checkin_state ?? ""),
         ).length,
       0,
     ) ?? 0;
@@ -1831,7 +1851,9 @@ export function ManifestView({
         booking.passengers.filter(
           (passenger) =>
             !passenger.waiver_signed &&
-            ["arrived", "waiver_pending"].includes(passenger.checkin_state ?? ""),
+            ["arrived", "waiver_pending"].includes(
+              passenger.checkin_state ?? "",
+            ),
         ).length,
       0,
     ) ?? 0;
@@ -1840,9 +1862,12 @@ export function ManifestView({
       (booking) =>
         (booking.guest_balance_minor ?? 0) > 0 &&
         booking.passengers.some((passenger) =>
-          ["arrived", "balance_pending", "waiver_pending", "not_arrived"].includes(
-            passenger.checkin_state ?? "not_arrived",
-          ),
+          [
+            "arrived",
+            "balance_pending",
+            "waiver_pending",
+            "not_arrived",
+          ].includes(passenger.checkin_state ?? "not_arrived"),
         ),
     ).length ?? 0;
   const pendingStartGuests =
@@ -1873,7 +1898,9 @@ export function ManifestView({
         <button
           className="button"
           disabled={checkin.busy}
-          onClick={() => void recordPassengerCheckin(booking, passenger, "boarded")}
+          onClick={() =>
+            void recordPassengerCheckin(booking, passenger, "boarded")
+          }
         >
           Board
         </button>
@@ -1939,7 +1966,9 @@ export function ManifestView({
       <button
         className="button"
         disabled={checkin.busy}
-        onClick={() => void recordPassengerCheckin(booking, passenger, "arrived")}
+        onClick={() =>
+          void recordPassengerCheckin(booking, passenger, "arrived")
+        }
       >
         Arrived
       </button>
@@ -2016,16 +2045,14 @@ export function ManifestView({
                   readiness={{
                     confirmedGuests: guestTotal,
                     boardedGuests: boardedCount,
-                    noShowGuests:
-                      data.bookings.reduce(
-                        (sum, booking) =>
-                          sum +
-                          booking.passengers.filter(
-                            (passenger) =>
-                              passenger.checkin_state === "no_show",
-                          ).length,
-                        0,
-                      ),
+                    noShowGuests: data.bookings.reduce(
+                      (sum, booking) =>
+                        sum +
+                        booking.passengers.filter(
+                          (passenger) => passenger.checkin_state === "no_show",
+                        ).length,
+                      0,
+                    ),
                     boardingPending: pendingStartGuests.length,
                     pickupRequired: 0,
                     pickupPlanned: 0,
@@ -2096,9 +2123,7 @@ export function ManifestView({
               <h2>
                 <Users size={18} /> Board guests
               </h2>
-              <p className="muted">
-                Arrive → Pay if needed → Waiver → Board.
-              </p>
+              <p className="muted">Arrive → Pay if needed → Waiver → Board.</p>
             </div>
           </div>
           {!data.bookings.length ? (
@@ -2270,70 +2295,72 @@ export function ManifestView({
                           )}
                         {canCheckin &&
                           rosterBookingId !== booking.booking_id && (
-                          <div className="row-actions no-print">
-                            {balanceBadge(
-                              booking,
-                              booking.checkin_state ?? "not_arrived",
-                            )}
-                            {passengerStatus(
-                              booking.checkin_state ?? "not_arrived",
-                            )}
-                            <button
-                              type="button"
-                              className="button"
-                              onClick={() => draftRoster(booking)}
-                            >
-                              Add guest names
-                            </button>
-                            {booking.checkin_state === "cleared_to_board" ? (
+                            <div className="row-actions no-print">
+                              {balanceBadge(
+                                booking,
+                                booking.checkin_state ?? "not_arrived",
+                              )}
+                              {passengerStatus(
+                                booking.checkin_state ?? "not_arrived",
+                              )}
                               <button
-                                className="button secondary"
-                                disabled={checkin.busy}
-                                onClick={() =>
-                                  void recordCheckin(booking, "boarded")
-                                }
-                              >
-                                Board
-                              </button>
-                            ) : booking.checkin_state === "boarded" ? (
-                              <button
-                                className="button secondary"
-                                disabled={checkin.busy}
-                                onClick={() =>
-                                  void recordCheckin(
-                                    booking,
-                                    "cleared_to_board",
-                                  )
-                                }
-                              >
-                                Undo board
-                              </button>
-                            ) : booking.checkin_state === "no_show" ? null : booking.checkin_state ===
-                              "balance_pending" &&
-                              canPay &&
-                              guestBalanceMinor(booking) > 0 ? (
-                              <button
-                                className="button secondary"
                                 type="button"
-                                onClick={() => setPaymentTarget({ booking })}
+                                className="button"
+                                onClick={() => draftRoster(booking)}
                               >
-                                Pay
+                                Add guest names
                               </button>
-                            ) : booking.checkin_state === "arrived" ||
-                              booking.checkin_state === "waiver_pending" ||
-                              booking.checkin_state === "balance_pending" ? null : (
-                              <button
-                                className="button secondary"
-                                disabled={checkin.busy}
-                                onClick={() =>
-                                  void recordCheckin(booking, "arrived")
-                                }
-                              >
-                                Arrived
-                              </button>
-                            )}
-                          </div>
-                        )}
+                              {booking.checkin_state === "cleared_to_board" ? (
+                                <button
+                                  className="button secondary"
+                                  disabled={checkin.busy}
+                                  onClick={() =>
+                                    void recordCheckin(booking, "boarded")
+                                  }
+                                >
+                                  Board
+                                </button>
+                              ) : booking.checkin_state === "boarded" ? (
+                                <button
+                                  className="button secondary"
+                                  disabled={checkin.busy}
+                                  onClick={() =>
+                                    void recordCheckin(
+                                      booking,
+                                      "cleared_to_board",
+                                    )
+                                  }
+                                >
+                                  Undo board
+                                </button>
+                              ) : booking.checkin_state ===
+                                "no_show" ? null : booking.checkin_state ===
+                                  "balance_pending" &&
+                                canPay &&
+                                guestBalanceMinor(booking) > 0 ? (
+                                <button
+                                  className="button secondary"
+                                  type="button"
+                                  onClick={() => setPaymentTarget({ booking })}
+                                >
+                                  Pay
+                                </button>
+                              ) : booking.checkin_state === "arrived" ||
+                                booking.checkin_state === "waiver_pending" ||
+                                booking.checkin_state ===
+                                  "balance_pending" ? null : (
+                                <button
+                                  className="button secondary"
+                                  disabled={checkin.busy}
+                                  onClick={() =>
+                                    void recordCheckin(booking, "arrived")
+                                  }
+                                >
+                                  Arrived
+                                </button>
+                              )}
+                            </div>
+                          )}
                       </div>
                     )}
                   </article>

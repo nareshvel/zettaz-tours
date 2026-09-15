@@ -271,9 +271,16 @@ export class NotificationService {
                 "SMTP is not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS, then retry.",
               ],
             );
-            await record(tx, actor, "notification.retry_held", messageId, null, {
-              status: "held_provider",
-            });
+            await record(
+              tx,
+              actor,
+              "notification.retry_held",
+              messageId,
+              null,
+              {
+                status: "held_provider",
+              },
+            );
             return { id: messageId, status: "held_provider", deferred: true };
           }
           await tx.query(
@@ -282,9 +289,16 @@ export class NotificationService {
            WHERE tenant_id=$1 AND booking_id=$2 AND id=$3`,
             [actor.tenantId, bookingId, messageId],
           );
-          await record(tx, actor, "notification.retry_queued", messageId, null, {
-            status: "queued",
-          });
+          await record(
+            tx,
+            actor,
+            "notification.retry_queued",
+            messageId,
+            null,
+            {
+              status: "queued",
+            },
+          );
           return { id: messageId, status: "queued", deferred: false };
         },
       )
@@ -371,10 +385,7 @@ export class NotificationController {
 
   @Get()
   @Access("notifications.read")
-  list(
-    @CurrentActor() actor: Actor,
-    @Param("bookingId") bookingId: string,
-  ) {
+  list(@CurrentActor() actor: Actor, @Param("bookingId") bookingId: string) {
     return this.service.list(actor, parse(z.string().uuid(), bookingId));
   }
 

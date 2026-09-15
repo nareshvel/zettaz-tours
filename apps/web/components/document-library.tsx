@@ -1,6 +1,19 @@
 "use client";
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
-import { Download, FileText, HardDrive, Plus, Trash2, Upload } from "lucide-react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
+import {
+  Download,
+  FileText,
+  HardDrive,
+  Plus,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import {
   downloadApiFile,
   errorText,
@@ -59,12 +72,9 @@ export function formatBytes(bytes: number) {
 export function StorageMeter({ usage }: { usage: LibraryUsage | null }) {
   if (!usage) return null;
   const ratio =
-    usage.quotaBytes > 0
-      ? Math.min(1, usage.usedBytes / usage.quotaBytes)
-      : 0;
+    usage.quotaBytes > 0 ? Math.min(1, usage.usedBytes / usage.quotaBytes) : 0;
   const pct = Math.round(ratio * 100);
-  const tone =
-    ratio >= 1 ? "full" : ratio >= 0.8 ? "warn" : "ok";
+  const tone = ratio >= 1 ? "full" : ratio >= 0.8 ? "warn" : "ok";
   return (
     <div className={`library-storage-meter is-${tone}`}>
       <div className="library-storage-meter-head">
@@ -162,12 +172,7 @@ export function DocumentLibrary({ session }: { session: Session }) {
       if (subjectFilter === "crew" && !doc.crew_actor_id) return false;
       if (subjectFilter === "resource" && !doc.resource_id) return false;
       if (!q) return true;
-      return [
-        doc.document_type,
-        doc.subject_name,
-        doc.file_name,
-        doc.notes,
-      ]
+      return [doc.document_type, doc.subject_name, doc.file_name, doc.notes]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(q));
     });
@@ -186,13 +191,7 @@ export function DocumentLibrary({ session }: { session: Session }) {
       const first = (resources.data ?? []).find((r) => r.active);
       if (first) setForm((v) => ({ ...v, subjectId: first.id }));
     }
-  }, [
-    adding,
-    form.subjectKind,
-    form.subjectId,
-    members.data,
-    resources.data,
-  ]);
+  }, [adding, form.subjectKind, form.subjectId, members.data, resources.data]);
 
   async function save() {
     setBusy(true);
@@ -204,8 +203,7 @@ export function DocumentLibrary({ session }: { session: Session }) {
           documentType: form.documentType,
           expiresOn: form.expiresOn,
           notes: form.notes,
-          crewActorId:
-            form.subjectKind === "crew" ? form.subjectId : undefined,
+          crewActorId: form.subjectKind === "crew" ? form.subjectId : undefined,
           resourceId:
             form.subjectKind === "resource" ? form.subjectId : undefined,
         },
@@ -668,4 +666,3 @@ export function StaffDocumentArchive({
     </>
   );
 }
-

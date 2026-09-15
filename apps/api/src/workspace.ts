@@ -231,8 +231,7 @@ export class WorkspaceController {
       const items = rows.slice(0, q.limit);
       return {
         items,
-        nextCursor:
-          rows.length > q.limit ? String(offset + q.limit) : null,
+        nextCursor: rows.length > q.limit ? String(offset + q.limit) : null,
       };
     });
   }
@@ -331,7 +330,8 @@ export class WorkspaceController {
         [actor.tenantId],
       );
       // billingReady: true once Stripe price IDs are real (no placeholder prefix) and webhook is configured.
-      const samplePlan = plans[0] as { stripe_price_id_monthly?: string } | undefined;
+      const samplePlan = plans[0] as
+        { stripe_price_id_monthly?: string } | undefined;
       const billingReady =
         !!process.env.STRIPE_SECRET_KEY &&
         !!process.env.STRIPE_WEBHOOK_SECRET &&

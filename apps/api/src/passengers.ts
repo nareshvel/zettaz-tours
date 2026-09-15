@@ -226,7 +226,8 @@ export class PassengerService {
             "SELECT b.state,h.party FROM bookings b JOIN holds h ON h.tenant_id=b.tenant_id AND h.id=b.hold_id WHERE b.tenant_id=$1 AND b.id=$2 FOR UPDATE",
             [actor.tenantId, bookingId],
           )
-        ).rows[0] as { state: string; party: Record<string, number> } | undefined;
+        ).rows[0] as
+          { state: string; party: Record<string, number> } | undefined;
         if (!booking) throw new NotFoundException();
         if (booking.state !== "confirmed")
           throw new ConflictException(
@@ -325,10 +326,7 @@ export class PassengerService {
           throw new ConflictException(
             "No-show passenger check-in state cannot be changed",
           );
-        if (
-          prior?.state === "boarded" &&
-          input.state !== "cleared_to_board"
-        )
+        if (prior?.state === "boarded" && input.state !== "cleared_to_board")
           throw new ConflictException(
             "Boarded guests can only be reverted to cleared to board",
           );

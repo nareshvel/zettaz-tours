@@ -98,32 +98,32 @@ export function Finance({ session }: { session: Session }) {
           title="Partner settlements"
           description="Commission accrued on attributed bookings, and the settlement periods you invoice and pay against."
         />
-      <div className="view-action-bar">
-        <div
-          className="view-tabs compact"
-          role="tablist"
-          aria-label="Finance sections"
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={false}
-            onClick={() => setTab("collections")}
+        <div className="view-action-bar">
+          <div
+            className="view-tabs compact"
+            role="tablist"
+            aria-label="Finance sections"
           >
-            Collections
-          </button>
-          {canReadStatements && (
             <button
               type="button"
               role="tab"
-              aria-selected
-              onClick={() => setTab("partners")}
+              aria-selected={false}
+              onClick={() => setTab("collections")}
             >
-              Partners
+              Collections
             </button>
-          )}
+            {canReadStatements && (
+              <button
+                type="button"
+                role="tab"
+                aria-selected
+                onClick={() => setTab("partners")}
+              >
+                Partners
+              </button>
+            )}
+          </div>
         </div>
-      </div>
         <FinancePartners session={session} />
       </>
     );
@@ -190,9 +190,7 @@ export function Finance({ session }: { session: Session }) {
                 <select
                   value={stateFilter}
                   onChange={(event) =>
-                    setStateFilter(
-                      event.target.value as typeof stateFilter,
-                    )
+                    setStateFilter(event.target.value as typeof stateFilter)
                   }
                 >
                   <option value="unverified">Unverified</option>
@@ -283,9 +281,7 @@ export function Finance({ session }: { session: Session }) {
                         <button
                           type="button"
                           className="button"
-                          disabled={
-                            !reason[claim.id]?.trim() || decision.busy
-                          }
+                          disabled={!reason[claim.id]?.trim() || decision.busy}
                           onClick={() =>
                             setPending({ claim, decision: "accepted" })
                           }
@@ -295,9 +291,7 @@ export function Finance({ session }: { session: Session }) {
                         <button
                           type="button"
                           className="button destructive"
-                          disabled={
-                            !reason[claim.id]?.trim() || decision.busy
-                          }
+                          disabled={!reason[claim.id]?.trim() || decision.busy}
                           onClick={() =>
                             setPending({ claim, decision: "rejected" })
                           }
@@ -350,10 +344,7 @@ export function Finance({ session }: { session: Session }) {
                       <td>{line.kind.replaceAll("_", " ")}</td>
                       <td>
                         {money(Number(line.amount_minor), line.currency)}
-                        <small className="currency-tag">
-                          {" "}
-                          {line.currency}
-                        </small>
+                        <small className="currency-tag"> {line.currency}</small>
                       </td>
                       <td className="mono">
                         {line.booking_id.slice(0, 8).toUpperCase()}

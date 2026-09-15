@@ -21,9 +21,7 @@ export function Heading({
         {eyebrow && <p className="eyebrow">{eyebrow}</p>}
         <div className="page-heading-title-row">
           <h1>{title}</h1>
-          {action ? (
-            <div className="page-heading-action">{action}</div>
-          ) : null}
+          {action ? <div className="page-heading-action">{action}</div> : null}
         </div>
         {description && <p className="subtitle">{description}</p>}
       </div>

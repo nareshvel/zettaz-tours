@@ -247,7 +247,9 @@ export function OperationsBoard({ session }: { session: Session }) {
                 <div className="dispatch-card-bottom">
                   <div className="dispatch-actions">
                     {noShowGuests > 0 && (
-                      <span className="status held">{noShowGuests} no-show</span>
+                      <span className="status held">
+                        {noShowGuests} no-show
+                      </span>
                     )}
                     {d.operational_status !== "open" && (
                       <span className="status held">
@@ -684,10 +686,7 @@ export function DepartureOptionsMenu({
       const target = event.target as Node | null;
       if (!target) return;
       if (ref.current?.contains(target)) return;
-      if (
-        target instanceof Element &&
-        target.closest(".confirm-dialog-root")
-      ) {
+      if (target instanceof Element && target.closest(".confirm-dialog-root")) {
         return;
       }
       setOpen(false);
@@ -1089,7 +1088,9 @@ function defaultPickupAt(stops: DraftStop[], departureStartsAt: string) {
   }
   const departure = new Date(departureStartsAt);
   if (!Number.isNaN(departure.getTime())) {
-    return new Date(departure.getTime() - 60 * 60_000).toISOString().slice(0, 16);
+    return new Date(departure.getTime() - 60 * 60_000)
+      .toISOString()
+      .slice(0, 16);
   }
   return "";
 }
@@ -1173,7 +1174,8 @@ function PickupEditor({
     setStops((current) => {
       let next = [...current];
       for (const booking of eligible) {
-        if (next.some((stop) => stop.bookingId === booking.booking_id)) continue;
+        if (next.some((stop) => stop.bookingId === booking.booking_id))
+          continue;
         next = [
           ...next,
           {
@@ -1318,9 +1320,8 @@ function PickupEditor({
             <div>
               <h2>Ordered stops</h2>
               <p className="muted">
-                Sequence for the driver. Saving replaces the current plan.
-                Times are planning defaults, not a routed ETA. Manage locations
-                in{" "}
+                Sequence for the driver. Saving replaces the current plan. Times
+                are planning defaults, not a routed ETA. Manage locations in{" "}
                 <Link href="/settings?tab=pickups">
                   Settings → Pickup locations
                 </Link>

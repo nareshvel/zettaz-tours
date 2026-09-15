@@ -1,11 +1,11 @@
-import {
-  Injectable,
-  Logger,
-} from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Actor, TenantConfig } from "../../../packages/shared/src/contracts";
+import type {
+  Actor,
+  TenantConfig,
+} from "../../../packages/shared/src/contracts";
 import { Database, record } from "./database";
 import { textPdf } from "./pdf";
 
@@ -159,7 +159,14 @@ export class DocumentStorageService {
           actor.actorId,
         ],
       );
-      await record(tx, actor, "document.artifact_created", result.id, null, result);
+      await record(
+        tx,
+        actor,
+        "document.artifact_created",
+        result.id,
+        null,
+        result,
+      );
       if (result.archiveStatus === "sync_pending") {
         await tx.query(
           `INSERT INTO outbox_events(tenant_id,id,type,aggregate_id,payload) VALUES($1,$2,$3,$4,$5)`,
@@ -217,7 +224,11 @@ export class DocumentStorageService {
              WHERE tenant_id=$1 AND id=$2`,
             [actor.tenantId, row.id, sync.error],
           );
-          outcomes.push({ id: row.id, status: "sync_blocked", error: sync.error });
+          outcomes.push({
+            id: row.id,
+            status: "sync_blocked",
+            error: sync.error,
+          });
         }
       }
       return outcomes;

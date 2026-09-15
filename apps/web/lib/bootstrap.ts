@@ -19,11 +19,15 @@ export async function loadWorkspaceBootstrap(): Promise<WorkspaceBootstrap> {
     const memberships = await upstream("/auth/v1/tenants");
     const tenants = memberships.ok
       ? (
-          ((await memberships.json()) as { tenants?: Array<{
-            tenant_id: string;
-            name: string;
-            email: string;
-          }> }).tenants ?? []
+          (
+            (await memberships.json()) as {
+              tenants?: Array<{
+                tenant_id: string;
+                name: string;
+                email: string;
+              }>;
+            }
+          ).tenants ?? []
         ).map((tenant) => ({
           tenantId: tenant.tenant_id,
           name: tenant.name,

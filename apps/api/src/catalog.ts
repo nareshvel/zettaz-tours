@@ -121,27 +121,62 @@ export class CatalogService {
         `INSERT INTO products
            (tenant_id,id,name,definition,internal_name,customer_title,description,product_kind,availability_mode)
          VALUES($1,$2,$3,$4,$3,$3,$5,$6,$7)`,
-        [actor.tenantId, productId, data.name, data, data.description, data.productKind, data.availabilityMode],
+        [
+          actor.tenantId,
+          productId,
+          data.name,
+          data,
+          data.description,
+          data.productKind,
+          data.availabilityMode,
+        ],
       );
       const optionId = randomUUID();
       await tx.query(
         `INSERT INTO product_options
            (tenant_id,id,product_id,internal_name,customer_title,duration_minutes,confirmation_mode,pricing_model,private_booking)
          VALUES($1,$2,$3,$4,$4,$5,$6,$7,$8)`,
-        [actor.tenantId, optionId, productId, data.optionName, data.durationMinutes, data.confirmationMode, data.pricingModel, data.privateBooking],
+        [
+          actor.tenantId,
+          optionId,
+          productId,
+          data.optionName,
+          data.durationMinutes,
+          data.confirmationMode,
+          data.pricingModel,
+          data.privateBooking,
+        ],
       );
       for (const [sortOrder, category] of data.categories.entries()) {
         const unitId = randomUUID();
         await tx.query(
           `INSERT INTO passenger_units(tenant_id,id,option_id,code,label,counts_toward_capacity,sort_order)
            VALUES($1,$2,$3,$4,$5,$6,$7)`,
-          [actor.tenantId, unitId, optionId, category.slug, category.label, category.countsTowardCapacity, sortOrder],
+          [
+            actor.tenantId,
+            unitId,
+            optionId,
+            category.slug,
+            category.label,
+            category.countsTowardCapacity,
+            sortOrder,
+          ],
         );
-        for (const rate of data.rates.filter((item) => item.category === category.slug))
+        for (const rate of data.rates.filter(
+          (item) => item.category === category.slug,
+        ))
           await tx.query(
             `INSERT INTO rate_plans(tenant_id,id,option_id,unit_id,start_date,end_date,amount_minor)
              VALUES($1,$2,$3,$4,$5,$6,$7)`,
-            [actor.tenantId, randomUUID(), optionId, unitId, rate.startDate, rate.endDate, rate.amountMinor],
+            [
+              actor.tenantId,
+              randomUUID(),
+              optionId,
+              unitId,
+              rate.startDate,
+              rate.endDate,
+              rate.amountMinor,
+            ],
           );
       }
       await record(tx, actor, "catalog.configured", productId, null, data);
@@ -158,13 +193,16 @@ export class CatalogService {
     const localTimes = [...new Set(data.localTimes)];
     return this.db.command(actor, "schedule.create", key, data, async (tx) => {
       const settings = await tenant(tx, actor);
-      const option = (await tx.query(
-        `SELECT o.id,o.duration_minutes,p.availability_mode FROM product_options o
+      const option = (
+        await tx.query(
+          `SELECT o.id,o.duration_minutes,p.availability_mode FROM product_options o
          JOIN products p ON p.tenant_id=o.tenant_id AND p.id=o.product_id
          WHERE o.tenant_id=$1 AND o.product_id=$2 AND o.active ORDER BY o.created_at LIMIT 1`,
-        [actor.tenantId, data.productId],
-      )).rows[0];
-      if (!option) throw new BadRequestException("Product has no active option");
+          [actor.tenantId, data.productId],
+        )
+      ).rows[0];
+      if (!option)
+        throw new BadRequestException("Product has no active option");
       if (option.availability_mode !== "fixed_departure")
         throw new BadRequestException(
           "This editor creates fixed departures only; use the product's availability-mode editor",
@@ -261,11 +299,18 @@ export class CatalogService {
       return { scheduleId, ruleId, departures };
     });
   }
-  rateWindowUsage(actor: Actor, productId: string, startDate: string, endDate: string) {
+  rateWindowUsage(
+    actor: Actor,
+    productId: string,
+    startDate: string,
+    endDate: string,
+  ) {
     validDay(startDate);
     validDay(endDate);
     if (startDate > endDate)
-      throw new BadRequestException("Rate window start must be on or before end");
+      throw new BadRequestException(
+        "Rate window start must be on or before end",
+      );
     return this.db.transaction(actor, async (tx) => {
       const {
         rows: [product],
@@ -329,7 +374,8 @@ export class CatalogService {
          ORDER BY created_at LIMIT 1`,
         [actor.tenantId, productId],
       );
-      if (!option) throw new BadRequestException("Product has no active option");
+      if (!option)
+        throw new BadRequestException("Product has no active option");
       await tx.query(
         `UPDATE product_options
             SET internal_name=$3,customer_title=$3,duration_minutes=$4,
@@ -422,7 +468,8 @@ export class CatalogService {
           data.version,
         ],
       );
-      if (!row) throw new ConflictException("Product was updated by someone else");
+      if (!row)
+        throw new ConflictException("Product was updated by someone else");
       await record(tx, actor, "catalog.updated", productId, before, data);
       return row;
     });
@@ -431,11 +478,11 @@ export class CatalogService {
     const data = parse(availabilityRuleUpdateSchema, input);
     const regenerating = Boolean(
       data.startDate ||
-        data.endDate ||
-        data.weekdays ||
-        data.localTimes ||
-        data.capacity != null ||
-        data.blackoutDates,
+      data.endDate ||
+      data.weekdays ||
+      data.localTimes ||
+      data.capacity != null ||
+      data.blackoutDates,
     );
     if (data.startDate) validDay(data.startDate);
     if (data.endDate) validDay(data.endDate);
@@ -467,7 +514,9 @@ export class CatalogService {
         );
         if (!before) throw new NotFoundException();
         if (before.version !== data.version)
-          throw new ConflictException("Availability rule was updated by someone else");
+          throw new ConflictException(
+            "Availability rule was updated by someone else",
+          );
         if (data.status === "paused" && before.status !== "paused") {
           const {
             rows: [busy],
@@ -491,18 +540,14 @@ export class CatalogService {
             );
         }
 
-        const {
-          rows: currentTimes,
-        } = await tx.query(
+        const { rows: currentTimes } = await tx.query(
           `SELECT to_char(local_time,'HH24:MI') AS local_time
              FROM availability_rule_times
             WHERE tenant_id=$1 AND rule_id=$2
             ORDER BY sort_order`,
           [actor.tenantId, ruleId],
         );
-        const {
-          rows: currentBlackouts,
-        } = await tx.query(
+        const { rows: currentBlackouts } = await tx.query(
           `SELECT to_char(local_date,'YYYY-MM-DD') AS local_date
              FROM availability_exceptions
             WHERE tenant_id=$1 AND rule_id=$2 AND kind='closed'`,
@@ -760,7 +805,9 @@ export class CatalogService {
           ],
         );
         if (!row)
-          throw new ConflictException("Availability rule was updated by someone else");
+          throw new ConflictException(
+            "Availability rule was updated by someone else",
+          );
         await record(tx, actor, "availability-rule.updated", ruleId, before, {
           ...data,
           impact: { added, cancelled, capacityUpdated, revived },

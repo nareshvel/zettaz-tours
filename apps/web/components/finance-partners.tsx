@@ -3,13 +3,7 @@
 import { useState } from "react";
 import { ChevronDown, FileText } from "lucide-react";
 import type { Session } from "@/lib/types";
-import {
-  dateOnly,
-  label,
-  money,
-  useMutation,
-  useResource,
-} from "@/lib/client";
+import { dateOnly, label, money, useMutation, useResource } from "@/lib/client";
 import {
   Empty,
   Field,
@@ -110,11 +104,7 @@ function defaultPeriod() {
   const now = new Date();
   const firstThis = new Date(now.getFullYear(), now.getMonth(), 1);
   const lastPrev = new Date(firstThis.getTime() - 86400000);
-  const firstPrev = new Date(
-    lastPrev.getFullYear(),
-    lastPrev.getMonth(),
-    1,
-  );
+  const firstPrev = new Date(lastPrev.getFullYear(), lastPrev.getMonth(), 1);
   const iso = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
       d.getDate(),
@@ -257,7 +247,10 @@ function AdvanceDialog({
         </select>
       </Field>
       {status === "invoiced" && (
-        <Field label="Invoice number" hint="Reference on the invoice you issue.">
+        <Field
+          label="Invoice number"
+          hint="Reference on the invoice you issue."
+        >
           <input
             maxLength={60}
             value={invoiceNumber}
@@ -317,7 +310,11 @@ function PartnerDetail({
   onChanged: () => void;
 }) {
   const fmtDate = (value: string) =>
-    dateOnly(value, session.tenant.config.dateFormat, session.tenant.config.locale);
+    dateOnly(
+      value,
+      session.tenant.config.dateFormat,
+      session.tenant.config.locale,
+    );
   const unsettled = useResource<UnsettledBooking[]>(
     `finance/v1/partners/${partner.id}/bookings/unsettled`,
   );

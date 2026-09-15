@@ -24,25 +24,13 @@ type Partner = {
   notes: string;
   partner_type?: "ota" | "reseller" | "affiliate" | "wholesale" | null;
   commission_type?:
-    | "percentage"
-    | "flat_per_booking"
-    | "flat_per_pax"
-    | "net_rate"
-    | null;
+    "percentage" | "flat_per_booking" | "flat_per_pax" | "net_rate" | null;
   commission_rate?: number | string | null;
   commission_amount_minor?: number | string | null;
-  commission_direction?:
-    | "partner_owes_tenant"
-    | "tenant_owes_partner"
-    | null;
+  commission_direction?: "partner_owes_tenant" | "tenant_owes_partner" | null;
   commission_currency?: string | null;
   settlement_schedule?:
-    | "monthly"
-    | "biweekly"
-    | "per_booking"
-    | "custom"
-    | "manual"
-    | null;
+    "monthly" | "biweekly" | "per_booking" | "custom" | "manual" | null;
   settlement_day?: number | null;
   payment_terms_days?: number | null;
   requires_formal_invoice?: boolean | null;
@@ -97,7 +85,7 @@ function commissionSummary(partner: Partner, fallbackCurrency: string) {
   const amount = numeric(partner.commission_amount_minor);
   const terms =
     partner.commission_type === "percentage" && rate !== null
-      ? `${(rate * 100).toFixed(rate * 100 % 1 === 0 ? 0 : 1)}% of gross`
+      ? `${(rate * 100).toFixed((rate * 100) % 1 === 0 ? 0 : 1)}% of gross`
       : partner.commission_type === "flat_per_booking" && amount !== null
         ? `${money(amount, currency)} per booking`
         : partner.commission_type === "flat_per_pax" && amount !== null
@@ -319,7 +307,10 @@ export function PartnerSettings({ session }: { session: Session }) {
                       </span>
                     ) : null}
                     {partner.status === "inactive" ? (
-                      <> <Status state="inactive" /></>
+                      <>
+                        {" "}
+                        <Status state="inactive" />
+                      </>
                     ) : null}
                   </strong>
                   <p>
@@ -414,7 +405,9 @@ export function PartnerSettings({ session }: { session: Session }) {
           />
         </Field>
 
-        <div className={showRate || showAmount ? "form-grid three" : "form-grid"}>
+        <div
+          className={showRate || showAmount ? "form-grid three" : "form-grid"}
+        >
           <Field label="Partner type">
             <select
               value={form.partnerType}

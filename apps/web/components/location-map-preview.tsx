@@ -1,11 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type {
-  Icon,
-  Map as LeafletMap,
-  Marker as LeafletMarker,
-} from "leaflet";
+import type { Icon, Map as LeafletMap, Marker as LeafletMarker } from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 /** Antigua-ish fallback when tenant place cannot be geocoded. */
@@ -20,7 +16,9 @@ function parseCoord(value: string, min: number, max: number) {
   return n;
 }
 
-async function geocodePlace(place: string): Promise<{ lat: number; lng: number } | null> {
+async function geocodePlace(
+  place: string,
+): Promise<{ lat: number; lng: number } | null> {
   const query = place.trim();
   if (!query) return null;
   try {
@@ -106,11 +104,7 @@ export function LocationMapPreview({
   coordsRef.current = { lat, lng };
   defaultPlaceRef.current = defaultPlace;
 
-  async function syncMarker(
-    map: LeafletMap,
-    nextLat: number,
-    nextLng: number,
-  ) {
+  async function syncMarker(map: LeafletMap, nextLat: number, nextLng: number) {
     const L = (await import("leaflet")).default;
     const icon = markerIcon(L);
     if (!markerRef.current) {

@@ -10,13 +10,7 @@ import {
 } from "lucide-react";
 import type { Session } from "@/lib/types";
 import { money, useResource } from "@/lib/client";
-import {
-  Empty,
-  Heading,
-  Loading,
-  Notice,
-  TenantDateInput,
-} from "./common";
+import { Empty, Heading, Loading, Notice, TenantDateInput } from "./common";
 
 type Report = {
   range: { from: string; to: string };
@@ -83,9 +77,7 @@ function monthBounds(day: string): [string, string] {
 function previousMonthBounds(day: string): [string, string] {
   const [year, month] = day.split("-").map(Number);
   const prev = month === 1 ? [year - 1, 12] : [year, month - 1];
-  return monthBounds(
-    `${prev[0]}-${String(prev[1]).padStart(2, "0")}-01`,
-  );
+  return monthBounds(`${prev[0]}-${String(prev[1]).padStart(2, "0")}-01`);
 }
 
 function rangeBounds(
@@ -267,8 +259,7 @@ export function Reports({ session }: { session: Session }) {
                   <p className="filter-range-hint muted">{rangeHint}</p>
                 )}
                 <p className="filter-range-hint muted">
-                  Population is departures whose local start date falls in
-                  range
+                  Population is departures whose local start date falls in range
                   {report.data ? ` · ${report.data.currency}` : ""}.
                 </p>
                 <div className="filter-popover-actions">
@@ -369,10 +360,7 @@ export function Reports({ session }: { session: Session }) {
                 [
                   ["Weather holds", report.data.operations.weatherHolds],
                   ["Closed departures", report.data.operations.closed],
-                  [
-                    "Unassigned departures",
-                    report.data.operations.unassigned,
-                  ],
+                  ["Unassigned departures", report.data.operations.unassigned],
                   [
                     "Unresolved pickups",
                     report.data.operations.unresolvedPickups,

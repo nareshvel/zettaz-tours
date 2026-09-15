@@ -197,7 +197,9 @@ export function BookingHistory({
                 <strong>
                   {label(c.kind)} · v{c.version}
                 </strong>
-                <small>{dateTime(c.occurred_at, session.tenant.timezone)}</small>
+                <small>
+                  {dateTime(c.occurred_at, session.tenant.timezone)}
+                </small>
               </div>
               {c.reason ? <p>{c.reason}</p> : null}
               {lines.length > 0 && (
@@ -334,15 +336,18 @@ function ChangeForm({
   if (cancel)
     return (
       <>
-        <form className="panel form-panel wide-form booking-cancel-form" onSubmit={cancelBooking}>
+        <form
+          className="panel form-panel wide-form booking-cancel-form"
+          onSubmit={cancelBooking}
+        >
           <h2>{b.lead_name}</h2>
           <p className="muted">
             {dateTime(b.departure.starts_at, session.tenant.timezone)}
           </p>
           <Notice>
             Cancellation releases this party’s seats and removes confirmed
-            passengers from the manifest. It does not issue a refund or determine
-            cancellation fees.
+            passengers from the manifest. It does not issue a refund or
+            determine cancellation fees.
           </Notice>
           <dl className="detail-grid">
             <div>

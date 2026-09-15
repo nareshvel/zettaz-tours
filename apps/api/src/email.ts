@@ -27,13 +27,20 @@ function getTransporter(): Transporter {
   const pass = process.env.SMTP_PASS;
 
   if (!host || !user || !pass) {
-    console.warn("[Email] SMTP_HOST / SMTP_USER / SMTP_PASS not fully configured — emails will be skipped.");
+    console.warn(
+      "[Email] SMTP_HOST / SMTP_USER / SMTP_PASS not fully configured — emails will be skipped.",
+    );
     // Return a null-transport so the app doesn't crash when SMTP isn't configured
     _transporter = nodemailer.createTransport({ jsonTransport: true });
     return _transporter;
   }
 
-  _transporter = nodemailer.createTransport({ host, port, secure, auth: { user, pass } });
+  _transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: { user, pass },
+  });
   return _transporter;
 }
 
@@ -41,7 +48,11 @@ const FROM = process.env.SMTP_FROM ?? "Zettaz Tours <noreply@zettaz.com>";
 
 // ─── Shared send helper ───────────────────────────────────────────────────────
 
-async function send(opts: { to: string; subject: string; html: string }): Promise<void> {
+async function send(opts: {
+  to: string;
+  subject: string;
+  html: string;
+}): Promise<void> {
   const host = process.env.SMTP_HOST;
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
@@ -56,7 +67,10 @@ async function send(opts: { to: string; subject: string; html: string }): Promis
     await t.sendMail({ from: FROM, ...opts });
     console.log(`[Email] Sent "${opts.subject}" → ${opts.to}`);
   } catch (err: unknown) {
-    console.error(`[Email] Failed to send "${opts.subject}" → ${opts.to}:`, err instanceof Error ? err.message : err);
+    console.error(
+      `[Email] Failed to send "${opts.subject}" → ${opts.to}:`,
+      err instanceof Error ? err.message : err,
+    );
     throw err;
   }
 }
@@ -113,8 +127,14 @@ export interface CheckoutConfirmationData {
   manageUrl: string;
 }
 
-export async function sendCheckoutConfirmation(d: CheckoutConfirmationData): Promise<void> {
-  const trialDate = new Date(d.trialEndsAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+export async function sendCheckoutConfirmation(
+  d: CheckoutConfirmationData,
+): Promise<void> {
+  const trialDate = new Date(d.trialEndsAt).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
   const cycleLabel = d.billingCycle === "yearly" ? "annually" : "monthly";
   await send({
     to: d.to,
@@ -170,7 +190,11 @@ export interface TrialEndingData {
 }
 
 export async function sendTrialEnding(d: TrialEndingData): Promise<void> {
-  const trialDate = new Date(d.trialEndsAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const trialDate = new Date(d.trialEndsAt).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
   const urgency = d.daysLeft <= 1 ? "tomorrow" : `in ${d.daysLeft} days`;
   await send({
     to: d.to,
@@ -196,7 +220,10 @@ export interface PaymentFailedData {
 }
 
 export async function sendPaymentFailed(d: PaymentFailedData): Promise<void> {
-  const amount = (d.amountDue / 100).toLocaleString("en-US", { style: "currency", currency: d.currency });
+  const amount = (d.amountDue / 100).toLocaleString("en-US", {
+    style: "currency",
+    currency: d.currency,
+  });
   const isLast = d.attemptNumber >= 3;
   await send({
     to: d.to,
@@ -204,9 +231,11 @@ export async function sendPaymentFailed(d: PaymentFailedData): Promise<void> {
     html: layout(`
       <h2>Payment attempt ${d.attemptNumber} failed</h2>
       <p>We were unable to collect payment of <strong>${amount}</strong> for the <strong>${d.planName}</strong> plan on the <strong>${d.tenantName}</strong> workspace.</p>
-      ${isLast
-        ? `<p style="color:#c0392b;font-weight:600;">This was the final attempt. Your subscription will be suspended unless payment is resolved.</p>`
-        : `<p>Stripe will automatically retry. To avoid interruption, please update your payment method now.</p>`}
+      ${
+        isLast
+          ? `<p style="color:#c0392b;font-weight:600;">This was the final attempt. Your subscription will be suspended unless payment is resolved.</p>`
+          : `<p>Stripe will automatically retry. To avoid interruption, please update your payment method now.</p>`
+      }
       <a class="cta" href="${d.manageUrl}">Update payment method</a>
       <p style="margin-top:16px;font-size:12px;color:#65777b;">Need help? Contact <a href="mailto:support@zettaz.com" style="color:#176c63;">support@zettaz.com</a>.</p>
     `),
@@ -218,7 +247,9 @@ export interface PasswordRecoveryData {
   resetUrl: string;
 }
 
-export async function sendPasswordRecovery(d: PasswordRecoveryData): Promise<void> {
+export async function sendPasswordRecovery(
+  d: PasswordRecoveryData,
+): Promise<void> {
   await send({
     to: d.to,
     subject: "Reset your Zettaz Tours password",
@@ -239,7 +270,9 @@ export interface EmailVerificationData {
   verifyUrl: string;
 }
 
-export async function sendEmailVerification(d: EmailVerificationData): Promise<void> {
+export async function sendEmailVerification(
+  d: EmailVerificationData,
+): Promise<void> {
   await send({
     to: d.to,
     subject: "Verify your Zettaz Tours email address",
@@ -338,12 +371,13 @@ export async function sendCustomerMessage(d: {
   tenantName: string;
 }): Promise<{ messageId: string }> {
   if (!smtpConfigured()) {
-    throw new Error("SMTP is not configured (SMTP_HOST / SMTP_USER / SMTP_PASS).");
+    throw new Error(
+      "SMTP is not configured (SMTP_HOST / SMTP_USER / SMTP_PASS).",
+    );
   }
   const parsed = parseCommunicationBody(d.body);
   const text = parsed.text;
-  const html =
-    parsed.html ?? customerLayout(d.tenantName, text);
+  const html = parsed.html ?? customerLayout(d.tenantName, text);
   const t = getTransporter();
   const info = await t.sendMail({
     from: FROM,
@@ -355,4 +389,3 @@ export async function sendCustomerMessage(d: {
   console.log(`[Email] Sent customer message "${d.subject}" → ${d.to}`);
   return { messageId: String(info.messageId ?? "") };
 }
-

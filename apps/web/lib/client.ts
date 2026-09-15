@@ -17,8 +17,7 @@ export function setTenantContext(
 }
 function sessionExpiredMessage() {
   const name = tenantContext?.name;
-  if (name)
-    return `Your session expired. Switch or reopen ${name}.`;
+  if (name) return `Your session expired. Switch or reopen ${name}.`;
   return "Your session expired. Sign in again to reopen your workspace.";
 }
 export function errorText(data: unknown): string {

@@ -36,7 +36,12 @@ import { StayController, StayService } from "./stays";
 import { CustomerController, CustomerService } from "./customers";
 import { ReportController, ReportService } from "./reports";
 import { LimitsService } from "./limits";
-import { StripeBillingModule, StripeWebhookController, BillingPortalController, StripeBillingService } from "./stripe-billing";
+import {
+  StripeBillingModule,
+  StripeWebhookController,
+  BillingPortalController,
+  StripeBillingService,
+} from "./stripe-billing";
 import { startSubscriptionJobs } from "./subscription-jobs";
 import {
   PlatformSupportController,
@@ -144,9 +149,7 @@ class SystemController {
 export class AppModule {}
 
 export async function createApp() {
-  if (
-    !["demo", "test", "production"].includes(process.env.APP_MODE ?? "")
-  )
+  if (!["demo", "test", "production"].includes(process.env.APP_MODE ?? ""))
     throw new Error(
       "APP_MODE must be demo, test, or production. Set APP_MODE=production for live deployments.",
     );
@@ -168,10 +171,7 @@ export async function createApp() {
     raw({ type: "application/json", limit: "64kb" }),
   );
   // Stripe webhook endpoint needs the raw body for signature verification.
-  app.use(
-    "/webhooks/stripe",
-    raw({ type: "application/json", limit: "1mb" }),
-  );
+  app.use("/webhooks/stripe", raw({ type: "application/json", limit: "1mb" }));
   app.use(json({ limit: "64kb" }));
   app.use(
     "/uploads",

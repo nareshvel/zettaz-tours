@@ -30,27 +30,63 @@ export class FinanceService {
       throw new ConflictException("Payment total outside supported range");
     return paid;
   }
-  async adjust(tx:Tx,actor:Actor,bookingId:string,paymentId:string,input:unknown){
-    const data=parse(paymentAdjustmentSchema,input);
-    if(new Date(data.occurredAt).getTime()>Date.now()+60_000)
+  async adjust(
+    tx: Tx,
+    actor: Actor,
+    bookingId: string,
+    paymentId: string,
+    input: unknown,
+  ) {
+    const data = parse(paymentAdjustmentSchema, input);
+    if (new Date(data.occurredAt).getTime() > Date.now() + 60_000)
       throw new BadRequestException("Adjustment occurredAt is in the future");
-    const {rows:[payment]}=await tx.query(
+    const {
+      rows: [payment],
+    } = await tx.query(
       "SELECT * FROM payments WHERE tenant_id=$1 AND id=$2 AND booking_id=$3",
-      [actor.tenantId,paymentId,bookingId],
+      [actor.tenantId, paymentId, bookingId],
     );
-    if(!payment) throw new BadRequestException("Payment is unavailable for this booking");
-    if((payment.status==="pending"&&data.kind!=="void")||(payment.status==="settled"&&data.kind!=="reversal"))
-      throw new BadRequestException(payment.status==="pending"?"Pending payments must be voided":"Settled payments must be reversed");
-    if(new Date(data.occurredAt).getTime()<new Date(payment.occurred_at).getTime())
+    if (!payment)
+      throw new BadRequestException("Payment is unavailable for this booking");
+    if (
+      (payment.status === "pending" && data.kind !== "void") ||
+      (payment.status === "settled" && data.kind !== "reversal")
+    )
+      throw new BadRequestException(
+        payment.status === "pending"
+          ? "Pending payments must be voided"
+          : "Settled payments must be reversed",
+      );
+    if (
+      new Date(data.occurredAt).getTime() <
+      new Date(payment.occurred_at).getTime()
+    )
       throw new BadRequestException("Adjustment cannot predate the payment");
-    const adjustmentId=randomUUID();
+    const adjustmentId = randomUUID();
     await tx.query(
       `INSERT INTO payment_adjustments(tenant_id,id,payment_id,kind,reference,reason,occurred_at,actor_id)
        VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [actor.tenantId,adjustmentId,paymentId,data.kind,data.reference,data.reason,data.occurredAt,actor.actorId],
+      [
+        actor.tenantId,
+        adjustmentId,
+        paymentId,
+        data.kind,
+        data.reference,
+        data.reason,
+        data.occurredAt,
+        actor.actorId,
+      ],
     );
-    await record(tx,actor,`payment.${data.kind}`,paymentId,{status:payment.status,amountMinor:Number(payment.amount_minor)},{adjustmentId,...data},data.reason);
-    return {adjustmentId,paymentId,bookingId,...data};
+    await record(
+      tx,
+      actor,
+      `payment.${data.kind}`,
+      paymentId,
+      { status: payment.status, amountMinor: Number(payment.amount_minor) },
+      { adjustmentId, ...data },
+      data.reason,
+    );
+    return { adjustmentId, paymentId, bookingId, ...data };
   }
   async partnerCredit(tx: Tx, actor: Actor, bookingId: string) {
     const {
@@ -64,7 +100,9 @@ export class FinanceService {
     );
     const credit = Number(r.credit);
     if (!Number.isSafeInteger(credit))
-      throw new ConflictException("Partner credit total outside supported range");
+      throw new ConflictException(
+        "Partner credit total outside supported range",
+      );
     return credit;
   }
   /** Guest boarding clearance: partner invoice/collect modes clear by policy; else paid + accepted credit. */

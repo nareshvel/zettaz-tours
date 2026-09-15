@@ -4,14 +4,7 @@ import { useState } from "react";
 import { Building2, Plus, Ship } from "lucide-react";
 import type { Session } from "@/lib/types";
 import { useMutation, useResource } from "@/lib/client";
-import {
-  Empty,
-  Field,
-  FormDialog,
-  Loading,
-  Notice,
-  SearchBox,
-} from "./common";
+import { Empty, Field, FormDialog, Loading, Notice, SearchBox } from "./common";
 
 type Vessel = {
   id: string;
@@ -104,8 +97,7 @@ export function StaysSettings({ session }: { session: Session }) {
     if (result) {
       setStayOpen(false);
       setStayForm(emptyStay);
-      if (result.alreadyListed)
-        setNotice(`${result.name} is already listed.`);
+      if (result.alreadyListed) setNotice(`${result.name} is already listed.`);
       options.reload();
     }
   }
@@ -206,7 +198,10 @@ export function StaysSettings({ session }: { session: Session }) {
                         `${vessel.passenger_capacity.toLocaleString()} guests`,
                     ]
                       .filter(Boolean)
-                      .join(" · ") || "Shared entry"}
+                      .join(" · ") ||
+                      (vessel.tenant_owned
+                        ? "Added by your team"
+                        : "Shared entry")}
                   </p>
                 </div>
               </article>

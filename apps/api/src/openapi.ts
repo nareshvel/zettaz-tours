@@ -18,9 +18,24 @@ import {
 import { pickupLocationSchema, pickupPlanSchema } from "./dispatch";
 
 const routes: [string, string, z.ZodType | null, string][] = [
-  ["/auth/v1/password-recovery/request","post",null,"Request a non-enumerating password recovery token"],
-  ["/auth/v1/password-recovery/complete","post",null,"Consume a single-use recovery token and revoke prior sessions"],
-  ["/integrations/v1/inbox/{id}/review","post",null,"Queue a quarantined event for retry or retain it as dead letter"],
+  [
+    "/auth/v1/password-recovery/request",
+    "post",
+    null,
+    "Request a non-enumerating password recovery token",
+  ],
+  [
+    "/auth/v1/password-recovery/complete",
+    "post",
+    null,
+    "Consume a single-use recovery token and revoke prior sessions",
+  ],
+  [
+    "/integrations/v1/inbox/{id}/review",
+    "post",
+    null,
+    "Queue a quarantined event for retry or retain it as dead letter",
+  ],
   [
     "/reports/v1/overview",
     "get",
@@ -170,12 +185,7 @@ const routes: [string, string, z.ZodType | null, string][] = [
     null,
     "Assign a resource or crew member to a departure",
   ],
-  [
-    "/ops/v1/assignments",
-    "get",
-    null,
-    "List active departure assignments",
-  ],
+  ["/ops/v1/assignments", "get", null, "List active departure assignments"],
   [
     "/ops/v1/assignments/{id}",
     "patch",

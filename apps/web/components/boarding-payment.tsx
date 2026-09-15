@@ -3,13 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import type { Manifest, Session } from "@/lib/types";
-import {
-  digits,
-  label,
-  minor,
-  money,
-  useMutation,
-} from "@/lib/client";
+import { digits, label, minor, money, useMutation } from "@/lib/client";
 import { Field, Notice } from "./common";
 
 function paymentMethodLabel(method: string) {
@@ -75,9 +69,7 @@ export function BoardingPaymentModal({
   const [occurredAt] = useState(() => new Date().toISOString());
 
   useEffect(() => {
-    setAmount(
-      (suggested / 10 ** digits(currency)).toFixed(digits(currency)),
-    );
+    setAmount((suggested / 10 ** digits(currency)).toFixed(digits(currency)));
   }, [suggested, currency]);
 
   async function submit(event: React.FormEvent) {

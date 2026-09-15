@@ -103,9 +103,7 @@ function paymentMethodLabel(method: string) {
 }
 
 function partnerSettlementWithoutGuestPay(mode?: string | null) {
-  return (
-    mode === "partner_invoice" || mode === "partner_collects_for_tenant"
-  );
+  return mode === "partner_invoice" || mode === "partner_collects_for_tenant";
 }
 
 function isPartnerResellerSource(source: string) {
@@ -227,7 +225,10 @@ function partyBadgeTone(category: string) {
 function readableStay(stay?: Booking["stay"]) {
   if (!stay || stay.kind === "none") return "Not provided";
   if (stay.kind === "cruise")
-    return [stay.vesselName, stay.cabinNumber && `Cabin ${stay.cabinNumber}`]
+    return [
+      stay.vesselName || "Ship not recorded",
+      stay.cabinNumber && `Cabin ${stay.cabinNumber}`,
+    ]
       .filter(Boolean)
       .join(" · ");
   if (stay.kind === "hotel")
@@ -262,8 +263,7 @@ function CustomerMessages({
       { kind },
     );
     if (result) {
-      if (result.status === "sent")
-        setSuccess("Email sent to the guest.");
+      if (result.status === "sent") setSuccess("Email sent to the guest.");
       else if (result.status === "failed")
         setSuccess(
           result.failure_detail
@@ -292,9 +292,7 @@ function CustomerMessages({
             : "Retry failed.",
         );
       else if (result.status === "held_provider")
-        setSuccess(
-          "Still held — SMTP is not configured on this server.",
-        );
+        setSuccess("Still held — SMTP is not configured on this server.");
       messages.reload();
     }
   }
@@ -302,8 +300,8 @@ function CustomerMessages({
     <section className="panel form-panel">
       <h2>Customer communications</h2>
       <p className="muted">
-        Send auditable guest emails through the workspace SMTP settings.
-        Failed or held messages can be retried.
+        Send auditable guest emails through the workspace SMTP settings. Failed
+        or held messages can be retried.
       </p>
       {canRequest && (
         <div className="button-row comms-actions">
@@ -317,13 +315,9 @@ function CustomerMessages({
           </button>
           <button
             className="button secondary"
-            disabled={
-              request.busy || retry.busy || balanceMinor <= 0
-            }
+            disabled={request.busy || retry.busy || balanceMinor <= 0}
             title={
-              balanceMinor <= 0
-                ? "Balance is already paid in full"
-                : undefined
+              balanceMinor <= 0 ? "Balance is already paid in full" : undefined
             }
             onClick={() => void prepare("payment_request")}
           >
@@ -350,9 +344,7 @@ function CustomerMessages({
       )}
       {success && <Notice>{success}</Notice>}
       {(request.error || retry.error || messages.error) && (
-        <Notice error>
-          {request.error || retry.error || messages.error}
-        </Notice>
+        <Notice error>{request.error || retry.error || messages.error}</Notice>
       )}
       {messages.data?.length ? (
         <div className="stack-list">
@@ -363,9 +355,7 @@ function CustomerMessages({
                 <small>
                   {message.recipient} ·{" "}
                   {dateTime(message.requested_at, timezone)}
-                  {message.failure_detail
-                    ? ` · ${message.failure_detail}`
-                    : ""}
+                  {message.failure_detail ? ` · ${message.failure_detail}` : ""}
                 </small>
               </span>
               <span className="comms-row-actions">
@@ -482,7 +472,9 @@ export function NewReservation({
       }[];
       accommodations: { id: string; name: string; address: string }[];
     }>("ops/v1/stays/options");
-  const [departureId, setDepartureId] = useState(amendBooking?.departure_id ?? ""),
+  const [departureId, setDepartureId] = useState(
+      amendBooking?.departure_id ?? "",
+    ),
     [party, setParty] = useState<Record<string, number>>(
       amendBooking?.party ?? {},
     ),
@@ -530,7 +522,9 @@ export function NewReservation({
     [source, setSource] = useState(
       amendBooking?.source ?? session.tenant.config.bookingSources[0] ?? "",
     ),
-    [pickupKind, setPickupKind] = useState(amendBooking?.pickup?.kind ?? "none"),
+    [pickupKind, setPickupKind] = useState(
+      amendBooking?.pickup?.kind ?? "none",
+    ),
     [location, setLocation] = useState(
       amendBooking?.pickup?.kind === "selected"
         ? amendBooking.pickup.location
@@ -577,7 +571,9 @@ export function NewReservation({
     [discountAmount, setDiscountAmount] = useState(""),
     [promoCode, setPromoCode] = useState(""),
     [discountReason, setDiscountReason] = useState(""),
-    [partnerId, setPartnerId] = useState(amendBooking?.partner?.partnerId ?? ""),
+    [partnerId, setPartnerId] = useState(
+      amendBooking?.partner?.partnerId ?? "",
+    ),
     [partnerReference, setPartnerReference] = useState(
       amendBooking?.partner?.externalReference ?? "",
     ),
@@ -685,7 +681,9 @@ export function NewReservation({
   useEffect(() => {
     if (amendMode) return;
     if (!lockedDepartureId || !departures.items.length) return;
-    const match = departures.items.find((item) => item.id === lockedDepartureId);
+    const match = departures.items.find(
+      (item) => item.id === lockedDepartureId,
+    );
     if (!match) return;
     setDepartureId(match.id);
     setSelectedProductId(match.product_id);
@@ -700,7 +698,10 @@ export function NewReservation({
   }, [amendMode, lockedDepartureId, departures.items, session.tenant.timezone]);
   useEffect(() => {
     if (amendMode || !hold) return;
-    guestPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    guestPanelRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
     window.setTimeout(() => leadNameRef.current?.focus(), 250);
   }, [amendMode, hold?.holdId]);
   useEffect(() => {
@@ -779,11 +780,13 @@ export function NewReservation({
       ? {
           kind: "cruise" as const,
           vesselId: stayReferenceId || undefined,
+          // Omitted rather than defaulted: the ship is optional, and inventing
+          // a name would put fabricated data on an emergency record.
           vesselName:
             stays.data?.vessels.find((item) => item.id === stayReferenceId)
               ?.name ||
             stayPropertyName ||
-            "Cruise vessel",
+            undefined,
           cabinNumber: unitNumber,
         }
       : stayKind === "hotel"
@@ -889,10 +892,9 @@ export function NewReservation({
               ? {
                   kind: "cruise",
                   vesselId: stayReferenceId,
-                  vesselName:
-                    stays.data?.vessels.find(
-                      (item) => item.id === stayReferenceId,
-                    )?.name ?? "Cruise vessel",
+                  vesselName: stays.data?.vessels.find(
+                    (item) => item.id === stayReferenceId,
+                  )?.name,
                   cabinNumber: unitNumber,
                 }
               : stayKind === "hotel"
@@ -1146,7 +1148,10 @@ export function NewReservation({
             <div>
               <span>New total</span>
               <strong>
-                {money(changeQuote.quote.totalMinor, changeQuote.quote.currency)}
+                {money(
+                  changeQuote.quote.totalMinor,
+                  changeQuote.quote.currency,
+                )}
               </strong>
             </div>
             <div>
@@ -1592,7 +1597,10 @@ export function NewReservation({
                   {scheduledDiscovery && (
                     <>
                       <div className="booking-finder-toolbar">
-                        <div className="time-filters" aria-label="Departure time">
+                        <div
+                          className="time-filters"
+                          aria-label="Departure time"
+                        >
                           {(
                             [
                               ["all", "Any time"],
@@ -1799,7 +1807,9 @@ export function NewReservation({
                       (authorizeOverbook && overbookReason.trim().length < 8)
                     }
                   >
-                    {holdMutation.busy ? "Checking availability…" : "Hold seats"}
+                    {holdMutation.busy
+                      ? "Checking availability…"
+                      : "Hold seats"}
                     <ArrowRight size={16} />
                   </button>
                 </div>
@@ -1915,72 +1925,72 @@ export function NewReservation({
                   </div>
                 </BookingAccordion>
                 {!amendMode && (
-                <BookingAccordion
-                  id="roster"
-                  title="Travel party names"
-                  hint="Can be completed before waiver signing"
-                  badge="Optional now"
-                  open={Boolean(openSections.roster)}
-                  onToggle={toggleSection}
-                >
-                  <Toggle
-                    className="toggle-end lead-traveler-toggle"
-                    label="Lead traveler is joining this departure"
-                    checked={leadIsTraveling}
-                    onChange={setLeadIsTraveling}
-                  />
-                  <div className="guest-roster-editor">
-                    {passengerDrafts.map((passenger, index) => {
-                      const isLead = leadIsTraveling && index === 0;
-                      const categoryLabel =
-                        departure?.categories.find(
-                          (category) => category.slug === passenger.category,
-                        )?.label ?? label(passenger.category);
-                      return (
-                        <div className="guest-roster-row" key={index}>
-                          <span className="guest-number">{index + 1}</span>
-                          <Field
-                            label={`${categoryLabel} name`}
-                            hint={
-                              isLead
-                                ? "Uses the lead traveler name"
-                                : categoryIsMinor(passenger.category)
-                                  ? "Minor/infant from party selection"
-                                  : "Can be completed at waiver signing"
-                            }
-                          >
-                            <input
-                              maxLength={120}
-                              value={isLead ? name : passenger.name}
-                              disabled={isLead}
-                              placeholder={
+                  <BookingAccordion
+                    id="roster"
+                    title="Travel party names"
+                    hint="Can be completed before waiver signing"
+                    badge="Optional now"
+                    open={Boolean(openSections.roster)}
+                    onToggle={toggleSection}
+                  >
+                    <Toggle
+                      className="toggle-end lead-traveler-toggle"
+                      label="Lead traveler is joining this departure"
+                      checked={leadIsTraveling}
+                      onChange={setLeadIsTraveling}
+                    />
+                    <div className="guest-roster-editor">
+                      {passengerDrafts.map((passenger, index) => {
+                        const isLead = leadIsTraveling && index === 0;
+                        const categoryLabel =
+                          departure?.categories.find(
+                            (category) => category.slug === passenger.category,
+                          )?.label ?? label(passenger.category);
+                        return (
+                          <div className="guest-roster-row" key={index}>
+                            <span className="guest-number">{index + 1}</span>
+                            <Field
+                              label={`${categoryLabel} name`}
+                              hint={
                                 isLead
-                                  ? "Enter lead traveler above"
-                                  : "Name pending"
+                                  ? "Uses the lead traveler name"
+                                  : categoryIsMinor(passenger.category)
+                                    ? "Minor/infant from party selection"
+                                    : "Can be completed at waiver signing"
                               }
-                              onChange={(event) =>
-                                setPassengerDrafts((current) =>
-                                  current.map((item, itemIndex) =>
-                                    itemIndex === index
-                                      ? { ...item, name: event.target.value }
-                                      : item,
-                                  ),
-                                )
-                              }
-                            />
-                          </Field>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="roster-note">
-                    <Users size={18} />
-                    <p>
-                      Blank names save as pending guest slots for day-of
-                      completion.
-                    </p>
-                  </div>
-                </BookingAccordion>
+                            >
+                              <input
+                                maxLength={120}
+                                value={isLead ? name : passenger.name}
+                                disabled={isLead}
+                                placeholder={
+                                  isLead
+                                    ? "Enter lead traveler above"
+                                    : "Name pending"
+                                }
+                                onChange={(event) =>
+                                  setPassengerDrafts((current) =>
+                                    current.map((item, itemIndex) =>
+                                      itemIndex === index
+                                        ? { ...item, name: event.target.value }
+                                        : item,
+                                    ),
+                                  )
+                                }
+                              />
+                            </Field>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="roster-note">
+                      <Users size={18} />
+                      <p>
+                        Blank names save as pending guest slots for day-of
+                        completion.
+                      </p>
+                    </div>
+                  </BookingAccordion>
                 )}
                 <BookingAccordion
                   id="pickup"
@@ -1995,7 +2005,8 @@ export function NewReservation({
                         value={pickupKind}
                         onChange={(e) =>
                           setPickupKind(
-                            e.target.value as "none" | "selected" | "unresolved",
+                            e.target.value as
+                              "none" | "selected" | "unresolved",
                           )
                         }
                       >
@@ -2079,17 +2090,21 @@ export function NewReservation({
                         </select>
                       </Field>
                       {stayKind === "cruise" && (
-                        <Field label="Cruise call">
+                        <Field
+                          label="Cruise ship"
+                          hint="Optional. Shown on the waiver and used for emergency contact."
+                        >
                           <select
-                            required
                             value={stayReferenceId}
                             onChange={(e) => setStayReferenceId(e.target.value)}
                           >
-                            <option value="">Choose vessel</option>
+                            <option value="">Not recorded</option>
                             {(stays.data?.vessels ?? []).map((item) => (
                               <option key={item.id} value={item.id}>
                                 {item.name}
-                                {item.cruise_line ? ` — ${item.cruise_line}` : ""}
+                                {item.cruise_line
+                                  ? ` — ${item.cruise_line}`
+                                  : ""}
                               </option>
                             ))}
                           </select>
@@ -2117,7 +2132,9 @@ export function NewReservation({
                             required
                             maxLength={160}
                             value={stayPropertyName}
-                            onChange={(e) => setStayPropertyName(e.target.value)}
+                            onChange={(e) =>
+                              setStayPropertyName(e.target.value)
+                            }
                             placeholder="Airbnb or private property"
                           />
                         </Field>
@@ -2158,53 +2175,53 @@ export function NewReservation({
                   )}
                 </BookingAccordion>
                 {!amendMode && (
-                <BookingAccordion
-                  id="concession"
-                  title="Discount & promo"
-                  hint="Staff concession on this hold"
-                  badge="Optional"
-                  open={Boolean(openSections.concession)}
-                  onToggle={toggleSection}
-                >
-                  <p className="muted">
-                    Free-text promo references are audited with the reservation.
-                    A full promo catalog remains deferred.
-                  </p>
-                  <div className="form-grid">
-                    <Field
-                      label={`Discount amount · ${hold?.quote.currency ?? ""}`}
-                    >
-                      <input
-                        inputMode="decimal"
-                        maxLength={20}
-                        value={discountAmount}
-                        onChange={(e) => setDiscountAmount(e.target.value)}
-                        placeholder="0.00"
-                      />
-                    </Field>
-                    <Field label="Promo code · optional">
-                      <input
-                        maxLength={40}
-                        value={promoCode}
-                        onChange={(e) => setPromoCode(e.target.value)}
-                        placeholder="Reference only"
-                      />
-                    </Field>
-                    <Field
-                      label="Discount reason"
-                      hint="Required when a discount is applied."
-                    >
-                      <input
-                        required={Boolean(discountAmount.trim())}
-                        minLength={3}
-                        maxLength={500}
-                        value={discountReason}
-                        onChange={(e) => setDiscountReason(e.target.value)}
-                        placeholder="Why this concession is authorized"
-                      />
-                    </Field>
-                  </div>
-                </BookingAccordion>
+                  <BookingAccordion
+                    id="concession"
+                    title="Discount & promo"
+                    hint="Staff concession on this hold"
+                    badge="Optional"
+                    open={Boolean(openSections.concession)}
+                    onToggle={toggleSection}
+                  >
+                    <p className="muted">
+                      Free-text promo references are audited with the
+                      reservation. A full promo catalog remains deferred.
+                    </p>
+                    <div className="form-grid">
+                      <Field
+                        label={`Discount amount · ${hold?.quote.currency ?? ""}`}
+                      >
+                        <input
+                          inputMode="decimal"
+                          maxLength={20}
+                          value={discountAmount}
+                          onChange={(e) => setDiscountAmount(e.target.value)}
+                          placeholder="0.00"
+                        />
+                      </Field>
+                      <Field label="Promo code · optional">
+                        <input
+                          maxLength={40}
+                          value={promoCode}
+                          onChange={(e) => setPromoCode(e.target.value)}
+                          placeholder="Reference only"
+                        />
+                      </Field>
+                      <Field
+                        label="Discount reason"
+                        hint="Required when a discount is applied."
+                      >
+                        <input
+                          required={Boolean(discountAmount.trim())}
+                          minLength={3}
+                          maxLength={500}
+                          value={discountReason}
+                          onChange={(e) => setDiscountReason(e.target.value)}
+                          placeholder="Why this concession is authorized"
+                        />
+                      </Field>
+                    </div>
+                  </BookingAccordion>
                 )}
                 <BookingAccordion
                   id="contacts"
@@ -2348,9 +2365,14 @@ export function NewReservation({
                       <ArrowRight size={16} />
                     </button>
                   )}
-                  {!amendMode && hold && remaining <= 0 && !createdBookingId && (
-                    <span className="muted">Hold expired — create a new hold first.</span>
-                  )}
+                  {!amendMode &&
+                    hold &&
+                    remaining <= 0 &&
+                    !createdBookingId && (
+                      <span className="muted">
+                        Hold expired — create a new hold first.
+                      </span>
+                    )}
                 </div>
               </fieldset>
               {quoteMutation.error && (
@@ -2659,10 +2681,7 @@ export function BookingDetail({
             />
           </Field>
           <Field label="Payment method">
-            <select
-              value={method}
-              onChange={(e) => setMethod(e.target.value)}
-            >
+            <select value={method} onChange={(e) => setMethod(e.target.value)}>
               <option value="">Select</option>
               {session.tenant.config.manualPaymentMethods.map((m) => (
                 <option key={m} value={m}>
@@ -3017,7 +3036,10 @@ export function BookingDetail({
           <section className="booking-detail-section">
             <h2>Travel party</h2>
             {passengers.data && passengers.data.length > 0 ? (
-              <div className="party-name-badges" aria-label="Travel party names">
+              <div
+                className="party-name-badges"
+                aria-label="Travel party names"
+              >
                 {passengers.data.map((passenger) => (
                   <span
                     className={
@@ -3204,9 +3226,7 @@ export function BookingDetail({
         </article>
 
         <div
-          className={
-            "booking-summary-scrim" + (sheetOpen ? " open" : "")
-          }
+          className={"booking-summary-scrim" + (sheetOpen ? " open" : "")}
           aria-hidden={!sheetOpen}
           onClick={() => setSummaryOpen(false)}
         />
@@ -3249,9 +3269,7 @@ export function BookingDetail({
               </div>
               <div>
                 <span>Collection</span>
-                <strong>
-                  {collectionModeLabel(b.partner.collectionMode)}
-                </strong>
+                <strong>{collectionModeLabel(b.partner.collectionMode)}</strong>
               </div>
               {b.partner.externalReference ? (
                 <div>
@@ -3407,16 +3425,13 @@ export function BookingDetail({
               )}
               {reviveHold.error && <Notice error>{reviveHold.error}</Notice>}
               <p className="muted">
-                Or{" "}
-                <Link href="/reservations/new">start a new reservation</Link>{" "}
+                Or <Link href="/reservations/new">start a new reservation</Link>{" "}
                 if this departure is full.
               </p>
             </div>
           ) : null}
           {paymentForm}
-          {!expired &&
-          b.balanceMinor === 0 &&
-          b.state !== "cancelled" ? (
+          {!expired && b.balanceMinor === 0 && b.state !== "cancelled" ? (
             <div className="settled-note">
               <Check size={20} />
               <div>
@@ -3493,9 +3508,7 @@ export function BookingDetail({
         {compactSummary && summaryActionable ? (
           <button
             type="button"
-            className={
-              "booking-summary-fab" + (sheetOpen ? " is-hidden" : "")
-            }
+            className={"booking-summary-fab" + (sheetOpen ? " is-hidden" : "")}
             aria-expanded={sheetOpen}
             aria-controls="booking-summary-panel"
             onClick={() => setSummaryOpen(true)}

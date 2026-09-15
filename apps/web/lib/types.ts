@@ -179,7 +179,7 @@ export type Booking = {
     | { kind: "none" }
     | {
         kind: "cruise";
-        vesselName: string;
+        vesselName?: string;
         cabinNumber?: string;
         vesselId?: string;
       }
@@ -221,9 +221,7 @@ export type Booking = {
     partnerName: string;
     externalReference: string;
     collectionMode:
-      | "guest_pays_tenant"
-      | "partner_collects_for_tenant"
-      | "partner_invoice";
+      "guest_pays_tenant" | "partner_collects_for_tenant" | "partner_invoice";
     invoiceRequired: boolean;
   } | null;
   balanceMinor: number;

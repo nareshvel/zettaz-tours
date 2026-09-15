@@ -347,13 +347,7 @@ export class TenantService {
       await tx.query(
         `INSERT INTO memberships(tenant_id,actor_id,role,role_id,permissions,active)
          VALUES($1,$2,$3,$4,$5,false)`,
-        [
-          actor.tenantId,
-          actorId,
-          data.role,
-          roles[0].id,
-          permissions[0].codes,
-        ],
+        [actor.tenantId, actorId, data.role, roles[0].id, permissions[0].codes],
       );
       await tx.query(
         `INSERT INTO crew_profiles(tenant_id,membership_actor_id,operational_name,notes,active)
@@ -403,7 +397,9 @@ export class TenantService {
             "Ownership changes require a separate workflow",
           );
         if (before.role === "owner" && data.active === false)
-          throw new BadRequestException("The owner membership cannot be revoked");
+          throw new BadRequestException(
+            "The owner membership cannot be revoked",
+          );
         await tx.query(
           `UPDATE staff_users
            SET name=$2, first_name=$3, last_name=$4, phone_number=$5, address=$6
@@ -467,63 +463,69 @@ export class TenantService {
 
   async grantAccess(actor: Actor, actorId: string, key: string) {
     return this.db
-      .command(actor, `staff.grant_access:${actorId}`, key, { actorId }, async (tx) => {
-        const {
-          rows: [member],
-        } = await tx.query(
-          `SELECT m.role,m.active,m.role_id,s.name,s.email,r.name AS role_name,t.name AS tenant_name
+      .command(
+        actor,
+        `staff.grant_access:${actorId}`,
+        key,
+        { actorId },
+        async (tx) => {
+          const {
+            rows: [member],
+          } = await tx.query(
+            `SELECT m.role,m.active,m.role_id,s.name,s.email,r.name AS role_name,t.name AS tenant_name
            FROM memberships m
            JOIN staff_users s ON s.id=m.actor_id
            JOIN tenant_roles r ON r.tenant_id=m.tenant_id AND r.id=m.role_id
            JOIN tenants t ON t.id=m.tenant_id
            WHERE m.tenant_id=$1 AND m.actor_id=$2`,
-          [actor.tenantId, actorId],
-        );
-        if (!member) throw new NotFoundException();
-        if (member.role === "owner")
-          throw new BadRequestException(
-            "Owner access is managed through ownership transfer",
+            [actor.tenantId, actorId],
           );
-        await tx.query(
-          `UPDATE tenant_invitations
+          if (!member) throw new NotFoundException();
+          if (member.role === "owner")
+            throw new BadRequestException(
+              "Owner access is managed through ownership transfer",
+            );
+          await tx.query(
+            `UPDATE tenant_invitations
            SET revoked_at=clock_timestamp()
            WHERE tenant_id=$1 AND lower(email)=lower($2)
              AND accepted_at IS NULL AND revoked_at IS NULL`,
-          [actor.tenantId, member.email],
-        );
-        const value =
-          randomUUID().replaceAll("-", "") +
-          randomUUID().replaceAll("-", "").slice(0, 11);
-        const { rows: created } = await tx.query(
-          `INSERT INTO tenant_invitations(tenant_id,name,email,role,role_id,token_hash,expires_at,invited_by)
+            [actor.tenantId, member.email],
+          );
+          const value =
+            randomUUID().replaceAll("-", "") +
+            randomUUID().replaceAll("-", "").slice(0, 11);
+          const { rows: created } = await tx.query(
+            `INSERT INTO tenant_invitations(tenant_id,name,email,role,role_id,token_hash,expires_at,invited_by)
            VALUES($1,$2,lower($3),$4,$5,$6,clock_timestamp()+interval '7 days',$7)
            RETURNING id,expires_at`,
-          [
-            actor.tenantId,
-            member.name,
-            member.email,
-            member.role,
-            member.role_id,
-            digest(value),
-            actor.actorId,
-          ],
-        );
-        await record(tx, actor, "staff.access_granted", actorId, null, {
-          invitationId: created[0].id,
-          email: member.email,
-          expiresAt: created[0].expires_at,
-        });
-        return {
-          actorId,
-          invitationId: created[0].id,
-          expiresAt: created[0].expires_at,
-          token: value,
-          email: member.email as string,
-          name: member.name as string,
-          roleName: member.role_name as string,
-          tenantName: member.tenant_name as string,
-        };
-      })
+            [
+              actor.tenantId,
+              member.name,
+              member.email,
+              member.role,
+              member.role_id,
+              digest(value),
+              actor.actorId,
+            ],
+          );
+          await record(tx, actor, "staff.access_granted", actorId, null, {
+            invitationId: created[0].id,
+            email: member.email,
+            expiresAt: created[0].expires_at,
+          });
+          return {
+            actorId,
+            invitationId: created[0].id,
+            expiresAt: created[0].expires_at,
+            token: value,
+            email: member.email as string,
+            name: member.name as string,
+            roleName: member.role_name as string,
+            tenantName: member.tenant_name as string,
+          };
+        },
+      )
       .then(async (created) => {
         let emailed = false;
         if (smtpConfigured()) {

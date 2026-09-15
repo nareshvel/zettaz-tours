@@ -346,14 +346,30 @@ export const productSchema = z
     name: label,
     description: z.string().trim().max(2000).default(""),
     productKind: z
-      .enum(["tour", "activity", "experience", "charter", "transport", "rental", "ticket"])
+      .enum([
+        "tour",
+        "activity",
+        "experience",
+        "charter",
+        "transport",
+        "rental",
+        "ticket",
+      ])
       .default("tour"),
     availabilityMode: z
-      .enum(["fixed_departure", "opening_hours", "open_dated", "on_request", "resource_window"])
+      .enum([
+        "fixed_departure",
+        "opening_hours",
+        "open_dated",
+        "on_request",
+        "resource_window",
+      ])
       .default("fixed_departure"),
     optionName: label,
     durationMinutes: z.number().int().min(1).max(10080),
-    pricingModel: z.enum(["per_person", "per_group", "per_unit"]).default("per_person"),
+    pricingModel: z
+      .enum(["per_person", "per_group", "per_unit"])
+      .default("per_person"),
     privateBooking: z.boolean().default(false),
     confirmationMode: z.enum(["instant", "request"]).default("instant"),
     categories: z
@@ -472,8 +488,12 @@ export const bookingSchema = z
         z
           .object({
             kind: z.literal("cruise"),
-            cruiseCallId: id.optional(),
-            vesselName: label,
+            vesselId: id.optional(),
+            // Optional: the ship is recorded for the waiver and for emergency
+            // contact, and "unknown" is a legitimate answer. Never substitute a
+            // placeholder name — on a safety record an invented value is worse
+            // than an absent one.
+            vesselName: label.optional(),
             cabinNumber: z.string().trim().max(40).default(""),
           })
           .strict(),

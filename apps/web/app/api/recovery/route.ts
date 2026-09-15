@@ -1,7 +1,15 @@
-import { problemMessage, unavailable, upstream, validOrigin } from "@/lib/server";
+import {
+  problemMessage,
+  unavailable,
+  upstream,
+  validOrigin,
+} from "@/lib/server";
 export async function POST(request: Request) {
   if (!validOrigin(request))
-    return Response.json({ message: "Request origin rejected." }, { status: 403 });
+    return Response.json(
+      { message: "Request origin rejected." },
+      { status: 403 },
+    );
   try {
     const input = await request.json();
     const path = input.token

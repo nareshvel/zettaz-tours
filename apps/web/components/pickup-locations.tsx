@@ -321,10 +321,7 @@ export function PickupLocationsSettings({ session }: { session: Session }) {
               />
             </Field>
             <div className="form-grid">
-              <Field
-                label="Location code"
-                hint="Hyphenated, lowercase."
-              >
+              <Field label="Location code" hint="Hyphenated, lowercase.">
                 <input
                   required
                   pattern="[a-z][a-z0-9_-]{1,49}"

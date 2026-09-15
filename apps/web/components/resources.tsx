@@ -1,7 +1,12 @@
 "use client";
 import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
-import { formatMediumDate, label, useMutation, useResource } from "@/lib/client";
+import {
+  formatMediumDate,
+  label,
+  useMutation,
+  useResource,
+} from "@/lib/client";
 import type { Session } from "@/lib/types";
 import {
   ConfirmDialog,
@@ -116,15 +121,12 @@ export function Resources({ session }: { session: Session }) {
   const activeResources =
     resources.data?.filter((item) => item.active).length ?? 0;
   const expiredDocs =
-    documents.data?.filter(
-      (doc) => doc.resource_id && doc.expires_on < today,
-    ).length ?? 0;
+    documents.data?.filter((doc) => doc.resource_id && doc.expires_on < today)
+      .length ?? 0;
   const expiringDocs =
     documents.data?.filter(
       (doc) =>
-        doc.resource_id &&
-        doc.expires_on >= today &&
-        doc.expires_on <= soon,
+        doc.resource_id && doc.expires_on >= today && doc.expires_on <= soon,
     ).length ?? 0;
 
   function openResourceCreate() {
@@ -189,9 +191,7 @@ export function Resources({ session }: { session: Session }) {
   }
 
   if (resources.error || documents.error)
-    return (
-      <Notice error>{resources.error || documents.error}</Notice>
-    );
+    return <Notice error>{resources.error || documents.error}</Notice>;
   if (!resources.data || !documents.data) return <Loading />;
 
   const resourceList = resources.data;
@@ -386,9 +386,7 @@ export function Resources({ session }: { session: Session }) {
 
       <FormDialog
         open={editor?.kind === "resource"}
-        title={
-          editor?.mode === "edit" ? "Edit resource" : "Add resource"
-        }
+        title={editor?.mode === "edit" ? "Edit resource" : "Add resource"}
         description="Vehicles, vessels, and equipment for departure assignment."
         busy={save.busy}
         error={save.error}
@@ -469,9 +467,7 @@ export function Resources({ session }: { session: Session }) {
           <Toggle
             label="Active for assignment"
             checked={resourceForm.active}
-            onChange={(active) =>
-              setResourceForm((v) => ({ ...v, active }))
-            }
+            onChange={(active) => setResourceForm((v) => ({ ...v, active }))}
           />
         )}
       </FormDialog>

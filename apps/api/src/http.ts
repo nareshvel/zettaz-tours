@@ -80,9 +80,19 @@ export class ProblemFilter implements ExceptionFilter {
     const res = host.switchToHttp().getResponse<Response>();
     const code = (error as { code?: string }).code;
     let status = error instanceof HttpException ? error.getStatus() : 500;
-    if (code === "23505" || code === "23P01" || code === "40001" || code === "55P03")
+    if (
+      code === "23505" ||
+      code === "23P01" ||
+      code === "40001" ||
+      code === "55P03"
+    )
       status = 409;
-    if (code === "23503" || code === "23514" || code === "22007" || code === "23502")
+    if (
+      code === "23503" ||
+      code === "23514" ||
+      code === "22007" ||
+      code === "23502"
+    )
       status = 400;
     const detail =
       error instanceof HttpException

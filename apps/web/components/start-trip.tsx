@@ -30,14 +30,13 @@ function pendingNames(guests: StartTripGuest[], limit = 8) {
     : names.join(", ");
 }
 
-function startBlockReason(readiness: StartTripReadiness | undefined): string | null {
+function startBlockReason(
+  readiness: StartTripReadiness | undefined,
+): string | null {
   if (!readiness) return null;
   if (readiness.confirmedGuests <= 0)
     return "No confirmed guests — use Weather hold or Close if this departure should not run.";
-  if (
-    readiness.operationalStatus !== "open" &&
-    readiness.boardedGuests <= 0
-  )
+  if (readiness.operationalStatus !== "open" && readiness.boardedGuests <= 0)
     return readiness.operationalStatus === "weather_hold"
       ? "On weather hold with nobody boarded — reopen to sell/board, or keep hold without starting."
       : "Closed with nobody boarded — reopen or use Recovery instead of Start.";
@@ -147,9 +146,7 @@ function readinessIssues(
     boardedGuests === 0;
 
   const danger =
-    boardingPending > 0 ||
-    boardedGuests === 0 ||
-    operationalStatus !== "open";
+    boardingPending > 0 || boardedGuests === 0 || operationalStatus !== "open";
 
   let title = "Start this trip?";
   if (boardingPending > 0) title = "Start trip with no-shows?";
@@ -192,9 +189,7 @@ export function StartTripButton({
   const check = useMemo(
     () =>
       readinessIssues(
-        readiness
-          ? { ...readiness, boardingPending: pending }
-          : undefined,
+        readiness ? { ...readiness, boardingPending: pending } : undefined,
         pending,
         named,
       ),
@@ -283,9 +278,7 @@ export function StartTripButton({
         open={open}
         title={check.title}
         description={description}
-        confirmLabel={
-          pending > 0 ? "Mark no-show & start" : "Start trip"
-        }
+        confirmLabel={pending > 0 ? "Mark no-show & start" : "Start trip"}
         danger={check.danger}
         reasonRequired={check.needsReason}
         reasonLabel="Reason"

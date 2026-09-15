@@ -1,3 +1,35 @@
+> **SUPERSEDED — kept for reference only.**
+>
+> This document proposed seeding *cruise calls* (vessel x port x date) into the
+> tenant-scoped `cruise_calls` table. That table no longer exists: migration
+> `076_vessels_replace_cruise_calls.sql` dropped it, and `global_ports` with it.
+>
+> Three things made the original shape unworkable:
+>
+> 1. **Dated rows expire.** Every row carried a `call_date`. The sample set was
+>    Oct–Nov 2026 and is dead weight thereafter.
+> 2. **Maintaining calls cost more than it returned.** Keeping a per-date call
+>    register current is manual work, and a booking never needed the call — only
+>    the ship's name, optionally, for the waiver and emergency contact.
+> 3. **The schema would not take it.** `cruise_calls` was
+>    `PRIMARY KEY (tenant_id, id)` with `bookings` holding a composite FK onto
+>    it. Seeding it under a placeholder tenant would have either broken that FK
+>    or silently attached platform data to one tenant.
+>
+> **What replaced it:** a single `vessels` table carrying both platform-seeded
+> rows (`tenant_id IS NULL`, visible to everyone) and tenant-added ones, with
+> `bookings.vessel_id` pointing at it and `bookings.stay->>'vesselName'` keeping
+> the name as recorded so a later rename never rewrites an old waiver.
+>
+> **Read instead:** [`global-catalogs-plan.md`](./global-catalogs-plan.md)
+>
+> **One caution if you reuse the data below:** the IMO numbers and port codes in
+> this file were not verified against a registry. Two values spot-checked while
+> designing the replacement were both wrong, so treat every identifier here as
+> unconfirmed. The live seed carries an identifier only where it was checked.
+
+---
+
 # Global Cruise Calls Sample Dataset & SQL Seed Generator
 
 This document provides representative sample data for global cruise ship calls formatted according to your database schema requirements, followed by executable SQL `INSERT` statements ready for database seeding.

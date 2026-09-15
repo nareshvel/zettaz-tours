@@ -105,6 +105,71 @@ export function Field({
     </label>
   );
 }
+/**
+ * An explanation that stays out of the way until asked for.
+ *
+ * Long guidance paragraphs under a heading get skipped after the first read,
+ * yet they are exactly what someone needs the one time they are configuring
+ * something unfamiliar. Putting them behind a marker keeps the page scannable
+ * without losing the words.
+ *
+ * Click rather than hover: this has to work on the tablets used at the counter,
+ * where there is no pointer to hover with. Escape and a click anywhere else
+ * close it, and the panel is a real element in the DOM rather than a title
+ * attribute, so screen readers announce it and it can hold more than one line.
+ */
+export function InfoTip({
+  label: caption,
+  children,
+}: {
+  /** Names what is being explained, for anyone who cannot see the marker. */
+  label: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: Event) => {
+      if (
+        event instanceof KeyboardEvent &&
+        event.key !== "Escape" &&
+        event.type === "keydown"
+      )
+        return;
+      setOpen(false);
+    };
+    // Deferred so the click that opened it does not immediately close it.
+    const timer = setTimeout(() => {
+      document.addEventListener("click", close);
+      document.addEventListener("keydown", close);
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("click", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [open]);
+  return (
+    <span className="info-tip" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        className="info-tip-marker"
+        aria-label={`About ${caption}`}
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        onClick={() => setOpen((current) => !current)}
+      >
+        ?
+      </button>
+      {open && (
+        <span className="info-tip-panel" id={panelId} role="note">
+          {children}
+        </span>
+      )}
+    </span>
+  );
+}
 export function SectionHeading({
   title,
   description,
@@ -212,7 +277,13 @@ export function ConfirmDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        onSubmit={(event) => void submit(event)}
+        onSubmit={(event) => {
+          // React bubbles events through the React tree, not the DOM tree, so a
+          // portaled dialog's submit still reaches an ancestor <form> — e.g. the
+          // tenant settings form. Stop it here: a modal's submit is its own.
+          event.stopPropagation();
+          void submit(event);
+        }}
       >
         <header className="confirm-dialog-head">
           <div>
@@ -336,6 +407,9 @@ export function FormDialog({
         aria-labelledby={titleId}
         onSubmit={(event) => {
           event.preventDefault();
+          // See the note in ConfirmDialog: portaled events bubble through the
+          // React tree, so without this an ancestor form also submits.
+          event.stopPropagation();
           void onSubmit();
         }}
       >

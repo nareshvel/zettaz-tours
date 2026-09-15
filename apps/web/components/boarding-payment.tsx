@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import type { Manifest, Session } from "@/lib/types";
-import { digits, label, minor, money, useMutation } from "@/lib/client";
+import {
+  digits,
+  minor,
+  money,
+  paymentMethodLabel,
+  useMutation,
+} from "@/lib/client";
 import { Field, Notice } from "./common";
-
-function paymentMethodLabel(method: string) {
-  if (method === "reseller_payment") return "Guest payment via reseller";
-  return label(method);
-}
 
 /** Equal share of remaining balance; last share absorbs rounding remainder. */
 export function suggestedBoardingShare(
@@ -128,13 +129,12 @@ export function BoardingPaymentModal({
             <h2>{passenger?.name || booking.lead_name}</h2>
             <p className="muted">
               {booking.booking_id.slice(0, 8).toUpperCase()} · Balance due{" "}
-              {money(balanceMinor, currency, session.tenant.config.locale)}
+              {money(balanceMinor, currency)}
             </p>
             {splitMode ? (
               <p className="muted">
-                Suggested share ·{" "}
-                {money(suggested, currency, session.tenant.config.locale)} (of{" "}
-                {rosterCount} travellers)
+                Suggested share · {money(suggested, currency)} (of {rosterCount}{" "}
+                travellers)
                 {attributed && attributed.id !== passenger?.id
                   ? ` · attributed to ${attributed.name}`
                   : null}
@@ -174,9 +174,7 @@ export function BoardingPaymentModal({
             </div>
             <div>
               <span>Balance due</span>
-              <strong>
-                {money(balanceMinor, currency, session.tenant.config.locale)}
-              </strong>
+              <strong>{money(balanceMinor, currency)}</strong>
             </div>
           </div>
           <div className="form-grid">

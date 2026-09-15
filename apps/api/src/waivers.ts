@@ -2,11 +2,14 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   Injectable,
+  NotFoundException,
   Param,
   Post,
+  Query,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -89,16 +92,74 @@ export class WaiverService {
     private readonly db: Database,
     private readonly finance: FinanceService,
   ) {}
-  templates(a: Actor) {
+  /**
+   * Active template by default — every signing surface wants exactly the
+   * wording in force right now, and must never be offered a superseded one.
+   * `history` additionally returns past versions, for the settings screen that
+   * manages them; each carries its signature count, because a version that
+   * evidence points at can never be removed.
+   */
+  templates(a: Actor, history = false) {
     return this.db.transaction(
       a,
       async (tx) =>
         (
           await tx.query(
-            "SELECT id,version,title,body,active,created_at FROM waiver_templates WHERE tenant_id=$1 AND active ORDER BY version DESC",
+            history
+              ? `SELECT t.id,t.version,t.title,t.body,t.active,t.created_at,
+                   (SELECT count(*)::int FROM waiver_signatures s
+                     WHERE s.tenant_id=t.tenant_id AND s.template_id=t.id) AS signature_count
+                 FROM waiver_templates t WHERE t.tenant_id=$1 ORDER BY t.version DESC`
+              : "SELECT id,version,title,body,active,created_at FROM waiver_templates WHERE tenant_id=$1 AND active ORDER BY version DESC",
             [a.tenantId],
           )
         ).rows,
+    );
+  }
+
+  /**
+   * Removes a superseded version.
+   *
+   * Two things are deliberately impossible here. The active version cannot be
+   * deleted: staff would be left with nothing to have guests sign, and the fix
+   * for bad wording is to publish a replacement, not to empty the shelf. And a
+   * version any signature points at cannot be deleted either — that evidence is
+   * only meaningful alongside the exact words the guest agreed to, which is why
+   * the content is immutable in the first place. Both are checked here for a
+   * clear message rather than left to the foreign key.
+   */
+  remove(a: Actor, templateId: string, k: string) {
+    return this.db.command(
+      a,
+      `waiver.template.delete:${templateId}`,
+      k,
+      { templateId },
+      async (tx) => {
+        const {
+          rows: [t],
+        } = await tx.query(
+          `SELECT t.id,t.version,t.title,t.active,
+             (SELECT count(*)::int FROM waiver_signatures s
+               WHERE s.tenant_id=t.tenant_id AND s.template_id=t.id) AS signature_count
+           FROM waiver_templates t WHERE t.tenant_id=$1 AND t.id=$2 FOR UPDATE`,
+          [a.tenantId, templateId],
+        );
+        if (!t) throw new NotFoundException("Waiver template not found");
+        if (t.active)
+          throw new BadRequestException(
+            "The active waiver template cannot be deleted. Publish a replacement version instead.",
+          );
+        if (t.signature_count > 0)
+          throw new BadRequestException(
+            `Version ${t.version} has ${t.signature_count} signature${t.signature_count === 1 ? "" : "s"} bound to it and must be kept as evidence.`,
+          );
+        await tx.query(
+          "DELETE FROM waiver_templates WHERE tenant_id=$1 AND id=$2",
+          [a.tenantId, templateId],
+        );
+        await record(tx, a, "waiver_template.deleted", templateId, t, null);
+        return { id: templateId, deleted: true };
+      },
     );
   }
   create(a: Actor, k: string, raw: unknown) {
@@ -597,8 +658,16 @@ export class WaiverController {
   constructor(private readonly s: WaiverService) {}
   @Get("waiver-templates") @Access("manifest.read") list(
     @CurrentActor() a: Actor,
+    @Query("history") history?: string,
   ) {
-    return this.s.templates(a);
+    return this.s.templates(a, history === "1" || history === "true");
+  }
+  @Delete("waiver-templates/:id") @Access("waiver.template.publish") remove(
+    @CurrentActor() a: Actor,
+    @Param("id") templateId: string,
+    @Headers("idempotency-key") k: string,
+  ) {
+    return this.s.remove(a, parse(id, templateId), parse(keySchema, k));
   }
   @Post("waiver-templates") @Access("waiver.template.publish") create(
     @CurrentActor() a: Actor,

@@ -15,6 +15,7 @@ export const mockConfig: TenantConfig = {
   holdSeconds: 600,
   minimumPaidPercent: 100,
   taxBasisPoints: 0,
+  taxInclusive: false,
   allowUnresolvedPickup: false,
   allowAmendmentBalance: true,
   manualPaymentMethods: [

@@ -128,18 +128,35 @@ export class InventoryService {
         amountMinor: rate.amountMinor * quantity,
       });
     }
-    const subtotalMinor = lines.reduce((s, l) => s + l.amountMinor, 0);
-    // Integer rational arithmetic; round tax half-up once on the subtotal.
-    const taxMinor = Number(
-      (BigInt(subtotalMinor) * BigInt(settings.config.taxBasisPoints) + 5000n) /
-        10000n,
-    );
+    const lineTotalMinor = lines.reduce((s, l) => s + l.amountMinor, 0);
+    const bp = BigInt(settings.config.taxBasisPoints);
+    const taxInclusive = settings.config.taxInclusive;
+    // Integer rational arithmetic, rounded half-up once over the whole party.
+    //
+    // Exclusive: catalogue amounts are net. Tax is computed on them and added.
+    // Inclusive: catalogue amounts already contain tax, so the net is recovered
+    //   as amount * 10000 / (10000 + bp) and the tax is the remainder. Deriving
+    //   tax by subtraction rather than by a second rounded multiplication is
+    //   what guarantees subtotal + tax === total exactly, with no stray minor
+    //   unit — the payment ceiling in reservations.ts relies on that identity.
+    let subtotalMinor: number;
+    let taxMinor: number;
+    if (taxInclusive) {
+      const denominator = 10000n + bp;
+      const gross = BigInt(lineTotalMinor);
+      subtotalMinor = Number((gross * 10000n + denominator / 2n) / denominator);
+      taxMinor = lineTotalMinor - subtotalMinor;
+    } else {
+      subtotalMinor = lineTotalMinor;
+      taxMinor = Number((BigInt(lineTotalMinor) * bp + 5000n) / 10000n);
+    }
     const currency = settings.config.bookingCurrency;
     const quote: Quote = {
       lines,
       subtotalMinor,
       taxMinor,
       totalMinor: subtotalMinor + taxMinor,
+      taxInclusive,
       currency,
       exchangeRate: {
         from: currency,

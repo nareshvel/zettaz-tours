@@ -27,8 +27,10 @@ import type {
   Page,
 } from "@/lib/types";
 import {
+  bookingSourceLabel,
   dateTime,
   downloadApiFile,
+  fetchApiFile,
   friendlyDateTime,
   label,
   money,
@@ -36,6 +38,7 @@ import {
   usePaged,
   useResource,
 } from "@/lib/client";
+import { printDocument } from "@/lib/print-agent";
 import {
   Empty,
   Heading,
@@ -744,7 +747,7 @@ export function Reservations({ session }: { session: Session }) {
         <div>
           <strong>
             {currencies.length === 1
-              ? money(balances, currencies[0]!, session.tenant.config.locale)
+              ? money(balances, currencies[0]!)
               : currencies.length
                 ? "Multiple"
                 : money(
@@ -826,9 +829,7 @@ export function Reservations({ session }: { session: Session }) {
                         )
                         .map((item) => (
                           <option key={item} value={item}>
-                            {item === "partner_reseller"
-                              ? "Partner / reseller"
-                              : label(item)}
+                            {bookingSourceLabel(item)}
                           </option>
                         ))}
                     </select>
@@ -998,7 +999,7 @@ export function Reservations({ session }: { session: Session }) {
                       <strong>
                         {item.state === "cancelled"
                           ? "Cancelled"
-                          : `${money(item.total_minor - item.paid_minor, item.currency, session.tenant.config.locale)} due`}
+                          : `${money(item.total_minor - item.paid_minor, item.currency)} due`}
                       </strong>
                       <ChevronRight size={18} aria-hidden="true" />
                     </div>
@@ -1760,18 +1761,21 @@ export function ManifestView({
     }
   }
 
+  const canPrint = session.permissions.includes("print.jobs.create");
   async function printManifest() {
     if (!data) return;
-    if (!session.permissions.includes("print.jobs.create")) {
-      window.print();
-      return;
-    }
-    const result = await printJob.run("ops/v1/print-jobs", {
-      documentType: "manifest",
-      sourceType: "departure",
-      sourceId: data.departure.id,
+    await printDocument(
+      {
+        documentType: "manifest",
+        sourceType: "departure",
+        sourceId: data.departure.id,
+        fallbackName: `manifest-${data.departure.id.slice(0, 8)}.pdf`,
+      },
+      printJob.run,
+      fetchApiFile,
+    ).catch(() => {
+      /* printJob.error already carries the reason for the banner */
     });
-    if (result) window.print();
   }
 
   async function downloadManifest() {
@@ -2000,30 +2004,34 @@ export function ManifestView({
         </div>
         <div className="boarding-page-meta-row">
           <div className="button-row no-print doc-actions boarding-doc-actions">
-            <button
-              type="button"
-              className="button secondary icon-only-action"
-              aria-label="Print manifest"
-              title="Print"
-              onClick={() => void printManifest()}
-              disabled={!data || printJob.busy}
-            >
-              <Printer size={17} aria-hidden="true" />
-              <span className="button-label">Print</span>
-            </button>
-            <button
-              type="button"
-              className="button secondary icon-only-action"
-              aria-label="Download PDF"
-              title={printJob.busy ? "Preparing PDF" : "Download PDF"}
-              onClick={() => void downloadManifest()}
-              disabled={!data || printJob.busy}
-            >
-              <Download size={17} aria-hidden="true" />
-              <span className="button-label">
-                {printJob.busy ? "Preparing…" : "PDF"}
-              </span>
-            </button>
+            {canPrint && (
+              <button
+                type="button"
+                className="button secondary icon-only-action"
+                aria-label="Print manifest"
+                title="Print"
+                onClick={() => void printManifest()}
+                disabled={!data || printJob.busy}
+              >
+                <Printer size={17} aria-hidden="true" />
+                <span className="button-label">Print</span>
+              </button>
+            )}
+            {canPrint && (
+              <button
+                type="button"
+                className="button secondary icon-only-action"
+                aria-label="Download PDF"
+                title={printJob.busy ? "Preparing PDF" : "Download PDF"}
+                onClick={() => void downloadManifest()}
+                disabled={!data || printJob.busy}
+              >
+                <Download size={17} aria-hidden="true" />
+                <span className="button-label">
+                  {printJob.busy ? "Preparing…" : "PDF"}
+                </span>
+              </button>
+            )}
             {data && (
               <>
                 <DepartureOptionsMenu

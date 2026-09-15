@@ -1,9 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { Link2, Power } from "lucide-react";
+import { Download, Link2, Plug, Power } from "lucide-react";
 import { api, money, useMutation, useResource } from "@/lib/client";
-import { Heading, Loading, Notice, Status } from "./common";
+import {
+  Empty,
+  Field,
+  FormActions,
+  Heading,
+  InfoTip,
+  Loading,
+  Notice,
+  Status,
+} from "./common";
 import type { Product } from "@/lib/types";
 
 type Account = {
@@ -128,6 +137,9 @@ export function Integrations({ embedded = false }: { embedded?: boolean }) {
   const [importFileName, setImportFileName] = useState("");
   const [importMessage, setImportMessage] = useState("");
   const [inboxFilter, setInboxFilter] = useState("all");
+  const [tab, setTab] = useState<"channels" | "mapping" | "inbox" | "import">(
+    "channels",
+  );
   const [reviewReason, setReviewReason] = useState("");
 
   if (accounts.error) return <Notice error>{accounts.error}</Notice>;
@@ -274,53 +286,18 @@ export function Integrations({ embedded = false }: { embedded?: boolean }) {
     }
   }
 
-  return (
+  const wpAccount = accounts.data.find(
+    (item) => item.connector_code === "wp_travel_engine",
+  );
+  const inboxNeedsReview = (inbox.data ?? []).filter((event) =>
+    ["quarantined", "dead_letter", "retry_pending"].includes(event.status),
+  ).length;
+  const filteredInbox = (inbox.data ?? []).filter(
+    (event) => inboxFilter === "all" || event.status === inboxFilter,
+  );
+
+  const sections = (
     <>
-      {embedded ? (
-        <section className="panel form-panel">
-          <div className="panel-heading plain">
-            <div>
-              <h2>Integrations</h2>
-              <p className="muted">
-                Connect and manage tenant-owned booking channels and service
-                providers. Each integration remains isolated and disabled until
-                its setup is verified.
-              </p>
-            </div>
-            <button
-              className="button"
-              disabled={
-                create.busy ||
-                accounts.data.some(
-                  (item) => item.connector_code === "wp_travel_engine",
-                )
-              }
-              onClick={() => void createAccount("wp_travel_engine")}
-            >
-              <Link2 size={16} /> Add WP Travel Engine
-            </button>
-          </div>
-        </section>
-      ) : (
-        <Heading
-          title="Integrations"
-          description="Manage inbound connector accounts. A connector stays disabled until its endpoint and signature setup are verified."
-          action={
-            <button
-              className="button"
-              disabled={
-                create.busy ||
-                accounts.data.some(
-                  (item) => item.connector_code === "wp_travel_engine",
-                )
-              }
-              onClick={() => void createAccount("wp_travel_engine")}
-            >
-              <Link2 size={16} /> Add WP Travel Engine
-            </button>
-          }
-        />
-      )}
       {create.error && <Notice error>{create.error}</Notice>}
       {secret && (
         <Notice>
@@ -334,145 +311,207 @@ export function Integrations({ embedded = false }: { embedded?: boolean }) {
         </Notice>
       )}
 
-      {catalog.error && <Notice error>{catalog.error}</Notice>}
-      {catalog.data && (
-        <section className="panel form-panel">
-          <div className="panel-heading plain">
-            <div>
-              <h2>Connector catalog</h2>
-              <p className="muted">
-                Channels translate into Zettaz's standard booking model.
-                Provider approval and certification remain visible
-                prerequisites.
-              </p>
-            </div>
-          </div>
-          <div className="stack-list">
-            {catalog.data.map((definition) => {
-              const configured = accounts.data!.some(
-                (account) => account.connector_code === definition.code,
-              );
-              return (
-                <div className="detail-row" key={definition.code}>
-                  <span>
-                    <strong>{definition.name}</strong>
-                    <small>{definition.description}</small>
-                    <small>
-                      {definition.capabilities
-                        .map((value) => value.replaceAll("_", " "))
-                        .join(" · ")}
-                    </small>
-                  </span>
-                  <div className="button-row">
-                    <Status
-                      state={
-                        configured ? "configured" : definition.lifecycle_status
-                      }
-                    />
-                    {definition.provisioning_available && !configured && (
-                      <button
-                        type="button"
-                        className="button secondary"
-                        disabled={create.busy}
-                        onClick={() => void createAccount(definition.code)}
-                      >
-                        Configure
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {!accounts.data.length ? (
-        <Notice>No connector account exists yet.</Notice>
-      ) : (
-        <div className="stack-list">
-          {accounts.data.map((account) => (
-            <article className="panel finance-claim" key={account.id}>
-              <div className="panel-heading plain">
-                <div>
-                  <p className="eyebrow">
-                    {account.connector_code.replaceAll("_", " ")}
-                  </p>
-                  <h2>Inbound account</h2>
-                  <p>Public ID: {account.public_inbound_id}</p>
-                </div>
-                <Status state={account.status} />
-              </div>
-              <button
-                className="button secondary"
-                disabled={update.busy}
-                onClick={() => toggleAccount(account)}
-              >
-                <Power size={16} />{" "}
-                {account.status === "enabled"
-                  ? "Disable connector"
-                  : "Enable connector"}
-              </button>
-            </article>
-          ))}
+      <div className="view-action-bar">
+        <div
+          className="view-tabs compact"
+          role="tablist"
+          aria-label="Integration sections"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "channels"}
+            onClick={() => setTab("channels")}
+          >
+            Channels
+            {accounts.data.length > 0 && (
+              <span className="tab-count neutral">{accounts.data.length}</span>
+            )}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "mapping"}
+            onClick={() => setTab("mapping")}
+          >
+            Product mapping
+            {mappings.data?.length ? (
+              <span className="tab-count neutral">{mappings.data.length}</span>
+            ) : null}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "inbox"}
+            onClick={() => setTab("inbox")}
+          >
+            Inbound queue
+            {inboxNeedsReview > 0 && (
+              <span className="tab-count">{inboxNeedsReview}</span>
+            )}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "import"}
+            onClick={() => setTab("import")}
+          >
+            Import
+          </button>
         </div>
-      )}
-      {update.error && <Notice error>{update.error}</Notice>}
+      </div>
 
-      {accounts.data.some(
-        (item) => item.connector_code === "wp_travel_engine",
-      ) &&
-        products.data && (
-          <section className="panel form-panel">
-            <h2>Product mappings</h2>
-            <p className="muted">
-              Map the external WP product or option ID before event processing
-              is enabled.
+      {tab === "channels" && (
+        <>
+          {catalog.error && <Notice error>{catalog.error}</Notice>}
+          {update.error && <Notice error>{update.error}</Notice>}
+          {!catalog.data ? (
+            <Loading />
+          ) : (
+            <div className="settings-list">
+              {catalog.data.map((definition) => {
+                // One row per channel, configured or not. Previously a
+                // connector appeared twice — once in the catalog and again as
+                // an account card below it — which read as two different
+                // things to enable.
+                const account = accounts.data!.find(
+                  (item) => item.connector_code === definition.code,
+                );
+                return (
+                  <article key={definition.code}>
+                    <div>
+                      <strong>
+                        {definition.name}{" "}
+                        <Status
+                          state={
+                            account
+                              ? account.status
+                              : definition.lifecycle_status
+                          }
+                        />
+                      </strong>
+                      <p>{definition.description}</p>
+                      <p className="integration-capabilities">
+                        {definition.capabilities
+                          .map((value) => value.replaceAll("_", " "))
+                          .join(" · ")}
+                      </p>
+                      {account && (
+                        <p className="integration-endpoint">
+                          <code>
+                            /integrations/v1/inbound/
+                            {account.public_inbound_id}
+                          </code>
+                        </p>
+                      )}
+                    </div>
+                    <div className="button-row">
+                      {account ? (
+                        <button
+                          type="button"
+                          className="button secondary"
+                          disabled={update.busy}
+                          onClick={() => toggleAccount(account)}
+                        >
+                          <Power size={16} />
+                          <span className="button-label">
+                            {account.status === "enabled"
+                              ? "Disable"
+                              : "Enable"}
+                          </span>
+                        </button>
+                      ) : definition.provisioning_available ? (
+                        <button
+                          type="button"
+                          className="button"
+                          disabled={create.busy}
+                          onClick={() => void createAccount(definition.code)}
+                        >
+                          <Link2 size={16} />
+                          <span className="button-label">Connect</span>
+                        </button>
+                      ) : null}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {tab === "mapping" &&
+        (!wpAccount ? (
+          <Empty title="Connect a channel first">
+            <p>
+              Mapping links a channel's own product IDs to tours in this
+              workspace. There is nothing to map until a channel is connected.
+            </p>
+          </Empty>
+        ) : (
+          <>
+            <p className="policy-copy">
+              An inbound booking names the product by the channel's ID. Map each
+              one to a tour here, or its events cannot be processed.
             </p>
             <form onSubmit={saveMapping}>
               <div className="form-grid">
-                <label className="field">
-                  <span>External WP product ID</span>
+                <Field label="External product ID" required>
                   <input
                     required
                     value={externalId}
+                    placeholder="As it appears in the channel"
                     onChange={(event) => setExternalId(event.target.value)}
                   />
-                </label>
-                <label className="field">
-                  <span>Internal tour</span>
+                </Field>
+                <Field label="Tour in this workspace" required>
                   <select
                     required
                     value={productId}
                     onChange={(event) => setProductId(event.target.value)}
                   >
                     <option value="">Choose a tour</option>
-                    {products.data.map((product) => (
+                    {(products.data ?? []).map((product) => (
                       <option value={product.id} key={product.id}>
                         {product.name}
                       </option>
                     ))}
                   </select>
-                </label>
+                </Field>
               </div>
-              <button className="button" disabled={addMapping.busy}>
-                Save mapping
-              </button>
               {addMapping.error && <Notice error>{addMapping.error}</Notice>}
+              <FormActions>
+                <button className="button" disabled={addMapping.busy}>
+                  {addMapping.busy ? "Saving…" : "Save mapping"}
+                </button>
+              </FormActions>
             </form>
-            {mappings.data?.map((mapping) => (
-              <p key={mapping.id} className="decision-note">
-                <Link2 size={16} />
-                {mapping.external_id} → {mapping.product_name}
-              </p>
-            ))}
-          </section>
-        )}
+            {mappings.data?.length ? (
+              <div className="settings-list">
+                {mappings.data.map((mapping) => (
+                  <article key={mapping.id}>
+                    <div>
+                      <strong>{mapping.product_name}</strong>
+                      <p>
+                        <code>{mapping.external_id}</code> → this tour
+                      </p>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="muted">No products mapped yet.</p>
+            )}
+          </>
+        ))}
 
-      {inbox.data && (
-        <section className="panel form-panel">
-          <div className="panel-heading">
-            <h2>Inbound review queue</h2>
+      {tab === "inbox" && (
+        <>
+          <div className="view-action-bar">
+            <p className="policy-copy">
+              Events a channel has sent. Anything quarantined or dead-lettered
+              is waiting on a decision here.
+            </p>
             <select
               aria-label="Filter inbox state"
               value={inboxFilter}
@@ -486,44 +525,46 @@ export function Integrations({ embedded = false }: { embedded?: boolean }) {
               <option value="processed">Processed</option>
             </select>
           </div>
-          <label className="field">
-            <span>Review reason</span>
+          <Field
+            label="Review reason"
+            hint="Required before retrying or dead-lettering. Recorded in the audit trail."
+          >
             <input
               value={reviewReason}
               minLength={8}
               maxLength={500}
               onChange={(event) => setReviewReason(event.target.value)}
-              placeholder="Required for retry or dead-letter action"
+              placeholder="Why this decision is being taken"
             />
-          </label>
+          </Field>
           {reviewInbox.error && <Notice error>{reviewInbox.error}</Notice>}
-          {!inbox.data.filter(
-            (event) => inboxFilter === "all" || event.status === inboxFilter,
-          ).length ? (
+          {!filteredInbox.length ? (
             <p className="muted">No inbound events match this filter.</p>
           ) : (
-            inbox.data
-              .filter(
-                (event) =>
-                  inboxFilter === "all" || event.status === inboxFilter,
-              )
-              .map((event) => (
-                <div className="detail-row" key={event.id}>
-                  <span>
-                    <strong>{event.external_event_id}</strong>
-                    <small>
+            <div className="settings-list">
+              {filteredInbox.map((event) => (
+                <article key={event.id}>
+                  <div>
+                    <strong>
+                      {event.external_event_id} <Status state={event.status} />
+                    </strong>
+                    <p>
                       {event.connector_code.replaceAll("_", " ")} ·{" "}
-                      {new Date(event.received_at).toLocaleString()} ·{" "}
-                      {event.retry_count} retries
-                    </small>
+                      {new Date(event.received_at).toLocaleString()}
+                      {event.retry_count
+                        ? ` · ${event.retry_count} retries`
+                        : ""}
+                    </p>
                     {event.failure_reason && (
-                      <small>{event.failure_reason}</small>
+                      <p className="integration-failure">
+                        {event.failure_reason}
+                      </p>
                     )}
-                  </span>
+                  </div>
                   <div className="button-row">
-                    <Status state={event.status} />
                     {["quarantined", "dead_letter"].includes(event.status) && (
                       <button
+                        type="button"
                         className="button secondary"
                         disabled={
                           reviewInbox.busy || reviewReason.trim().length < 8
@@ -536,6 +577,7 @@ export function Integrations({ embedded = false }: { embedded?: boolean }) {
                     {event.status !== "processed" &&
                       event.status !== "dead_letter" && (
                         <button
+                          type="button"
                           className="text-button danger"
                           disabled={
                             reviewInbox.busy || reviewReason.trim().length < 8
@@ -546,86 +588,128 @@ export function Integrations({ embedded = false }: { embedded?: boolean }) {
                         </button>
                       )}
                   </div>
-                </div>
-              ))
+                </article>
+              ))}
+            </div>
           )}
-        </section>
+        </>
       )}
 
-      <section className="panel form-panel">
-        <div className="panel-heading plain">
-          <div>
-            <h2>Booking import reconciliation</h2>
-            <p className="muted">
-              Stage future bookings, detect exceptions, and preserve an
-              acceptance record. Validation never creates bookings or sends
-              customer messages.
+      {tab === "import" && (
+        <>
+          <div className="view-action-bar">
+            <p className="policy-copy">
+              Stage bookings from a previous system, see what would fail, and
+              keep an acceptance record. Validation never creates bookings or
+              messages guests.
             </p>
+            <button
+              type="button"
+              className="button secondary"
+              onClick={downloadTemplate}
+            >
+              <Download size={16} />
+              <span className="button-label">CSV template</span>
+            </button>
           </div>
-          <button
-            type="button"
-            className="button secondary"
-            onClick={downloadTemplate}
-          >
-            Download CSV template
-          </button>
-        </div>
-        <form onSubmit={submitImport}>
-          <label className="field">
-            <span>Tenant export CSV</span>
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              onChange={(event) => void selectImportFile(event)}
-            />
-          </label>
-          <label className="field">
-            <span>Normalized staging rows</span>
-            <textarea
-              rows={9}
-              value={importText}
-              onChange={(event) => setImportText(event.target.value)}
-            />
-          </label>
-          <p className="muted">
-            Amounts use minor units. Departure time must include its UTC offset.
-            Pickup disposition, payment balance, invoice owner, partner
-            reference, and product mapping are retained for manual acceptance.
-          </p>
-          <button className="button" disabled={validateImport.busy}>
-            Run dry-run validation
-          </button>
-          {(importMessage || validateImport.error) && (
-            <Notice error={Boolean(validateImport.error)}>
-              {validateImport.error || importMessage}
-            </Notice>
-          )}
-        </form>
-        {assistedImports.data?.map((item) => (
-          <div className="detail-row" key={item.id}>
-            <span>
-              <strong>{item.file_name || item.source}</strong>
-              <small>
-                {new Date(item.created_at).toLocaleString()} · {item.valid_rows}
-                /{item.total_rows} ready · {item.quarantined_rows} quarantined
-                {item.currency && item.total_minor !== null
-                  ? ` · ${money(item.total_minor, item.currency)} total`
-                  : ""}
-              </small>
-            </span>
-            <div className="button-row">
-              <Status state={item.status} />
-              <button
-                type="button"
-                className="button secondary"
-                onClick={() => void downloadReport(item)}
+          <form onSubmit={submitImport}>
+            <div className="form-grid">
+              <Field
+                label="Tenant export CSV"
+                hint="Parsed in the browser; nothing is uploaded until validation runs."
               >
-                Acceptance report
-              </button>
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={(event) => void selectImportFile(event)}
+                />
+              </Field>
             </div>
-          </div>
-        ))}
-      </section>
+            <Field
+              label="Normalized staging rows"
+              hint="Amounts in minor units. Departure times must carry their UTC offset."
+            >
+              <textarea
+                rows={9}
+                value={importText}
+                onChange={(event) => setImportText(event.target.value)}
+              />
+            </Field>
+            {(importMessage || validateImport.error) && (
+              <Notice error={Boolean(validateImport.error)}>
+                {validateImport.error || importMessage}
+              </Notice>
+            )}
+            <FormActions>
+              <button className="button" disabled={validateImport.busy}>
+                {validateImport.busy ? "Validating…" : "Run dry-run validation"}
+              </button>
+            </FormActions>
+          </form>
+          {assistedImports.data?.length ? (
+            <div className="settings-list">
+              {assistedImports.data.map((item) => (
+                <article key={item.id}>
+                  <div>
+                    <strong>
+                      {item.file_name || item.source}{" "}
+                      <Status state={item.status} />
+                    </strong>
+                    <p>
+                      {new Date(item.created_at).toLocaleString()} ·{" "}
+                      {item.valid_rows}/{item.total_rows} ready ·{" "}
+                      {item.quarantined_rows} quarantined
+                      {item.currency && item.total_minor !== null
+                        ? ` · ${money(item.total_minor, item.currency)} total`
+                        : ""}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={() => void downloadReport(item)}
+                  >
+                    <Download size={16} />
+                    <span className="button-label">Report</span>
+                  </button>
+                </article>
+              ))}
+            </div>
+          ) : null}
+        </>
+      )}
     </>
+  );
+
+  if (!embedded)
+    return (
+      <>
+        <Heading
+          title="Booking integrations"
+          description="Channels that send bookings into this workspace. A channel stays disabled until its endpoint and signature setup are verified."
+        />
+        {sections}
+      </>
+    );
+
+  return (
+    <section>
+      <div className="settings-card-head">
+        <Plug size={20} />
+        <div>
+          <h2>
+            Booking integrations
+            <InfoTip label="booking integrations">
+              Each channel is isolated and starts disabled. Connecting one
+              issues an inbound endpoint and a signing secret shown once; events
+              arriving on it are held in the inbound queue until their product
+              is mapped to a tour here.
+            </InfoTip>
+          </h2>
+          <p>Channels that send bookings into this workspace.</p>
+        </div>
+      </div>
+      {sections}
+    </section>
   );
 }

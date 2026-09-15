@@ -38,6 +38,12 @@ export const configSchema = z
     holdSeconds: z.number().int().min(30).max(1800),
     minimumPaidPercent: z.number().int().min(0).max(100),
     taxBasisPoints: z.number().int().min(0).max(10000),
+    // false: catalogue amounts are net, tax is added on top (total = net + tax).
+    // true:  catalogue amounts already contain tax, which is extracted for
+    //        display (total = catalogue amount). Only affects NEW holds —
+    //        priced quotes are frozen, so changing this never restates a
+    //        booking that already exists.
+    taxInclusive: z.boolean().default(false),
     allowUnresolvedPickup: z.boolean(),
     allowAmendmentBalance: z.boolean().default(false),
     manualPaymentMethods: z.array(slug).min(1).max(20),
@@ -190,6 +196,8 @@ export const grants: Record<Role, readonly string[]> = {
     "bookings.read",
     "payment.write",
     "manifest.read",
+    "print.jobs.create",
+    "print.jobs.read",
     "partner.collection.record",
     "notifications.request",
     "notifications.read",
@@ -210,6 +218,8 @@ export const grants: Record<Role, readonly string[]> = {
     "payment.write",
     "payment.correct",
     "audit.read",
+    "print.jobs.create",
+    "print.jobs.read",
     "partner.collection.record",
     "partner.collection.verify",
     "partner.statement.read",
@@ -568,6 +578,9 @@ export type Quote = {
   subtotalMinor: number;
   taxMinor: number;
   totalMinor: number;
+  /** Pricing mode this quote was computed under, frozen alongside the amounts
+   *  so a quote still reads correctly if the tenant later flips the setting. */
+  taxInclusive: boolean;
   currency: string;
   exchangeRate: {
     from: string;

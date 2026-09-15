@@ -750,6 +750,45 @@ export class TenantController {
   get(@CurrentActor() actor: Actor) {
     return this.db.transaction(actor, (tx) => tenant(tx, actor));
   }
+  /**
+   * What is still missing before this tenant can actually take and run a
+   * booking.
+   *
+   * One query rather than six client fetches, because the settings sidebar
+   * shows this on every visit. Each flag is a hard operational blocker, not
+   * advice: without a product there is nothing to sell, without an upcoming
+   * departure nothing to sell it on, without a pickup location staff cannot
+   * record where to collect a guest, without a published waiver no signature
+   * can be captured, and without a logo every printed manifest and receipt
+   * goes out unbranded.
+   */
+  @Get("tenant/readiness")
+  @Access("catalog.read")
+  readiness(@CurrentActor() actor: Actor) {
+    return this.db.transaction(actor, async (tx) => {
+      const {
+        rows: [r],
+      } = await tx.query(
+        `SELECT
+          (SELECT COUNT(*)::int FROM products WHERE tenant_id=$1 AND active) AS products,
+          (SELECT COUNT(*)::int FROM departures
+            WHERE tenant_id=$1 AND starts_at>clock_timestamp()) AS upcoming_departures,
+          (SELECT COUNT(*)::int FROM pickup_locations WHERE tenant_id=$1 AND active) AS pickup_locations,
+          (SELECT COUNT(*)::int FROM waiver_templates WHERE tenant_id=$1 AND active) AS waiver_templates,
+          (SELECT COUNT(*)::int FROM memberships WHERE tenant_id=$1) AS members,
+          (SELECT logo_path IS NOT NULL AND logo_path<>'' FROM tenants WHERE id=$1) AS has_logo`,
+        [actor.tenantId],
+      );
+      return {
+        products: r.products > 0,
+        departures: r.upcoming_departures > 0,
+        pickupLocations: r.pickup_locations > 0,
+        waiver: r.waiver_templates > 0,
+        team: r.members > 1,
+        logo: Boolean(r.has_logo),
+      };
+    });
+  }
   @Patch("tenant/config")
   @Access("config.write")
   config(

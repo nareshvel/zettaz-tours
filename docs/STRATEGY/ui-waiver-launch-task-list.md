@@ -50,7 +50,7 @@ Catalog and Departures are promoted ahead of further reservation-detail work bec
 | 13 | **Reports — polish implemented 11 September 2026; needs owner visual pass** | Date presets, currency/date-basis clarity, exception emphasis, mobile daily cards |
 | 14 | **Team & resources — polish implemented 11 September 2026; needs owner visual pass** | Tabbed Crew/Resources/Documents/Assignments, FormDialog CRUD, ConfirmDialog remove |
 | 15 | **Staff & access / roles — polish implemented 11 September 2026; needs owner visual pass** | Metrics, Staff↔Roles tabs, invite/create modals, revoke ConfirmDialog, mobile cards |
-| 16 | **Tenant settings — polish + follow-up 11 September 2026; needs owner visual pass** | Aside facts, `?tab=` sync, short mobile nav labels, sticky saves, support ConfirmDialog; shared country list dropdown; locked Track A currency copy; exclusive tax-rate explanation; denser desktop meta / tighter mobile tab spacing |
+| 16 | **Tenant settings — module pass in progress 15 September 2026; needs owner visual pass** | Printers & documents rebuilt (agent pairing, per-document printer + paper, job lifecycle); Waiver templates moved to Operations with version-publish edit + guarded delete; Booking integrations sub-tabs; Localization 3-column + formatting actually wired; sidebar setup checklist; Payment integrations rename. See [agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) and [print-and-settings-evidence.md](../TESTING/print-and-settings-evidence.md). Earlier pass (11 Sep): Aside facts, `?tab=` sync, short mobile nav labels, sticky saves, support ConfirmDialog; shared country list dropdown; locked Track A currency copy; exclusive tax-rate explanation; denser desktop meta / tighter mobile tab spacing |
 | 17 | **Subscription — held 14 Sep 2026** (plan grid + embedding done 11 Sep; messaging deferred) | Do not start billing-cycle / failed-payment/grace copy until owner reopens; see [agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) |
 | 18 | **Profile — polish + responsive follow-up 11 September 2026; needs owner visual pass** | Account shell (identity rail + Profile/Security/Subscription tabs); flush stacked rail/content ≤1366px; MFA deferred honestly |
 | 19 | Audit trail | Filterability, actor/action clarity, detail disclosure and mobile event cards |
@@ -103,7 +103,7 @@ The connected API and Expo sub-increment is implemented and integration-verified
 1. Privileged-action TOTP MFA and recovery codes.
 2. SMTP delivery adapter, sender configuration, DNS verification, retries/bounces/suppression, and localized versioned templates.
 3. Stripe Connect Accounts v2 onboarding, USD Checkout, signed webhook reconciliation, refunds/disputes, and tenant account-health UI.
-4. Go printer-agent enrollment, revocation, routing, job delivery/status, and real printer acceptance.
+4. Go printer-agent: **pairing, job delivery and status shipped 15 September 2026** ([ADR 018](../DECISIONS/018-print-delivery-and-agent.md)). Left: revocation policy, tenant-shared routing (needs agent-side polling), and real printer acceptance on hardware.
 5. WordPress mapping when representative payload evidence is available; keep manual/CSV operation usable meanwhile.
 
 ### 5. Tenant data validation and launch acceptance

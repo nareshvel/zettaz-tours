@@ -295,6 +295,7 @@ export class AuthController {
       holdSeconds: 1800,
       minimumPaidPercent: 100,
       taxBasisPoints: 0,
+      taxInclusive: false,
       allowUnresolvedPickup: false,
       allowAmendmentBalance: true,
       manualPaymentMethods: ["cash", "card", "online", "bank_transfer"],

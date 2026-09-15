@@ -2,12 +2,13 @@
 
 Keep under 200 lines. Update after sessions that change standing decisions.
 
-**Last updated:** 2026-09-14
+**Last updated:** 2026-09-15
 
 ## Current focus (agents)
 
 - **Sprint board:** [../HANDOFF/agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) — prefer over chat history.
 - **Owner priority (14 Sep evening):** Operations menu group = complete until testing finds gaps. **Hold** Subscription messaging. Next: verify/improve Workspace / Insights / Administration (non-Ops).
+- **In progress (15 Sep):** Tenant settings pass — printing, waivers, integrations, localization, sidebar. See the 15 September section below.
 - **Deploy:** VPS at tip `a18e083` via `./deploy.sh` (migrations 067, Pending 0). Do not invent “push migration 060.”
 - Claude paste brief: [../HANDOFF/claude-handoff-2026-09-14.md](../HANDOFF/claude-handoff-2026-09-14.md).
 
@@ -87,6 +88,21 @@ See [../STRATEGY/delivery.md](../STRATEGY/delivery.md).
 - **Subscription polish (partial, 11 September 2026):** Embedded under profile for owners; plan grid responsive 4→2→1 columns (inline four-column override removed). Billing-cycle / grace messaging polish still open. See `docs/TESTING/subscription-polish-evidence.md`.
 - **Shared countries:** `packages/shared/src/countries.ts` is the single ISO list; web re-exports `@/lib/countries`.
 - **Dev log quieting:** Nest route dumps off unless `NEST_LOG=verbose`; Next.js incoming request dumps off unless `NEXT_REQUEST_LOG=verbose`.
+
+## Tenant settings + printing — 15 September 2026
+
+- **Printing is implemented.** Server-rendered vector PDF in four paper profiles (A4 / Letter / 80 mm / 58 mm), delivered to the shared Zettaz Go print agent when paired, otherwise to the browser. Contract is Cloud's verbatim except `clientId`. Do not "improve" the job field names on one side. [ADR 018](../DECISIONS/018-print-delivery-and-agent.md), [printing-and-print-agent.md](../FEATURES/operations/printing-and-print-agent.md).
+- **Paper travels with the job.** `print_jobs.media_size` (migration 079) is sent to the agent; CUPS anchors to the queue's media box and silently clips a mismatch. Wrapping is by measured Helvetica width — character counts overflowed 58 mm by 27%.
+- **Printer routing is per document type, per browser.** The agent reports identical hardcoded capabilities for every queue, so a roll-vs-sheet guess comes from the queue name, is labelled as a guess, and is overridden by assignment. Never claim the agent detects printer type.
+- **Every print is recorded.** Job row created first and unconditionally; `requested → rendered → delivered | failed`. Migration **080** grants `print.jobs.create/read` to `reservations` and `finance` — they had `bookings.write`/`payment.write` but no print permission, so the web app had been calling `window.print()` with no audit row. That bypass is gone.
+- **A phone or tablet cannot reach an agent** (loopback). It gets the identical PDF via the OS print sheet. Server-pushed jobs to a remote agent needs agent-side polling — Track B; `printer_routes` stays dormant.
+- **Waiver templates moved to Operations** and renamed. Content is immutable (migration 012 trigger) and signatures FK the template row, so **edit = publish next version**. The active version can never be deleted; a signed version can never be deleted. `GET waiver-templates` stays active-only; `?history=1` is for settings alone. [waiver-template-lifecycle.md](../FEATURES/tenant-settings/waiver-template-lifecycle.md).
+- **Localization is now honoured.** `config.locale` and `config.numberFormat` were dead config — `money()` defaulted to `"en"`. `setFormatContext()` is set beside the tenant context; `money`/`dateOnly`/`dateTime`/`formatMediumDate`/`friendlyDateTime` follow it. `numberFormat` maps to a number-only locale (`comma_decimal → en-US`, `decimal_comma → de-DE`) via `numberLocaleFor()`; month names keep the display language.
+- **Do not expose config that nothing reads.** `supportedLocales` stays hidden until guest-facing output is translated; a default guest country waits for a field that uses it. A control that changes nothing is worse than a missing one.
+- **Settings sidebar** shows outstanding setup steps (`GET admin/v1/tenant/readiness`: product, departure, pickup locations, waiver, logo, team) instead of restating currency/date format/hold window. It hides itself once nothing is outstanding.
+- **Booking integrations** (renamed from Integrations): sub-tabs Channels / Product mapping / Inbound queue / Import; one row per channel instead of a catalog row plus a duplicate account card.
+- **Pickup location on new/amend reservation is a dropdown** from the tenant catalog. The stored value is still the location *name*, so the booking contract and dispatch matching are unchanged; an unknown existing value stays selectable as "(not in settings)" so amending another field cannot silently move a guest's pickup.
+- **`InfoTip`** (`components/common.tsx`) parks long guidance behind a `?` next to a heading. Click-toggled, not hover — the counter runs on tablets.
 
 ## Production demo + sign-in — 12 September 2026
 

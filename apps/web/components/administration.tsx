@@ -6,6 +6,7 @@ import {
   Plus,
   Trash2,
   Check,
+  Circle,
   X,
   ArrowRight,
   Pencil,
@@ -19,6 +20,7 @@ import {
   Printer,
   CreditCard,
   Plug,
+  FileSignature,
   FileText,
   Ship,
   Hotel,
@@ -43,18 +45,22 @@ import { availabilityModes, modeLabel, weekdayLabels } from "@/lib/types";
 import { COUNTRIES } from "@/lib/countries";
 import {
   api,
+  bookingSourceLabel,
+  codeFromName,
   dateOnly,
   dateTime,
   digits,
+  downloadApiFile,
   formatMediumDateRange,
   label,
   minor,
   money,
+  numberLocaleFor,
+  paymentMethodLabel,
   priceFromMinor,
   useMutation,
   usePaged,
   useResource,
-  downloadApiFile,
 } from "@/lib/client";
 import {
   Back,
@@ -64,6 +70,7 @@ import {
   FormActions,
   FormDialog,
   Heading,
+  InfoTip,
   Loading,
   More,
   Notice,
@@ -86,6 +93,8 @@ import {
 } from "./catalog-assignments";
 import { PickupLocationsSettings } from "./pickup-locations";
 import { PartnerSettings } from "./partner-settings";
+import { PrintersSettings } from "./printers-settings";
+import { WaiverSettings } from "./waiver-settings";
 import { StaysSettings } from "./stays-settings";
 import {
   type ComplianceDocument,
@@ -120,6 +129,82 @@ const SETTINGS_TABS = new Set([
   "integrations",
   "security",
 ]);
+type Readiness = {
+  products: boolean;
+  departures: boolean;
+  pickupLocations: boolean;
+  waiver: boolean;
+  team: boolean;
+  logo: boolean;
+};
+
+/**
+ * What is still missing before this tenant can take a booking and run it.
+ *
+ * This replaced a panel that restated the currency already printed above it,
+ * the date format and the hold window — three facts that are either duplicated
+ * or one click away on their own tab. Setup state is the opposite: it is the
+ * one thing on this screen that cannot be seen from anywhere else, and each
+ * unchecked row is a real blocker rather than a suggestion. It disappears once
+ * everything is in place, so an established tenant gets the space back.
+ */
+function SetupChecklist({
+  readiness,
+  onJump,
+}: {
+  readiness?: Readiness | null;
+  onJump: (tab: string) => void;
+}) {
+  if (!readiness) return null;
+  const items: {
+    key: keyof Readiness;
+    label: string;
+    tab: string;
+    href?: string;
+  }[] = [
+    { key: "products", label: "Publish a product", tab: "", href: "/catalog" },
+    {
+      key: "departures",
+      label: "Schedule a departure",
+      tab: "",
+      href: "/catalog",
+    },
+    { key: "pickupLocations", label: "Add pickup locations", tab: "pickups" },
+    { key: "waiver", label: "Publish a waiver", tab: "waivers" },
+    { key: "logo", label: "Upload a logo", tab: "general" },
+    { key: "team", label: "Invite your team", tab: "", href: "/team" },
+  ];
+  const outstanding = items.filter((item) => !readiness[item.key]);
+  if (!outstanding.length) return null;
+  const done = items.length - outstanding.length;
+  return (
+    <section className="settings-setup" aria-label="Setup checklist">
+      <div className="settings-setup-head">
+        <strong>Finish setup</strong>
+        <span>
+          {done} of {items.length}
+        </span>
+      </div>
+      <ul>
+        {outstanding.map((item) => (
+          <li key={item.key}>
+            {item.href ? (
+              <Link href={item.href}>
+                <Circle size={13} aria-hidden="true" />
+                {item.label}
+              </Link>
+            ) : (
+              <button type="button" onClick={() => onJump(item.tab)}>
+                <Circle size={13} aria-hidden="true" />
+                {item.label}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 function settingsTab(
   router: { replace: (href: string, opts?: { scroll?: boolean }) => void },
   searchParams: URLSearchParams,
@@ -2570,8 +2655,8 @@ export function Settings({
         hotRetentionDays: 7,
       },
     }),
-    [methods, setMethods] = useState(config.manualPaymentMethods.join(", ")),
-    [sources, setSources] = useState(config.bookingSources.join(", ")),
+    [methods, setMethods] = useState<string[]>(config.manualPaymentMethods),
+    [sources, setSources] = useState<string[]>(config.bookingSources),
     [logoError, setLogoError] = useState(""),
     [logoBusy, setLogoBusy] = useState(false),
     [logoUnavailable, setLogoUnavailable] = useState(false),
@@ -2590,47 +2675,14 @@ export function Settings({
     ),
     [authorizedContact, setAuthorizedContact] = useState(
       session.tenant.authorized_contact ?? { name: "", email: "", phone: "" },
-    ),
-    [waiverTitle, setWaiverTitle] = useState(""),
-    [waiverBody, setWaiverBody] = useState(""),
-    [printName, setPrintName] = useState(""),
-    [printDocumentType, setPrintDocumentType] = useState<
-      "manifest" | "pickup_list"
-    >("manifest");
+    );
   const mutation = useMutation(),
     profileMutation = useMutation(),
-    waiverMutation = useMutation(),
-    waiverTemplates = useResource<
-      {
-        id: string;
-        version: number;
-        title: string;
-        body: string;
-        active: boolean;
-        created_at: string;
-      }[]
-    >("ops/v1/waiver-templates"),
-    printMutation = useMutation(),
-    printTemplates = useResource<
-      {
-        id: string;
-        template_key: string;
-        version: number;
-        document_type: string;
-        name: string;
-        is_default: boolean;
-        created_at: string;
-      }[]
-    >("ops/v1/print-templates"),
-    printJobs = useResource<
-      {
-        id: string;
-        document_type: string;
-        status: string;
-        destination_type: string;
-        requested_at: string;
-      }[]
-    >("ops/v1/print-jobs");
+    readiness = useResource<Readiness>("admin/v1/tenant/readiness");
+  // Fixed rather than "now" so the preview cannot change under the reader
+  // mid-edit, and deliberately a day and hour where every format differs
+  // visibly from the others.
+  const previewInstant = "2026-03-09T14:05:00.000Z";
   useEffect(() => {
     setLogoUnavailable(false);
   }, [session.tenant.logo_path]);
@@ -2663,14 +2715,8 @@ export function Settings({
         version: session.tenant.version,
         config: {
           ...config,
-          manualPaymentMethods: methods
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean),
-          bookingSources: sources
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean),
+          manualPaymentMethods: methods,
+          bookingSources: sources,
         },
       },
       "PATCH",
@@ -2711,30 +2757,6 @@ export function Settings({
     );
     if (result) await refresh();
   }
-  async function publishWaiverTemplate() {
-    const result = await waiverMutation.run("ops/v1/waiver-templates", {
-      title: waiverTitle,
-      body: waiverBody,
-    });
-    if (result) {
-      setWaiverTitle("");
-      setWaiverBody("");
-      waiverTemplates.reload();
-    }
-  }
-  async function publishPrintTemplate() {
-    const result = await printMutation.run("ops/v1/print-templates", {
-      documentType: printDocumentType,
-      name: printName,
-      outputProfile: { paper: "A4", orientation: "portrait" },
-      payload: { includeTenantLogo: true },
-      isDefault: true,
-    });
-    if (result) {
-      setPrintName("");
-      printTemplates.reload();
-    }
-  }
   return (
     <>
       <Heading
@@ -2765,20 +2787,7 @@ export function Settings({
               </p>
             </div>
           </div>
-          <dl className="settings-facts">
-            <div>
-              <dt>Booking currency</dt>
-              <dd>{config.bookingCurrency}</dd>
-            </div>
-            <div>
-              <dt>Date format</dt>
-              <dd>{config.dateFormat}</dd>
-            </div>
-            <div>
-              <dt>Hold window</dt>
-              <dd>{Math.round(config.holdSeconds / 60)} min</dd>
-            </div>
-          </dl>
+          <SetupChecklist readiness={readiness.data} onJump={selectTab} />
           <nav className="settings-nav" aria-label="Tenant settings sections">
             <p>PROFILE</p>
             <button
@@ -2838,6 +2847,15 @@ export function Settings({
               <span className="settings-nav-label">Pickup locations</span>
               <span className="settings-nav-label-short">Pickups</span>
             </button>
+            <button
+              className={tab === "waivers" ? "active" : ""}
+              type="button"
+              onClick={() => selectTab("waivers")}
+            >
+              <FileSignature size={16} />
+              <span className="settings-nav-label">Waiver templates</span>
+              <span className="settings-nav-label-short">Waivers</span>
+            </button>
             {session.permissions.includes("partner.manage") && (
               <button
                 className={tab === "resellers" ? "active" : ""}
@@ -2856,17 +2874,8 @@ export function Settings({
               onClick={() => selectTab("payments")}
             >
               <CreditCard size={16} />
-              <span className="settings-nav-label">Payments</span>
+              <span className="settings-nav-label">Payment integrations</span>
               <span className="settings-nav-label-short">Payments</span>
-            </button>
-            <button
-              className={tab === "waivers" ? "active" : ""}
-              type="button"
-              onClick={() => selectTab("waivers")}
-            >
-              <FileText size={16} />
-              <span className="settings-nav-label">Waivers</span>
-              <span className="settings-nav-label-short">Waivers</span>
             </button>
             {session.permissions.includes("integration.manage") && (
               <button
@@ -2875,8 +2884,8 @@ export function Settings({
                 onClick={() => selectTab("integrations")}
               >
                 <Plug size={16} />
-                <span className="settings-nav-label">Integrations</span>
-                <span className="settings-nav-label-short">Integrations</span>
+                <span className="settings-nav-label">Booking integrations</span>
+                <span className="settings-nav-label-short">Channels</span>
               </button>
             )}
             <button
@@ -2891,7 +2900,7 @@ export function Settings({
           </nav>
         </aside>
         {tab === "integrations" ? (
-          <div className="settings-tab-content">
+          <div className="panel form-panel settings-tab-content">
             <Integrations embedded />
           </div>
         ) : tab === "pickups" ? (
@@ -3135,6 +3144,10 @@ export function Settings({
                     </p>
                   </div>
                 </div>
+                <SectionHeading
+                  title="Holds & confirmation"
+                  description="How long a seat is held, and how much must be paid before a booking can be confirmed."
+                />
                 <div className="form-grid">
                   <Field
                     label="Hold duration · seconds"
@@ -3154,7 +3167,10 @@ export function Settings({
                       }
                     />
                   </Field>
-                  <Field label="Minimum payment to confirm · %">
+                  <Field
+                    label="Minimum payment to confirm · %"
+                    hint="100% requires payment in full."
+                  >
                     <input
                       type="number"
                       min="0"
@@ -3169,9 +3185,24 @@ export function Settings({
                       }
                     />
                   </Field>
+                </div>
+                <Toggle
+                  label="Allow confirmation before pickup is arranged"
+                  description="Unresolved pickup still appears on the booking."
+                  checked={config.allowUnresolvedPickup}
+                  onChange={(checked) =>
+                    setConfig({ ...config, allowUnresolvedPickup: checked })
+                  }
+                />
+
+                <SectionHeading
+                  title="Tax"
+                  description="Applied once to the party subtotal when a hold is priced, then frozen on the quote. Changes affect new holds only."
+                />
+                <div className="form-grid tax-grid">
                   <Field
                     label="Tax / fee rate · %"
-                    hint="Added once on the party subtotal when a hold is priced (exclusive). Not a tax engine."
+                    hint="A single rate. Exemptions and multi-jurisdiction tax are not modelled yet."
                   >
                     <input
                       type="number"
@@ -3190,22 +3221,19 @@ export function Settings({
                       }
                     />
                   </Field>
+                  <Toggle
+                    label="Catalogue prices include tax"
+                    description={
+                      config.taxInclusive
+                        ? "Inclusive — the guest pays the catalogue price, and tax is broken out of it."
+                        : "Exclusive — tax is added on top of the catalogue price."
+                    }
+                    checked={config.taxInclusive}
+                    onChange={(checked) =>
+                      setConfig({ ...config, taxInclusive: checked })
+                    }
+                  />
                 </div>
-                <p className="policy-copy">
-                  Yes — this rate is used today. New holds compute tax as rate ×
-                  party subtotal and freeze it on the quote (total = subtotal +
-                  tax). Inclusive pricing, exemptions, multi-jurisdiction tax,
-                  and remittance are not modeled; treat catalogue amounts as
-                  tax-exclusive until a finance-approved tax engine ships.
-                </p>
-                <Toggle
-                  label="Allow confirmation before pickup is arranged"
-                  description="Unresolved pickup still appears on the booking."
-                  checked={config.allowUnresolvedPickup}
-                  onChange={(checked) =>
-                    setConfig({ ...config, allowUnresolvedPickup: checked })
-                  }
-                />
                 <div className="form-divider" />
               </section>
             )}
@@ -3214,13 +3242,26 @@ export function Settings({
                 <div className="settings-card-head" id="localization">
                   <Globe2 size={20} />
                   <div>
-                    <h2>Localization</h2>
-                    <p>
-                      Regional display and data-entry defaults for this tenant.
-                    </p>
+                    <h2>
+                      Localization
+                      <InfoTip label="localization">
+                        These control how dates, times and numbers are shown to
+                        staff across the workspace and on printed documents.
+                        They change presentation only — a departure is stored as
+                        an instant and never moves because a format changed
+                        here.
+                      </InfoTip>
+                    </h2>
+                    <p>Regional display defaults for this tenant.</p>
                   </div>
                 </div>
-                <div className="form-grid">
+                <div className="form-grid three">
+                  <Field
+                    label="Operating timezone"
+                    hint="Set at tenant create. Every departure time is shown in it."
+                  >
+                    <input value={session.tenant.timezone} disabled />
+                  </Field>
                   <Field label="Display language">
                     <select
                       value={config.locale}
@@ -3231,6 +3272,24 @@ export function Settings({
                       <option value="en">English</option>
                       <option value="es">Spanish</option>
                       <option value="fr">French</option>
+                    </select>
+                  </Field>
+                  <Field
+                    label="Number format"
+                    hint="How amounts are grouped and punctuated."
+                  >
+                    <select
+                      value={config.numberFormat}
+                      onChange={(e) =>
+                        setConfig({
+                          ...config,
+                          numberFormat: e.target
+                            .value as typeof config.numberFormat,
+                        })
+                      }
+                    >
+                      <option value="comma_decimal">1,234.56</option>
+                      <option value="decimal_comma">1.234,56</option>
                     </select>
                   </Field>
                   <Field label="Date format">
@@ -3294,16 +3353,57 @@ export function Settings({
                     </select>
                   </Field>
                 </div>
+                {/* Shows the choices above applied to a real departure time and
+                    a real amount. Three dropdowns of format codes are hard to
+                    read; one rendered line is not, and it catches a wrong
+                    pick before it reaches a printed manifest. */}
+                <dl className="locale-preview">
+                  <div>
+                    <dt>Departure reads as</dt>
+                    <dd>
+                      {dateTime(
+                        previewInstant,
+                        session.tenant.timezone,
+                        config.locale,
+                        config.dateFormat,
+                        config.timeFormat,
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Amounts read as</dt>
+                    <dd>
+                      {money(
+                        123456,
+                        config.bookingCurrency,
+                        numberLocaleFor(config.numberFormat),
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Week runs</dt>
+                    <dd>
+                      {config.weekStartsOn === 0
+                        ? "Sunday – Saturday"
+                        : "Monday – Sunday"}
+                    </dd>
+                  </div>
+                </dl>
                 <div className="form-divider" />
-                <h2>Currency & tax context</h2>
+                <h2>
+                  Currency &amp; tax context
+                  <InfoTip label="currency and tax context">
+                    Track A requires booking, collection, and reporting
+                    currencies to be the same. FX conversion is out of scope, so
+                    these fields are read-only after tenant create. Change them
+                    only through an approved finance migration — not from this
+                    screen. Tax rate editing lives under Taxes &amp; commercial.
+                  </InfoTip>
+                </h2>
                 <p className="policy-copy">
-                  Track A requires booking, collection, and reporting currencies
-                  to be the same. FX conversion is out of scope, so these fields
-                  are read-only after tenant create. Change them only through an
-                  approved finance migration — not from this screen. Tax rate
-                  editing lives under Taxes & commercial.
+                  Set when the tenant was created and fixed from here.
                 </p>
-                <div className="form-grid">
+                <div className="form-grid three">
                   <Field label="Booking currency">
                     <input value={config.bookingCurrency} disabled />
                   </Field>
@@ -3318,231 +3418,115 @@ export function Settings({
               </section>
             )}
             {tab === "printers" && (
-              <section>
-                <div className="settings-card-head">
-                  <Printer size={20} />
-                  <div>
-                    <h2>Printers & documents</h2>
-                    <p>
-                      Produce paper-safe operational documents from the current
-                      departure data.
-                    </p>
-                  </div>
-                </div>
-                <div className="document-access-grid">
-                  <article>
-                    <FileText size={19} />
-                    <div>
-                      <h3>Departure manifest</h3>
-                      <p>
-                        Open a departure, then print its confirmed passenger
-                        manifest or save it as a PDF.
-                      </p>
-                      <Link className="text-link" href="/departures">
-                        Open departures <ArrowRight size={16} />
-                      </Link>
-                    </div>
-                  </article>
-                  <article>
-                    <Printer size={19} />
-                    <div>
-                      <h3>Pickup list</h3>
-                      <p>
-                        Open the operations board, save the pickup plan, then
-                        print its ordered stops and exceptions.
-                      </p>
-                      <Link className="text-link" href="/operations">
-                        Open operations <ArrowRight size={16} />
-                      </Link>
-                    </div>
-                  </article>
-                </div>
-                <p className="policy-copy">
-                  Browser print and Save as PDF are the current delivery method.
-                  Browser jobs are recorded for audit; a printer agent and
-                  physical destinations are not enabled yet.
-                </p>
-                <div className="form-divider" />
-                <h2>Document storage</h2>
-                <p className="policy-copy">
-                  Signed waiver PDFs are written to a short-lived hot store,
-                  then synced out to the tenant archive target so production
-                  disk can be cleared. Hot copies auto-purge within 7 days.
-                  Longer retention requires a purchased storage plan (not
-                  enabled yet). Drive adapters stay feature-flagged until OAuth
-                  credentials are approved.
-                </p>
-                <div className="form-grid">
-                  <Field label="Hot store">
-                    <select
-                      value={config.documentStorage.hotProvider}
-                      onChange={(event) =>
-                        setConfig({
-                          ...config,
-                          documentStorage: {
-                            ...config.documentStorage,
-                            hotProvider: event.target.value as
-                              "filesystem" | "s3",
-                          },
-                        })
-                      }
-                    >
-                      <option value="filesystem">
-                        Production filesystem / volume
-                      </option>
-                      <option value="s3">S3-compatible object storage</option>
-                    </select>
-                  </Field>
-                  <Field label="Archive sync target">
-                    <select
-                      value={config.documentStorage.archiveProvider}
-                      onChange={(event) =>
-                        setConfig({
-                          ...config,
-                          documentStorage: {
-                            ...config.documentStorage,
-                            archiveProvider: event.target.value as
-                              "none" | "google_drive" | "onedrive" | "dropbox",
-                          },
-                        })
-                      }
-                    >
-                      <option value="none">None (purge after retention)</option>
-                      <option value="google_drive">Google Drive</option>
-                      <option value="onedrive">OneDrive</option>
-                      <option value="dropbox">Dropbox</option>
-                    </select>
-                  </Field>
-                  <Field label="Hot retention (days, max 7)">
-                    <input
-                      type="number"
-                      min={1}
-                      max={7}
-                      value={config.documentStorage.hotRetentionDays}
-                      onChange={(event) =>
-                        setConfig({
-                          ...config,
-                          documentStorage: {
-                            ...config.documentStorage,
-                            hotRetentionDays: Math.min(
-                              7,
-                              Math.max(1, Number(event.target.value) || 7),
-                            ),
-                          },
-                        })
-                      }
-                    />
-                  </Field>
-                </div>
-                {config.documentStorage.archiveProvider !== "none" && (
+              <>
+                <PrintersSettings session={session} />
+                <section>
+                  <div className="form-divider" />
+                  <h2>
+                    Document storage
+                    <InfoTip label="document storage">
+                      Signed waiver PDFs are written to a short-lived hot store,
+                      then synced out to the tenant archive target so production
+                      disk can be cleared. Hot copies auto-purge within 7 days.
+                      Longer retention requires a purchased storage plan (not
+                      enabled yet). Drive adapters stay feature-flagged until
+                      OAuth credentials are approved.
+                    </InfoTip>
+                  </h2>
                   <p className="policy-copy">
-                    Archive sync runs from `npm run outbox:drain`. Adapters
-                    remain blocked until `DOCUMENT_ARCHIVE_ADAPTERS=1` and
-                    provider credentials are configured. Hot files still expire
-                    within the retention window.
+                    Where signed waivers are kept, and for how long.
                   </p>
-                )}
-                {session.permissions.includes("config.write") && (
-                  <FormActions stickyOnMobile>
-                    <button className="button" disabled={mutation.busy}>
-                      {mutation.busy ? "Saving…" : "Save document storage"}
-                      <Check size={17} />
-                    </button>
-                  </FormActions>
-                )}
-                {session.permissions.includes("print.templates.manage") && (
-                  <>
-                    <div className="form-divider" />
-                    <h2>Document templates</h2>
-                    <p className="policy-copy">
-                      Publishing creates a new tenant-owned template version.
-                      The selected layout becomes the default for its document
-                      type.
-                    </p>
-                    <div className="form-grid compact">
-                      <Field label="Document type">
-                        <select
-                          value={printDocumentType}
-                          onChange={(event) =>
-                            setPrintDocumentType(
-                              event.target.value as "manifest" | "pickup_list",
-                            )
-                          }
-                        >
-                          <option value="manifest">Departure manifest</option>
-                          <option value="pickup_list">Pickup list</option>
-                        </select>
-                      </Field>
-                      <Field label="Template name">
-                        <input
-                          value={printName}
-                          maxLength={120}
-                          placeholder="Standard departure manifest"
-                          onChange={(event) => setPrintName(event.target.value)}
-                        />
-                      </Field>
-                    </div>
-                    {printMutation.error && (
-                      <Notice error>{printMutation.error}</Notice>
-                    )}
-                    <div className="form-actions">
-                      <button
-                        className="button"
-                        type="button"
-                        disabled={printMutation.busy || !printName.trim()}
-                        onClick={() => void publishPrintTemplate()}
+                  <div className="form-grid">
+                    <Field label="Hot store">
+                      <select
+                        value={config.documentStorage.hotProvider}
+                        onChange={(event) =>
+                          setConfig({
+                            ...config,
+                            documentStorage: {
+                              ...config.documentStorage,
+                              hotProvider: event.target.value as
+                                "filesystem" | "s3",
+                            },
+                          })
+                        }
                       >
-                        {printMutation.busy
-                          ? "Publishing…"
-                          : "Publish template"}
-                      </button>
-                    </div>
-                  </>
-                )}
-                {printTemplates.error ? (
-                  <Notice error>{printTemplates.error}</Notice>
-                ) : printTemplates.data?.length ? (
-                  <div className="settings-list">
-                    {printTemplates.data.map((template) => (
-                      <article key={template.id}>
-                        <div>
-                          <strong>{template.name}</strong>
-                          <p>
-                            {label(template.document_type)} · version{" "}
-                            {template.version}
-                          </p>
-                        </div>
-                        {template.is_default && <Status state="confirmed" />}
-                      </article>
-                    ))}
+                        <option value="filesystem">
+                          Production filesystem / volume
+                        </option>
+                        <option value="s3">S3-compatible object storage</option>
+                      </select>
+                    </Field>
+                    <Field label="Archive sync target">
+                      <select
+                        value={config.documentStorage.archiveProvider}
+                        onChange={(event) =>
+                          setConfig({
+                            ...config,
+                            documentStorage: {
+                              ...config.documentStorage,
+                              archiveProvider: event.target.value as
+                                | "none"
+                                | "google_drive"
+                                | "onedrive"
+                                | "dropbox",
+                            },
+                          })
+                        }
+                      >
+                        <option value="none">
+                          None (purge after retention)
+                        </option>
+                        <option value="google_drive">Google Drive</option>
+                        <option value="onedrive">OneDrive</option>
+                        <option value="dropbox">Dropbox</option>
+                      </select>
+                    </Field>
+                    <Field label="Hot retention (days, max 7)">
+                      <input
+                        type="number"
+                        min={1}
+                        max={7}
+                        value={config.documentStorage.hotRetentionDays}
+                        onChange={(event) =>
+                          setConfig({
+                            ...config,
+                            documentStorage: {
+                              ...config.documentStorage,
+                              hotRetentionDays: Math.min(
+                                7,
+                                Math.max(1, Number(event.target.value) || 7),
+                              ),
+                            },
+                          })
+                        }
+                      />
+                    </Field>
                   </div>
-                ) : (
-                  <p className="muted">No published document templates yet.</p>
-                )}
-                {printJobs.data?.length ? (
-                  <>
-                    <div className="form-divider" />
-                    <h2>Recent document requests</h2>
-                    <div className="settings-list">
-                      {printJobs.data.slice(0, 5).map((job) => (
-                        <article key={job.id}>
-                          <div>
-                            <strong>{label(job.document_type)}</strong>
-                            <p>{new Date(job.requested_at).toLocaleString()}</p>
-                          </div>
-                          <Status state={job.status} />
-                        </article>
-                      ))}
-                    </div>
-                  </>
-                ) : null}
-              </section>
+                  {config.documentStorage.archiveProvider !== "none" && (
+                    <p className="policy-copy">
+                      Archive sync runs from `npm run outbox:drain`. Adapters
+                      remain blocked until `DOCUMENT_ARCHIVE_ADAPTERS=1` and
+                      provider credentials are configured. Hot files still
+                      expire within the retention window.
+                    </p>
+                  )}
+                  {session.permissions.includes("config.write") && (
+                    <FormActions stickyOnMobile>
+                      <button className="button" disabled={mutation.busy}>
+                        {mutation.busy ? "Saving…" : "Save document storage"}
+                        <Check size={17} />
+                      </button>
+                    </FormActions>
+                  )}
+                </section>
+              </>
             )}
             {tab === "payments" && (
               <section className="settings-future">
                 <CreditCard size={20} />
                 <div>
-                  <h2>Payments</h2>
+                  <h2>Payment integrations</h2>
                   <p>
                     Tenant collection providers, Stripe Connect, gateway
                     selection and settlement rules will appear here after
@@ -3551,99 +3535,7 @@ export function Settings({
                 </div>
               </section>
             )}
-            {tab === "waivers" && (
-              <section>
-                <div className="settings-card-head">
-                  <FileText size={20} />
-                  <div>
-                    <h2>Waiver templates</h2>
-                    <p>
-                      Publish an approved version for staff capture. Signed
-                      evidence always stays bound to its original version.
-                    </p>
-                  </div>
-                </div>
-                {waiverTemplates.error ? (
-                  <Notice error>{waiverTemplates.error}</Notice>
-                ) : !waiverTemplates.data ? (
-                  <Loading />
-                ) : waiverTemplates.data.length ? (
-                  <div className="waiver-current">
-                    <span>ACTIVE VERSION</span>
-                    <strong>
-                      v{waiverTemplates.data[0].version} ·{" "}
-                      {waiverTemplates.data[0].title}
-                    </strong>
-                    <p>
-                      Published{" "}
-                      {new Date(
-                        waiverTemplates.data[0].created_at,
-                      ).toLocaleDateString()}
-                    </p>
-                  </div>
-                ) : (
-                  <Notice>No active waiver template has been published.</Notice>
-                )}
-                {session.permissions.includes("waiver.template.publish") ? (
-                  <div className="waiver-editor">
-                    <h2>
-                      {waiverTemplates.data?.length
-                        ? "Publish replacement version"
-                        : "Publish first version"}
-                    </h2>
-                    <p className="policy-copy">
-                      Confirm wording with the tenant's legal and insurance
-                      advisers before publishing. Publishing supersedes the
-                      current version for future signatures; it never changes
-                      existing evidence.
-                    </p>
-                    <Field label="Template title">
-                      <input
-                        required
-                        maxLength={160}
-                        value={waiverTitle}
-                        onChange={(e) => setWaiverTitle(e.target.value)}
-                        placeholder="For example, Tour participant waiver"
-                      />
-                    </Field>
-                    <Field label="Approved waiver wording">
-                      <textarea
-                        required
-                        maxLength={20000}
-                        value={waiverBody}
-                        onChange={(e) => setWaiverBody(e.target.value)}
-                        placeholder="Enter tenant-approved wording"
-                        rows={12}
-                      />
-                    </Field>
-                    {waiverMutation.error && (
-                      <Notice error>{waiverMutation.error}</Notice>
-                    )}
-                    <div className="form-actions">
-                      <button
-                        type="button"
-                        className="button"
-                        disabled={
-                          waiverMutation.busy ||
-                          !waiverTitle.trim() ||
-                          !waiverBody.trim()
-                        }
-                        onClick={() => void publishWaiverTemplate()}
-                      >
-                        {waiverMutation.busy
-                          ? "Publishing…"
-                          : "Publish immutable version"}
-                        <Check size={17} />
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <Notice>
-                    Only the tenant owner can publish or replace waiver wording.
-                  </Notice>
-                )}
-              </section>
-            )}
+            {tab === "waivers" && <WaiverSettings session={session} />}
             {tab === "security" ? (
               session.role === "owner" ? (
                 <SupportAccessSettings />
@@ -3665,26 +3557,26 @@ export function Settings({
             {tab === "commercial" && (
               <section>
                 <h2>Collection methods & booking sources</h2>
-                <Field
+                <CodeListEditor
                   label="Allowed manual collection methods"
-                  hint="Comma-separated codes. Suggested: cash, card, online, bank_transfer, reseller_payment. Guest payment via reseller is a guest-to-operator ledger entry when the guest paid through a reseller channel — not a substitute for Partner collects / Partner invoice claims."
-                >
-                  <input
-                    required
-                    value={methods}
-                    onChange={(e) => setMethods(e.target.value)}
-                  />
-                </Field>
-                <Field
+                  hint="Built-in methods cannot be removed. Guest payment via reseller is a guest-to-operator ledger entry when the guest paid through a reseller channel — not a substitute for Partner collects / Partner invoice claims."
+                  values={methods}
+                  locked={LOCKED_COLLECTION_METHODS}
+                  addTitle="Add collection method"
+                  addHint="A method staff can record a manual payment against, alongside the built-in ones."
+                  describe={paymentMethodLabel}
+                  onChange={setMethods}
+                />
+                <CodeListEditor
                   label="Booking sources"
-                  hint="Comma-separated codes such as phone, walk_in, website, partner_reseller. Channel brands (Viator, GetYourGuide) belong under Partners / Resellers organizations, not as separate booking sources."
-                >
-                  <input
-                    required
-                    value={sources}
-                    onChange={(e) => setSources(e.target.value)}
-                  />
-                </Field>
+                  hint="Built-in sources cannot be removed. Channel brands (Viator, GetYourGuide) belong under Partners / Resellers organizations, not as separate booking sources."
+                  values={sources}
+                  locked={LOCKED_BOOKING_SOURCES}
+                  addTitle="Add booking source"
+                  addHint="Where a booking came from, alongside the built-in sources."
+                  describe={bookingSourceLabel}
+                  onChange={setSources}
+                />
                 <Toggle
                   label="Allow confirmed amendments to create an additional balance due"
                   description="When disabled, an accepted amendment must satisfy its minimum-paid rule. This is separate from the initial confirmation policy."
@@ -3732,6 +3624,146 @@ type SupportGrant = {
   expires_at: string | null;
   decision_reason: string | null;
 };
+/**
+ * Codes that carry behaviour elsewhere in the product and so cannot be removed:
+ * booking.tsx branches on `partner_reseller` to drive partner attribution, and
+ * boarding-payment.tsx filters `reseller_payment` out of gate payments. Deleting
+ * one would not just shorten a list, it would silently disable a feature.
+ */
+const LOCKED_COLLECTION_METHODS = [
+  "cash",
+  "card",
+  "online",
+  "bank_transfer",
+  "reseller_payment",
+];
+const LOCKED_BOOKING_SOURCES = [
+  "phone",
+  "walk_in",
+  "website",
+  "partner_reseller",
+];
+
+/** Matches the `slug` schema in packages/shared/src/contracts.ts. */
+const CODE_PATTERN = /^[a-z][a-z0-9_-]{1,49}$/;
+
+function CodeListEditor({
+  label: caption,
+  hint,
+  values,
+  locked,
+  addTitle,
+  addHint,
+  describe,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  values: string[];
+  locked: string[];
+  addTitle: string;
+  addHint: string;
+  /** Renders a stored code as the name staff see elsewhere in the product. */
+  describe: (code: string) => string;
+  onChange: (next: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [error, setError] = useState("");
+
+  // Staff type a name; the stored code is derived. Codes are an API detail and
+  // should not be something a tenant admin has to author by hand.
+  const derivedCode = codeFromName(draft);
+
+  function add() {
+    if (!CODE_PATTERN.test(derivedCode)) {
+      setError("Use at least two letters or numbers, starting with a letter.");
+      return;
+    }
+    if (values.includes(derivedCode)) {
+      setError(`“${describe(derivedCode)}” is already in the list.`);
+      return;
+    }
+    onChange([...values, derivedCode]);
+    setDraft("");
+    setError("");
+    setOpen(false);
+  }
+
+  return (
+    <div className="code-list">
+      <span className="code-list-label">{caption}</span>
+      <div className="code-badges">
+        {values.map((code) => {
+          const isLocked = locked.includes(code);
+          return (
+            <span
+              key={code}
+              className={"code-badge" + (isLocked ? " locked" : "")}
+              title={code}
+            >
+              {describe(code)}
+              {isLocked ? null : (
+                <button
+                  type="button"
+                  aria-label={`Remove ${code}`}
+                  onClick={() => onChange(values.filter((v) => v !== code))}
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </span>
+          );
+        })}
+        <button
+          type="button"
+          className="code-badge-add"
+          onClick={() => {
+            setDraft("");
+            setError("");
+            setOpen(true);
+          }}
+        >
+          <Plus size={13} /> Add
+        </button>
+      </div>
+      <small className="code-list-hint">{hint}</small>
+
+      <FormDialog
+        open={open}
+        title={addTitle}
+        description={addHint}
+        submitLabel="Add code"
+        submitDisabled={!draft.trim()}
+        error={error || null}
+        onClose={() => setOpen(false)}
+        onSubmit={add}
+      >
+        <Field
+          label="Name"
+          hint={
+            derivedCode
+              ? `Stored as ${derivedCode}`
+              : "Shown to staff wherever this appears."
+          }
+        >
+          <input
+            required
+            autoFocus
+            maxLength={60}
+            value={draft}
+            placeholder="e.g. Mobile Money"
+            onChange={(e) => {
+              setDraft(e.target.value);
+              setError("");
+            }}
+          />
+        </Field>
+      </FormDialog>
+    </div>
+  );
+}
+
 function PartnersResellersSettings({ session }: { session: Session }) {
   return <PartnerSettings session={session} />;
 }

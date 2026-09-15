@@ -26,7 +26,12 @@ import {
   FileText,
 } from "lucide-react";
 import type { DemoTenant, Session } from "@/lib/types";
-import { errorText, label, setTenantContext } from "@/lib/client";
+import {
+  errorText,
+  label,
+  setFormatContext,
+  setTenantContext,
+} from "@/lib/client";
 import { Loading, Notice } from "./common";
 import {
   Overview,
@@ -343,6 +348,10 @@ export function Workspace({
   setTenantContext(
     session ? { id: session.tenant.id, name: session.tenant.name } : null,
   );
+  // Set alongside the tenant context and before anything renders, so every
+  // money() and date helper in the tree formats the tenant's way without each
+  // call site having to pass the config down.
+  setFormatContext(session ? session.tenant.config : null);
   if (loading && !session) {
     return (
       <main className="workspace-boot" aria-busy="true">

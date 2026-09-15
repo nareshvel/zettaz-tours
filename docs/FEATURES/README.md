@@ -12,6 +12,10 @@ Short-lived document hot store and archive sync-out: [operations/document-storag
 
 Boarding guest-balance collection and partner clearance policy: [operations/boarding-balance-collection.md](operations/boarding-balance-collection.md).
 
+Printing, paper profiles and the shared print agent: [operations/printing-and-print-agent.md](operations/printing-and-print-agent.md).
+
+Waiver template versioning and deletion rules: [tenant-settings/waiver-template-lifecycle.md](tenant-settings/waiver-template-lifecycle.md).
+
 Customer communication boundary: [customer-notifications.md](customer-notifications.md).
 
 Customer identity, booking snapshots and history: [reservations/customer-records.md](reservations/customer-records.md).

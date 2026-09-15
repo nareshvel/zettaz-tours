@@ -1,6 +1,6 @@
 # Agent current sprint board
 
-**Updated:** 14 September 2026 (evening) · **Audience:** any IDE agent (Cursor, Claude, Codex, Devin, ChatGPT)
+**Updated:** 15 September 2026 · **Audience:** any IDE agent (Cursor, Claude, Codex, Devin, ChatGPT)
 
 This is the **single “what next” page**. Read it before inventing a deploy or backlog plan from chat history.
 
@@ -68,6 +68,29 @@ Evidence / feature docs: [pickup-disposition-and-plans.md](../FEATURES/operation
 
 ---
 
+## Administration → Tenant settings — in progress (15 September 2026)
+
+Owner-directed pass over the Administration group. Shipped this session, all typecheck / build / format clean:
+
+| Area | What changed |
+| --- | --- |
+| **Printers & documents** | Rebuilt. Agent pairing, printer inventory + test strip, per-document printer & paper. Inert template publisher removed (templates deferred). [ADR 018](../DECISIONS/018-print-delivery-and-agent.md) · [feature doc](../FEATURES/operations/printing-and-print-agent.md) |
+| **Print pipeline** | `pdf.ts` paper profiles (A4 / Letter / 80 mm / 58 mm) + measured wrapping; `print-agent.ts` client and `printDocument()` orchestration; job lifecycle `requested → rendered → delivered/failed`; manifest / pickup list / receipt call sites rewired |
+| **Waiver templates** | Moved Platform → Operations, renamed, rebuilt. Edit publishes a version; delete only for an unsigned superseded version; active never deletable. [feature doc](../FEATURES/tenant-settings/waiver-template-lifecycle.md) |
+| **Booking integrations** | Renamed from Integrations; sub-tabs Channels / Mapping / Inbound queue / Import; one row per channel; vendor-specific header button removed |
+| **Localization** | Three-column layout, timezone surfaced, live preview strip; `locale` + `numberFormat` actually wired into formatting |
+| **Sidebar** | Currency / date-format / hold-window facts replaced with a setup checklist (`GET admin/v1/tenant/readiness`) |
+| **Reservations** | Pickup location is a dropdown from the tenant catalog; amend-page party steppers fixed (they used a CSS class that does not exist) |
+| **Payments tab** | Renamed **Payment integrations**; still a placeholder pending finance decisions |
+
+**Migrations added: 079** (`print_jobs.media_size`), **080** (print permissions for `reservations` / `finance`). Owner has applied through 080. A member of those roles needs a fresh session before print buttons appear.
+
+Evidence: [print-and-settings-evidence.md](../TESTING/print-and-settings-evidence.md). **Not verified:** live agent pairing / physical print (no agent reachable from the dev environment) and owner visual passes.
+
+Remaining candidates in this group: General & branding, Taxes & commercial, Guest stays, Partners, Security (non-owners see an empty card), Document library, Audit.
+
+---
+
 ## Held — do not start unless owner reopens
 
 - **Subscription messaging polish** (row 17) — billing-cycle / failed payment / grace / post-suspension copy in `apps/web/components/subscription.tsx`
@@ -114,7 +137,7 @@ Not the current focus. When owner returns to platform/track work:
 | --- | --- | --- |
 | 1 | E01 Identity | Privileged MFA/TOTP + recovery codes |
 | 2 | E10 Finance | Live Stripe Connect Checkout (USD) + webhooks; XCD rate policy |
-| 3 | E06 Ops print | Go print-agent + live printer routing |
+| 3 | E06 Ops print | **Agent client + paper profiles shipped 15 Sep (ADR 018).** Left: live agent acceptance on real hardware; tenant-shared printer routing (needs agent-side job polling — `printer_routes` dormant); tenant-designed templates |
 | 4 | Comms | Tenant-editable templates, suppression, delivery webhooks |
 | 5 | Boarding money | Complimentary/prepaid flags, mixed allocation, per-passenger owed, crew-mobile Pay |
 | 6 | E07/E08 Crew | Encrypted offline sync; retained waiver PDFs |

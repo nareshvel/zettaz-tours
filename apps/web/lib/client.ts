@@ -2,6 +2,41 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Page } from "./types";
 let tenantContext: { id: string; name: string } | null = null;
+
+/**
+ * How this tenant's numbers and dates are written.
+ *
+ * Kept as module state beside the tenant context because formatting is needed
+ * in ~90 places, most of them deep in render code with no reason to know about
+ * settings. Before this, money() simply defaulted to "en", so a tenant that had
+ * chosen French or a decimal comma still saw English grouping nearly
+ * everywhere — the setting existed and changed nothing.
+ */
+let formatContext = { locale: "en", numberLocale: "en-US" };
+
+/**
+ * numberFormat is a convention, not a language: a tenant may run the workspace
+ * in English and still write 1.234,56. Intl offers no way to set separators
+ * directly, so each convention maps to a locale known to produce it, used ONLY
+ * for numbers. Month and day names keep the display language.
+ */
+export function numberLocaleFor(numberFormat?: string) {
+  return numberFormat === "decimal_comma" ? "de-DE" : "en-US";
+}
+
+export function setFormatContext(
+  config: { locale?: string; numberFormat?: string } | null,
+) {
+  formatContext = {
+    locale: config?.locale || "en",
+    numberLocale: numberLocaleFor(config?.numberFormat),
+  };
+}
+
+/** The tenant's display language, for callers that format dates themselves. */
+export function activeLocale() {
+  return formatContext.locale;
+}
 export function setTenantContext(
   tenant: { id: string; name: string } | string | null,
 ) {
@@ -47,7 +82,10 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     );
   return data;
 }
-export async function downloadApiFile(path: string, fallbackName: string) {
+/** Fetches a generated file as a Blob. Used both to save a document and to
+ *  hand the identical bytes to the local print agent, so what a guest is given
+ *  and what comes off the printer can never differ. */
+export async function fetchApiFile(path: string, fallbackName: string) {
   const res = await fetch("/api/gateway/" + path, {
     cache: "no-store",
     headers: tenantContext ? { "X-Tenant-Id": tenantContext.id } : {},
@@ -62,7 +100,12 @@ export async function downloadApiFile(path: string, fallbackName: string) {
   const disposition = res.headers.get("content-disposition") ?? "";
   const filename =
     disposition.match(/filename="?([^";]+)"?/i)?.[1] ?? fallbackName;
-  const url = URL.createObjectURL(await res.blob());
+  return { blob: await res.blob(), filename };
+}
+
+export async function downloadApiFile(path: string, fallbackName: string) {
+  const { blob, filename } = await fetchApiFile(path, fallbackName);
+  const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = filename;
@@ -192,8 +235,9 @@ export function priceFromMinor(product: {
     .filter((amount) => amount > 0);
   return amounts.length ? Math.min(...amounts) : null;
 }
-export function money(amount: number, currency: string, locale = "en") {
-  return new Intl.NumberFormat(locale, {
+export function money(amount: number, currency: string, locale?: string) {
+  const resolved = locale || formatContext.numberLocale;
+  return new Intl.NumberFormat(resolved, {
     style: "currency",
     currency,
     currencyDisplay: "symbol",
@@ -202,10 +246,10 @@ export function money(amount: number, currency: string, locale = "en") {
 export function dateOnly(
   value: string,
   format: "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD",
-  locale = "en",
+  locale?: string,
 ) {
   const date = new Date(value.length === 10 ? `${value}T12:00:00Z` : value);
-  const parts = new Intl.DateTimeFormat(locale, {
+  const parts = new Intl.DateTimeFormat(locale || formatContext.locale, {
     timeZone: "UTC",
     day: "2-digit",
     month: "2-digit",
@@ -219,9 +263,9 @@ export function dateOnly(
     .replace("YYYY", part("year"));
 }
 /** e.g. Sep 01, 2026 — for schedule periods and readable ranges */
-export function formatMediumDate(value: string, locale = "en") {
+export function formatMediumDate(value: string, locale?: string) {
   const date = new Date(value.length === 10 ? `${value}T12:00:00Z` : value);
-  return new Intl.DateTimeFormat(locale, {
+  return new Intl.DateTimeFormat(locale || formatContext.locale, {
     timeZone: "UTC",
     month: "short",
     day: "2-digit",
@@ -231,7 +275,7 @@ export function formatMediumDate(value: string, locale = "en") {
 export function formatMediumDateRange(
   start: string,
   end: string,
-  locale = "en",
+  locale?: string,
 ) {
   return `${formatMediumDate(start, locale)} - ${formatMediumDate(end, locale)}`;
 }
@@ -258,10 +302,11 @@ export function minor(value: string, currency: string) {
 export function dateTime(
   value: string,
   timezone: string,
-  locale = "en",
+  locale?: string,
   dateFormat?: "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD",
   timeFormat?: "12h" | "24h",
 ) {
+  const resolved = locale || formatContext.locale;
   const options: Intl.DateTimeFormatOptions = {
     timeZone: timezone,
     month: "short",
@@ -272,8 +317,9 @@ export function dateTime(
     ...(timeFormat ? { hour12: timeFormat === "12h" } : {}),
   };
   const date = new Date(value);
-  if (!dateFormat) return new Intl.DateTimeFormat(locale, options).format(date);
-  const parts = new Intl.DateTimeFormat(locale, {
+  if (!dateFormat)
+    return new Intl.DateTimeFormat(resolved, options).format(date);
+  const parts = new Intl.DateTimeFormat(resolved, {
     ...options,
     month: "2-digit",
     day: "2-digit",
@@ -292,17 +338,18 @@ export function dateTime(
 export function friendlyDateTime(
   value: string,
   timezone: string,
-  locale = "en",
+  locale?: string,
   timeFormat: "12h" | "24h" = "12h",
 ) {
+  const resolved = locale || formatContext.locale;
   const date = new Date(value);
-  const day = new Intl.DateTimeFormat(locale, {
+  const day = new Intl.DateTimeFormat(resolved, {
     timeZone: timezone,
     month: "short",
     day: "numeric",
     year: "numeric",
   }).format(date);
-  const time = new Intl.DateTimeFormat(locale, {
+  const time = new Intl.DateTimeFormat(resolved, {
     timeZone: timezone,
     hour: "numeric",
     minute: "2-digit",
@@ -310,6 +357,31 @@ export function friendlyDateTime(
   }).format(date);
   return `${day} ${time}`;
 }
+/**
+ * Display names for the configurable code lists. A few codes carry meaning that
+ * a plain humanisation would lose, so they are spelled out. Shared rather than
+ * redefined per screen, so Settings, the booking form and the boarding gate all
+ * call the same thing by the same name.
+ */
+export function paymentMethodLabel(method: string) {
+  if (method === "reseller_payment") return "Guest payment via reseller";
+  return label(method);
+}
+
+export function bookingSourceLabel(source: string) {
+  if (source === "partner_reseller") return "Partner / reseller";
+  return label(source);
+}
+
+/** Turns a typed display name into a code matching the `slug` contract. */
+export function codeFromName(name: string) {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 50);
+}
+
 export function label(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }

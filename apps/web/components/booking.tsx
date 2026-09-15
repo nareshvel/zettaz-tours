@@ -32,16 +32,20 @@ import type {
 } from "@/lib/types";
 import { availabilityModes } from "@/lib/types";
 import {
+  bookingSourceLabel,
   dateTime,
   digits,
   downloadApiFile,
+  fetchApiFile,
   label,
   minor,
   money,
+  paymentMethodLabel,
   useMutation,
   usePaged,
   useResource,
 } from "@/lib/client";
+import { printDocument } from "@/lib/print-agent";
 import {
   Field,
   FormActions,
@@ -95,11 +99,6 @@ function collectionModeHint(mode: string) {
   if (mode === "partner_invoice")
     return "Partner is invoiced for the booking total at confirmation. Guest payment is not required to confirm.";
   return "";
-}
-
-function paymentMethodLabel(method: string) {
-  if (method === "reseller_payment") return "Guest payment via reseller";
-  return label(method);
 }
 
 function partnerSettlementWithoutGuestPay(mode?: string | null) {
@@ -186,7 +185,7 @@ function QuoteSummary({ quote }: { quote: Quote }) {
           <span>{money(quote.subtotalMinor, quote.currency)}</span>
         </div>
         <div>
-          <span>Tax</span>
+          <span>{quote.taxInclusive ? "Tax (included)" : "Tax"}</span>
           <span>{money(quote.taxMinor, quote.currency)}</span>
         </div>
         {quote.discountMinor ? (
@@ -471,7 +470,15 @@ export function NewReservation({
         tenant_owned: boolean;
       }[];
       accommodations: { id: string; name: string; address: string }[];
-    }>("ops/v1/stays/options");
+    }>("ops/v1/stays/options"),
+    pickupLocations = useResource<
+      {
+        id: string;
+        name: string;
+        kind: string;
+        address: string | null;
+      }[]
+    >("ops/v1/pickup-locations");
   const [departureId, setDepartureId] = useState(
       amendBooking?.departure_id ?? "",
     ),
@@ -1100,12 +1107,6 @@ export function NewReservation({
           confirmation. Guest payment is not required on the next screen.
         </Notice>
       )}
-      {partnerId && collectionMode === "partner_collects_for_tenant" && (
-        <Notice>
-          After confirmation, record the partner collection under Partners /
-          Resellers — do not enter it as a guest payment method.
-        </Notice>
-      )}
     </>
   ) : null;
   const summaryBody = amendMode ? (
@@ -1453,17 +1454,27 @@ export function NewReservation({
                 </div>
               ) : null}
               {amendMode && departureId && (departure || amendBooking) ? (
-                <div className="party-stepper-grid" style={{ marginTop: 16 }}>
+                <div className="party-steppers">
                   {(
                     departure?.categories ??
                     Object.keys(party).map((slug) => ({
                       slug,
                       label: label(slug),
+                      countsTowardCapacity: undefined,
                     }))
                   ).map((category) => (
                     <div className="party-stepper" key={category.slug}>
-                      <span>{category.label}</span>
                       <div>
+                        <strong>{category.label}</strong>
+                        {category.countsTowardCapacity === undefined ? null : (
+                          <small>
+                            {category.countsTowardCapacity
+                              ? "Uses seat capacity"
+                              : "Does not use seat capacity"}
+                          </small>
+                        )}
+                      </div>
+                      <div className="party-stepper-controls">
                         <button
                           type="button"
                           aria-label={`Decrease ${category.label}`}
@@ -1906,9 +1917,7 @@ export function NewReservation({
                       >
                         {bookingSourceOptions.map((s) => (
                           <option key={s} value={s}>
-                            {s === "partner_reseller"
-                              ? "Partner / reseller"
-                              : label(s)}
+                            {bookingSourceLabel(s)}
                           </option>
                         ))}
                       </select>
@@ -2017,15 +2026,46 @@ export function NewReservation({
                     </Field>
                   </div>
                   {pickupKind === "selected" && (
-                    <Field label="Pickup location">
-                      <input
+                    <Field
+                      label="Pickup location"
+                      hint="From the tenant's pickup locations. Add a missing one under Settings › Pickup locations."
+                    >
+                      <select
                         required
-                        maxLength={120}
                         value={location}
                         onChange={(e) => setLocation(e.target.value)}
-                      />
+                      >
+                        <option value="">Select a pickup location</option>
+                        {(pickupLocations.data ?? []).map((item) => (
+                          <option key={item.id} value={item.name}>
+                            {item.name}
+                            {item.address ? ` — ${item.address}` : ""}
+                          </option>
+                        ))}
+                        {/* An older booking may name a place that has since
+                            been renamed or retired. Keeping it as an option
+                            means amending some other field cannot silently
+                            rewrite where the guest is being collected. */}
+                        {location &&
+                          !(pickupLocations.data ?? []).some(
+                            (item) => item.name === location,
+                          ) && (
+                            <option value={location}>
+                              {location} (not in settings)
+                            </option>
+                          )}
+                      </select>
                     </Field>
                   )}
+                  {pickupKind === "selected" &&
+                    pickupLocations.data &&
+                    !pickupLocations.data.length && (
+                      <Notice>
+                        No pickup locations have been set up yet. Add them under
+                        Settings › Pickup locations so staff pick from a known
+                        list instead of typing.
+                      </Notice>
+                    )}
                   {pickupKind !== "none" && (
                     <Field
                       label={
@@ -2561,19 +2601,25 @@ export function BookingDetail({
       router.push(returnTo ?? "/reservations");
     }
   }
+  const canPrint = session.permissions.includes("print.jobs.create");
   async function printReservation() {
     setPrintError("");
-    if (!session.permissions.includes("print.jobs.create")) {
-      window.print();
-      return;
+    try {
+      await printDocument(
+        {
+          documentType: "receipt",
+          sourceType: "booking",
+          sourceId: bookingId,
+          fallbackName: `receipt-${bookingId.slice(0, 8)}.pdf`,
+        },
+        printJob.run,
+        fetchApiFile,
+      );
+    } catch (error) {
+      setPrintError(
+        printJob.error || (error as Error).message || "Could not print.",
+      );
     }
-    const result = await printJob.run("ops/v1/print-jobs", {
-      documentType: "receipt",
-      sourceType: "booking",
-      sourceId: bookingId,
-    });
-    if (result) window.print();
-    else setPrintError(printJob.error || "Could not prepare print job.");
   }
   async function downloadReservationPdf() {
     setPrintError("");
@@ -2773,32 +2819,36 @@ export function BookingDetail({
         <div className="booking-detail-meta-row">
           <p className="booking-detail-email">{b.lead_email}</p>
           <div className="doc-actions booking-print-actions no-print">
-            <button
-              type="button"
-              className="button secondary icon-only-action"
-              disabled={printJob.busy}
-              onClick={() => void printReservation()}
-              aria-label="Print reservation"
-              title={printJob.busy ? "Preparing print" : "Print reservation"}
-            >
-              <Printer size={16} aria-hidden="true" />
-              <span className="button-label">
-                {printJob.busy ? "Preparing…" : "Print"}
-              </span>
-            </button>
-            <button
-              type="button"
-              className="button secondary icon-only-action"
-              disabled={printJob.busy}
-              onClick={() => void downloadReservationPdf()}
-              aria-label="Download PDF"
-              title={printJob.busy ? "Preparing PDF" : "Download PDF"}
-            >
-              <Download size={16} aria-hidden="true" />
-              <span className="button-label">
-                {printJob.busy ? "Preparing…" : "PDF"}
-              </span>
-            </button>
+            {canPrint && (
+              <button
+                type="button"
+                className="button secondary icon-only-action"
+                disabled={printJob.busy}
+                onClick={() => void printReservation()}
+                aria-label="Print reservation"
+                title={printJob.busy ? "Preparing print" : "Print reservation"}
+              >
+                <Printer size={16} aria-hidden="true" />
+                <span className="button-label">
+                  {printJob.busy ? "Preparing…" : "Print"}
+                </span>
+              </button>
+            )}
+            {canPrint && (
+              <button
+                type="button"
+                className="button secondary icon-only-action"
+                disabled={printJob.busy}
+                onClick={() => void downloadReservationPdf()}
+                aria-label="Download PDF"
+                title={printJob.busy ? "Preparing PDF" : "Download PDF"}
+              >
+                <Download size={16} aria-hidden="true" />
+                <span className="button-label">
+                  {printJob.busy ? "Preparing…" : "PDF"}
+                </span>
+              </button>
+            )}
           </div>
         </div>
       </div>

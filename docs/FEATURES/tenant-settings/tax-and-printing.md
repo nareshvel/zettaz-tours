@@ -8,9 +8,6 @@ Catalogue / seasonal rates are treated as tax-exclusive until a finance-approved
 
 ## Printable documents
 
-The supported day-of document flow is browser print or Save as PDF from the live operational view:
+**Superseded 15 September 2026.** Printing is now a server-rendered vector PDF in four paper profiles (A4, Letter, 80 mm, 58 mm), delivered either to a paired Zettaz print agent or to the browser, with every job recorded. See [printing-and-print-agent.md](../operations/printing-and-print-agent.md) and [ADR 018](../../DECISIONS/018-print-delivery-and-agent.md).
 
-- A departure manifest shows confirmed parties for a selected departure.
-- A pickup list shows the saved pickup-plan version, ordered stops, and active exceptions.
-
-The settings page links staff to those source views. It does not store printer destinations or document-template settings because neither is currently applied by the document renderer. Future requirements must specify template ownership/versioning, allowed guest data, receipt and waiver layouts, paper size, routing, retention, and whether generated PDFs become retained records.
+Two statements in the earlier text no longer hold: the settings page *does* now store printer destinations and per-document paper (per device, in the browser), and the inert document-template publisher has been removed. Tenant-designed templates remain deferred — prebuilt layouts only — so template ownership/versioning, allowed guest data, retention, and whether generated PDFs become retained records are still open requirements.

@@ -19,7 +19,7 @@ import { Database, record } from "./database";
 import { Access, CurrentActor, keySchema, parse } from "./http";
 import { id } from "../../../packages/shared/src/contracts";
 import { DateTime } from "luxon";
-import { loadTenantLogo, receiptPdf, textPdf } from "./pdf";
+import { loadTenantLogo, receiptPdf, textPdf, type MediaSize } from "./pdf";
 
 function currencyDigits(currency: string) {
   try {
@@ -84,14 +84,38 @@ const templateSchema = z
     isDefault: z.boolean().default(false),
   })
   .strict();
+/** Paper the job is rendered for. Also sent to the print agent as `mediaSize`
+ *  so the PDF's page box and the printer queue's media agree — a mismatch is
+ *  silently clipped by CUPS rather than scaled. */
+const mediaSize = z.enum(["a4", "letter", "58mm", "80mm"]);
+
 const jobSchema = z
   .object({
     documentType,
     sourceType: z.enum(["departure", "booking"]),
     sourceId: z.string().uuid(),
     templateId: z.string().uuid().optional(),
+    mediaSize: mediaSize.optional(),
   })
   .strict();
+
+/** What the browser reports back once the rendered PDF has actually gone
+ *  somewhere. Without it every job would sit at 'requested' forever and the
+ *  history would show which documents were asked for but never whether any of
+ *  them reached paper. */
+const outcomeSchema = z
+  .object({
+    status: z.enum(["delivered", "failed"]),
+    deliveredBy: z.enum(["browser", "agent"]),
+    printerId: z.string().trim().max(200).optional(),
+    detail: z.string().trim().max(500).optional(),
+  })
+  .strict();
+
+/** Receipts default to an 80mm roll; operational sheets default to A4. */
+function defaultMedia(documentType: string): z.infer<typeof mediaSize> {
+  return documentType === "receipt" ? "80mm" : "a4";
+}
 
 @Injectable()
 export class PrintService {
@@ -116,7 +140,7 @@ export class PrintService {
       async (tx) =>
         (
           await tx.query(
-            `SELECT id,document_type,source_type,source_id,template_id,route_id,destination_type,status,attempts,error_detail,requested_at,completed_at
+            `SELECT id,document_type,source_type,source_id,template_id,route_id,destination_type,media_size,status,attempts,error_detail,requested_at,completed_at
              FROM print_jobs WHERE tenant_id=$1 ORDER BY requested_at DESC,id LIMIT 100`,
             [actor.tenantId],
           )
@@ -229,14 +253,15 @@ export class PrintService {
         const result = {
           id: randomUUID(),
           ...input,
+          mediaSize: input.mediaSize ?? defaultMedia(input.documentType),
           templateId: templates[0]?.id ?? null,
           destinationType: "browser",
           status: "requested",
           downloadUrl: "",
         };
         await tx.query(
-          `INSERT INTO print_jobs(tenant_id,id,document_type,source_type,source_id,template_id,destination_type,status,requested_by)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          `INSERT INTO print_jobs(tenant_id,id,document_type,source_type,source_id,template_id,destination_type,media_size,status,requested_by)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
           [
             actor.tenantId,
             result.id,
@@ -245,6 +270,7 @@ export class PrintService {
             result.sourceId,
             result.templateId,
             result.destinationType,
+            result.mediaSize,
             result.status,
             actor.actorId,
           ],
@@ -258,15 +284,55 @@ export class PrintService {
     );
   }
 
+  /** Closes out a job once the browser knows where the PDF went. */
+  recordOutcome(actor: Actor, jobId: string, body: unknown) {
+    const input = parse(outcomeSchema, body);
+    return this.db.transaction(actor, async (tx) => {
+      const { rows } = await tx.query(
+        `UPDATE print_jobs
+            SET status=$3,
+                destination_type=$4,
+                error_detail=$5,
+                completed_at=clock_timestamp()
+          WHERE tenant_id=$1 AND id=$2 AND status <> 'cancelled'
+          RETURNING id,status,destination_type,completed_at`,
+        [
+          actor.tenantId,
+          jobId,
+          input.status,
+          input.deliveredBy,
+          input.status === "failed"
+            ? (input.detail ?? "Delivery failed")
+            : null,
+        ],
+      );
+      const job = rows[0];
+      if (!job) throw new NotFoundException("Print job not found");
+      await record(tx, actor, `print_job.${input.status}`, jobId, null, {
+        ...input,
+      });
+      return job;
+    });
+  }
+
   pdf(actor: Actor, jobId: string) {
     return this.db.transaction(actor, async (tx) => {
       const { rows: jobs } = await tx.query(
-        `SELECT id,document_type,source_type,source_id FROM print_jobs
+        `SELECT id,document_type,source_type,source_id,media_size FROM print_jobs
          WHERE tenant_id=$1 AND id=$2 AND document_type IN ('manifest','pickup_list','receipt')`,
         [actor.tenantId, jobId],
       );
       const job = jobs[0];
       if (!job) throw new NotFoundException("Printable job not found");
+      // Rendering is the first step that can fail on its own, so it gets its
+      // own state rather than being folded into delivery. Re-rendering the same
+      // job (a retry, or a second download) counts as another attempt but must
+      // not walk a delivered job backwards.
+      await tx.query(
+        `UPDATE print_jobs SET status='rendered', attempts=attempts+1
+          WHERE tenant_id=$1 AND id=$2 AND status IN ('requested','rendered','failed')`,
+        [actor.tenantId, jobId],
+      );
       const { rows: tenants } = await tx.query(
         "SELECT name,timezone,logo_path,config,business_profile FROM tenants WHERE id=$1",
         [actor.tenantId],
@@ -292,6 +358,7 @@ export class PrintService {
           totalMinor: number;
           subtotalMinor?: number;
           taxMinor?: number;
+          taxInclusive?: boolean;
           discountMinor?: number;
           lines?: {
             category: string;
@@ -399,7 +466,9 @@ export class PrintService {
         }
         if ((quote.taxMinor ?? 0) > 0) {
           chargeLines.push({
-            label: "Tax",
+            // On an inclusive quote the tax is already inside the total, so the
+            // receipt must not read as though it were added to it.
+            label: quote.taxInclusive ? "Tax (included)" : "Tax",
             amount: moneyMinor(quote.taxMinor!, quote.currency, locale),
           });
         }
@@ -439,69 +508,74 @@ export class PrintService {
         ];
         const logo = await loadTenantLogo(tenant.logo_path);
         return {
-          bytes: receiptPdf({
-            tenantName,
-            contactLines,
-            logo,
-            reservationRef: String(booking.id).slice(0, 8).toUpperCase(),
-            status: titleCaseStatus(String(booking.state)),
-            issuedAt: formatWhen(
-              new Date().toISOString(),
-              timezone,
-              locale,
-              config.dateFormat,
-              config.timeFormat,
-            ),
-            productName: booking.product_name,
-            departureAt: formatWhen(
-              booking.starts_at,
-              timezone,
-              locale,
-              config.dateFormat,
-              config.timeFormat,
-            ),
-            leadName: booking.lead_name,
-            leadEmail: booking.lead_email,
-            leadPhone: purchaser.phone || undefined,
-            source: String(booking.source).replace(/_/g, " "),
-            party: party || "-",
-            travellers: passengers.map(
-              (row) =>
-                `${row.name} (${row.category}${row.is_minor ? ", minor" : ""})`,
-            ),
-            partnerLine: partner
-              ? `${partner.partner_name} | ${String(partner.collection_mode).replace(/_/g, " ")}${
-                  partner.external_reference
-                    ? ` | ${partner.external_reference}`
-                    : ""
-                }`
-              : undefined,
-            chargeLines,
-            totals,
-            payments: payments.map((row) => ({
-              when: formatWhen(
-                row.occurred_at,
+          bytes: receiptPdf(
+            {
+              tenantName,
+              contactLines,
+              logo,
+              reservationRef: String(booking.id).slice(0, 8).toUpperCase(),
+              status: titleCaseStatus(String(booking.state)),
+              issuedAt: formatWhen(
+                new Date().toISOString(),
                 timezone,
                 locale,
                 config.dateFormat,
                 config.timeFormat,
               ),
-              amount: moneyMinor(
-                Number(row.amount_minor),
-                String(row.currency),
+              productName: booking.product_name,
+              departureAt: formatWhen(
+                booking.starts_at,
+                timezone,
                 locale,
+                config.dateFormat,
+                config.timeFormat,
               ),
-              method: String(row.method),
-              status: String(row.status),
-              detail: [
-                row.reference ? `Ref ${row.reference}` : "",
-                row.passenger_name ? `Attributed to ${row.passenger_name}` : "",
-              ]
-                .filter(Boolean)
-                .join(" | "),
-            })),
-            footerNote: `Official reservation receipt for ${tenantName}. Amounts reflect recorded payments and accepted partner credit. This document is generated on demand and is not retained as a permanent fiscal archive.`,
-          }),
+              leadName: booking.lead_name,
+              leadEmail: booking.lead_email,
+              leadPhone: purchaser.phone || undefined,
+              source: String(booking.source).replace(/_/g, " "),
+              party: party || "-",
+              travellers: passengers.map(
+                (row) =>
+                  `${row.name} (${row.category}${row.is_minor ? ", minor" : ""})`,
+              ),
+              partnerLine: partner
+                ? `${partner.partner_name} | ${String(partner.collection_mode).replace(/_/g, " ")}${
+                    partner.external_reference
+                      ? ` | ${partner.external_reference}`
+                      : ""
+                  }`
+                : undefined,
+              chargeLines,
+              totals,
+              payments: payments.map((row) => ({
+                when: formatWhen(
+                  row.occurred_at,
+                  timezone,
+                  locale,
+                  config.dateFormat,
+                  config.timeFormat,
+                ),
+                amount: moneyMinor(
+                  Number(row.amount_minor),
+                  String(row.currency),
+                  locale,
+                ),
+                method: String(row.method),
+                status: String(row.status),
+                detail: [
+                  row.reference ? `Ref ${row.reference}` : "",
+                  row.passenger_name
+                    ? `Attributed to ${row.passenger_name}`
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" | "),
+              })),
+              footerNote: `Official reservation receipt for ${tenantName}. Amounts reflect recorded payments and accepted partner credit. This document is generated on demand and is not retained as a permanent fiscal archive.`,
+            },
+            (job.media_size ?? "80mm") as MediaSize,
+          ),
           filename: `receipt-${String(booking.id).slice(0, 8)}.pdf`,
         };
       }
@@ -583,6 +657,7 @@ export class PrintService {
             ? "Departure manifest"
             : "Pickup list",
           lines,
+          (job.media_size ?? "a4") as MediaSize,
         ),
         filename: `${job.document_type.replace("_", "-")}-${String(job.source_id).slice(0, 8)}.pdf`,
       };
@@ -616,6 +691,13 @@ export class PrintController {
     @Body() body: unknown,
   ) {
     return this.service.requestBrowserJob(actor, parse(keySchema, key), body);
+  }
+  @Post("print-jobs/:id/outcome") @Access("print.jobs.create") outcome(
+    @CurrentActor() actor: Actor,
+    @Param("id") value: string,
+    @Body() body: unknown,
+  ) {
+    return this.service.recordOutcome(actor, parse(id, value), body);
   }
   @Get("print-jobs/:id/pdf") @Access("print.jobs.read") async pdf(
     @CurrentActor() actor: Actor,

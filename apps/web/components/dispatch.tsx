@@ -24,11 +24,13 @@ import type {
 import {
   dateTime,
   downloadApiFile,
+  fetchApiFile,
   label,
   money,
   useMutation,
   useResource,
 } from "@/lib/client";
+import { printDocument } from "@/lib/print-agent";
 import {
   Back,
   ConfirmDialog,
@@ -838,18 +840,27 @@ export function PrintablePickupListPage({
   const list = useResource<PrintablePickupList>(
     `ops/v1/departures/${departureId}/pickup-list`,
   );
+  const canPrint = session.permissions.includes("print.jobs.create");
   const printJob = useMutation();
+  const [printNotice, setPrintNotice] = useState("");
   async function printPickupList() {
-    if (!session.permissions.includes("print.jobs.create")) {
-      window.print();
-      return;
+    setPrintNotice("");
+    try {
+      const outcome = await printDocument(
+        {
+          documentType: "pickup_list",
+          sourceType: "departure",
+          sourceId: departureId,
+          fallbackName: `pickup-list-${departureId.slice(0, 8)}.pdf`,
+        },
+        printJob.run,
+        fetchApiFile,
+      );
+      if (outcome.via === "agent")
+        setPrintNotice("Sent to the paired printer.");
+    } catch (error) {
+      setPrintNotice((error as Error).message);
     }
-    const result = await printJob.run("ops/v1/print-jobs", {
-      documentType: "pickup_list",
-      sourceType: "departure",
-      sourceId: departureId,
-    });
-    if (result) window.print();
   }
   async function downloadPickupList() {
     const result = await printJob.run<{ id: string }>("ops/v1/print-jobs", {
@@ -920,36 +931,41 @@ export function PrintablePickupListPage({
                 <span className="button-label">Plan pickups</span>
               </Link>
             )}
-            <button
-              type="button"
-              className="button secondary icon-only-action"
-              disabled={printJob.busy}
-              onClick={() => void printPickupList()}
-              aria-label="Print pickup list"
-              title={printJob.busy ? "Preparing print" : "Print"}
-            >
-              <Printer size={16} aria-hidden="true" />
-              <span className="button-label">
-                {printJob.busy ? "Preparing…" : "Print"}
-              </span>
-            </button>
-            <button
-              type="button"
-              className="button icon-only-action"
-              disabled={printJob.busy}
-              onClick={() => void downloadPickupList()}
-              aria-label="Download PDF"
-              title={printJob.busy ? "Preparing PDF" : "Download PDF"}
-            >
-              <Download size={16} aria-hidden="true" />
-              <span className="button-label">
-                {printJob.busy ? "Preparing…" : "PDF"}
-              </span>
-            </button>
+            {canPrint && (
+              <button
+                type="button"
+                className="button secondary icon-only-action"
+                disabled={printJob.busy}
+                onClick={() => void printPickupList()}
+                aria-label="Print pickup list"
+                title={printJob.busy ? "Preparing print" : "Print"}
+              >
+                <Printer size={16} aria-hidden="true" />
+                <span className="button-label">
+                  {printJob.busy ? "Preparing…" : "Print"}
+                </span>
+              </button>
+            )}
+            {canPrint && (
+              <button
+                type="button"
+                className="button icon-only-action"
+                disabled={printJob.busy}
+                onClick={() => void downloadPickupList()}
+                aria-label="Download PDF"
+                title={printJob.busy ? "Preparing PDF" : "Download PDF"}
+              >
+                <Download size={16} aria-hidden="true" />
+                <span className="button-label">
+                  {printJob.busy ? "Preparing…" : "PDF"}
+                </span>
+              </button>
+            )}
           </div>
         </div>
       </div>
       {printJob.error && <Notice error>{printJob.error}</Notice>}
+      {printNotice && !printJob.error && <Notice>{printNotice}</Notice>}
 
       <div className="boarding-metrics pickup-plan-metrics no-print">
         <div>

@@ -82,6 +82,8 @@ import {
   type AssignmentListFilters,
 } from "./catalog-assignments";
 import { PickupLocationsSettings } from "./pickup-locations";
+import { PartnerSettings } from "./partner-settings";
+import { StaysSettings } from "./stays-settings";
 import {
   type ComplianceDocument,
   type LibraryUsage,
@@ -2576,12 +2578,6 @@ export function Settings({
     ),
     [waiverTitle, setWaiverTitle] = useState(""),
     [waiverBody, setWaiverBody] = useState(""),
-    [vesselName, setVesselName] = useState(""),
-    [callDate, setCallDate] = useState(""),
-    [portName, setPortName] = useState(""),
-    [allAboardAt, setAllAboardAt] = useState(""),
-    [accommodationName, setAccommodationName] = useState(""),
-    [accommodationAddress, setAccommodationAddress] = useState(""),
     [printName, setPrintName] = useState(""),
     [printDocumentType, setPrintDocumentType] = useState<
       "manifest" | "pickup_list"
@@ -2599,17 +2595,6 @@ export function Settings({
         created_at: string;
       }[]
     >("ops/v1/waiver-templates"),
-    stayMutation = useMutation(),
-    stayOptions = useResource<{
-      cruiseCalls: {
-        id: string;
-        vessel_name: string;
-        call_date: string;
-        port_name: string;
-        all_aboard_at: string | null;
-      }[];
-      accommodations: { id: string; name: string; address: string }[];
-    }>("ops/v1/stays/options"),
     printMutation = useMutation(),
     printTemplates = useResource<
       {
@@ -2736,33 +2721,6 @@ export function Settings({
     if (result) {
       setPrintName("");
       printTemplates.reload();
-    }
-  }
-  async function createCruiseCall() {
-    const result = await stayMutation.run("ops/v1/stays/cruise-calls", {
-      vesselName,
-      callDate,
-      portName,
-      ...(allAboardAt ? { allAboardAt } : {}),
-      tenderRequired: false,
-    });
-    if (result) {
-      setVesselName("");
-      setCallDate("");
-      setPortName("");
-      setAllAboardAt("");
-      stayOptions.reload();
-    }
-  }
-  async function createAccommodation() {
-    const result = await stayMutation.run("ops/v1/stays/accommodations", {
-      name: accommodationName,
-      address: accommodationAddress,
-    });
-    if (result) {
-      setAccommodationName("");
-      setAccommodationAddress("");
-      stayOptions.reload();
     }
   }
   return (
@@ -2926,10 +2884,14 @@ export function Settings({
           <div className="panel form-panel settings-tab-content">
             <PickupLocationsSettings session={session} />
           </div>
+        ) : tab === "stays" ? (
+          <div className="panel form-panel settings-tab-content">
+            <StaysSettings session={session} />
+          </div>
         ) : tab === "resellers" &&
           session.permissions.includes("partner.manage") ? (
           <div className="panel form-panel settings-tab-content">
-            <PartnersResellersSettings />
+            <PartnersResellersSettings session={session} />
           </div>
         ) : (
           <form className="panel form-panel" onSubmit={submit}>
@@ -3566,114 +3528,6 @@ export function Settings({
               ) : null}
             </section>
           )}
-            {tab === "stays" && (
-              <section>
-                <div className="settings-card-head">
-                  <Ship size={20} />
-                  <div>
-                    <h2>Guest stays & cruise calls</h2>
-                    <p>
-                      Maintain controlled vessel calls and accommodations used
-                      by reservations and pickup operations.
-                    </p>
-                  </div>
-                </div>
-            <h2>Cruise calls</h2>
-                <div className="form-grid">
-                  <Field label="Vessel name">
-                    <input
-                      required
-                      value={vesselName}
-                      onChange={(e) => setVesselName(e.target.value)}
-                    />
-                  </Field>
-                  <TenantDateInput
-                    label="Call date"
-                    value={callDate}
-                    onChange={setCallDate}
-                    locale={session.tenant.config.locale}
-                    dateFormat={session.tenant.config.dateFormat}
-                  />
-                  <Field label="Port or marina">
-                    <input
-                      required
-                      value={portName}
-                      onChange={(e) => setPortName(e.target.value)}
-                    />
-                  </Field>
-                  <Field
-                    label="All aboard · optional ISO time"
-                    hint="Include the UTC offset, for example 2026-09-10T16:30:00-04:00"
-                  >
-                    <input
-                      value={allAboardAt}
-                      onChange={(e) => setAllAboardAt(e.target.value)}
-                    />
-                  </Field>
-                </div>
-                <button
-                  type="button"
-                  className="button"
-                  disabled={
-                    stayMutation.busy || !vesselName || !callDate || !portName
-                  }
-                  onClick={() => void createCruiseCall()}
-                >
-                  Add cruise call
-                </button>
-                {stayOptions.data?.cruiseCalls.map((item) => (
-                  <div className="detail-row" key={item.id}>
-                    <span>
-                      <strong>{item.vessel_name}</strong>
-                      <small>
-                        {item.call_date} · {item.port_name}
-                        {item.all_aboard_at
-                          ? ` · all aboard ${new Date(item.all_aboard_at).toLocaleString()}`
-                          : ""}
-                      </small>
-                    </span>
-                  </div>
-                ))}
-                <div className="form-divider" />
-                <h2>Accommodation properties</h2>
-                <div className="form-grid">
-                  <Field label="Hotel or property name">
-                    <input
-                      required
-                      value={accommodationName}
-                      onChange={(e) => setAccommodationName(e.target.value)}
-                    />
-                  </Field>
-                  <Field label="Address">
-                    <input
-                      value={accommodationAddress}
-                      onChange={(e) => setAccommodationAddress(e.target.value)}
-                    />
-                  </Field>
-                </div>
-                <button
-                  type="button"
-                  className="button"
-                  disabled={stayMutation.busy || !accommodationName}
-                  onClick={() => void createAccommodation()}
-                >
-                  Add accommodation
-                </button>
-                {stayOptions.data?.accommodations.map((item) => (
-                  <div className="detail-row" key={item.id}>
-                    <span>
-                      <strong>{item.name}</strong>
-                      <small>{item.address || "No address recorded"}</small>
-                    </span>
-                  </div>
-                ))}
-                {(stayMutation.error || stayOptions.error) && (
-                  <Notice error>
-                    {stayMutation.error || stayOptions.error}
-                  </Notice>
-                )}
-              </section>
-            )}
           {tab === "payments" && (
             <section className="settings-future">
               <CreditCard size={20} />
@@ -3868,128 +3722,8 @@ type SupportGrant = {
   expires_at: string | null;
   decision_reason: string | null;
 };
-function PartnersResellersSettings() {
-  const partners = useResource<Partner[]>("finance/v1/partners");
-  const create = useMutation();
-  const statusMutation = useMutation();
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [notes, setNotes] = useState("");
-  async function addPartner() {
-    const result = await create.run("finance/v1/partners", {
-      name,
-      ...(email.trim() ? { email: email.trim() } : {}),
-      ...(phone.trim() ? { phone: phone.trim() } : {}),
-      notes,
-    });
-    if (result) {
-      setName("");
-      setEmail("");
-      setPhone("");
-      setNotes("");
-      partners.reload();
-    }
-  }
-  async function setStatus(partner: Partner, status: "active" | "inactive") {
-    const result = await statusMutation.run(
-      `finance/v1/partners/${partner.id}/status`,
-      { status },
-    );
-    if (result) partners.reload();
-  }
-  return (
-    <section>
-      <div className="settings-card-head" id="resellers">
-        <Handshake size={20} />
-        <div>
-          <h2>Partners / Resellers</h2>
-          <p>
-            External hotels and resellers used across reservations and finance.
-            Staff attribute bookings here; settlement agreements stay in Finance.
-          </p>
-        </div>
-      </div>
-      <div className="form-grid">
-        <Field label="Organization name">
-          <input
-            required
-            maxLength={160}
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-          />
-        </Field>
-        <Field label="Email · optional">
-          <input
-            type="email"
-            maxLength={254}
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-          />
-        </Field>
-        <Field label="Phone · optional">
-          <input
-            type="tel"
-            maxLength={40}
-            value={phone}
-            onChange={(event) => setPhone(event.target.value)}
-          />
-        </Field>
-        <Field label="Notes · optional">
-          <input
-            maxLength={2000}
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-          />
-        </Field>
-      </div>
-      <div className="form-actions">
-        <button
-          type="button"
-          className="button"
-          disabled={create.busy || !name.trim()}
-          onClick={() => void addPartner()}
-        >
-          {create.busy ? "Saving…" : "Add partner"}
-        </button>
-      </div>
-      {(create.error || statusMutation.error || partners.error) && (
-        <Notice error>
-          {create.error || statusMutation.error || partners.error}
-        </Notice>
-      )}
-      <div className="stack-list">
-        {(partners.data ?? []).map((partner) => (
-          <div className="detail-row" key={partner.id}>
-            <span>
-              <strong>{partner.name}</strong>
-              <small>
-                {label(partner.status ?? "active")}
-                {partner.email ? ` · ${partner.email}` : ""}
-                {partner.phone ? ` · ${partner.phone}` : ""}
-              </small>
-            </span>
-            <button
-              type="button"
-              className="button secondary"
-              disabled={statusMutation.busy}
-              onClick={() =>
-                void setStatus(
-                  partner,
-                  partner.status === "inactive" ? "active" : "inactive",
-                )
-              }
-            >
-              {partner.status === "inactive" ? "Reactivate" : "Deactivate"}
-            </button>
-          </div>
-        ))}
-        {!partners.data?.length && (
-          <Empty title="No partners yet" />
-        )}
-      </div>
-    </section>
-  );
+function PartnersResellersSettings({ session }: { session: Session }) {
+  return <PartnerSettings session={session} />;
 }
 function SupportAccessSettings() {
   const grants = useResource<{ items: SupportGrant[] }>(

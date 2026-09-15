@@ -9958,3 +9958,181 @@ dd {
     width: 100%;
   }
 }
+
+/* ── Finance → Partners settlement rollup ─────────────────────────────────── */
+.partner-rollup-list {
+  display: grid;
+  gap: 9px;
+  margin-top: 14px;
+}
+.partner-rollup {
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--soft);
+  overflow: hidden;
+}
+.partner-rollup.open {
+  background: var(--surface);
+  border-color: color-mix(in srgb, var(--teal) 30%, var(--line));
+}
+.partner-rollup-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 15px;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.partner-rollup-head svg {
+  flex: none;
+  color: var(--muted);
+  transition: transform 140ms ease;
+}
+.partner-rollup.open .partner-rollup-head svg {
+  transform: rotate(180deg);
+}
+.partner-rollup-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.partner-rollup-copy > span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.partner-rollup-body {
+  padding: 4px 15px 16px;
+  border-top: 1px solid var(--line);
+}
+.partner-detail .section-heading {
+  margin-top: 18px;
+}
+.partner-detail .section-heading h2 {
+  font-size: 14px;
+}
+.partner-detail .settings-list article {
+  background: var(--surface-soft);
+}
+@media (max-width: 760px) {
+  .partner-rollup-head {
+    padding: 12px 13px;
+  }
+  .partner-rollup-body {
+    padding: 4px 13px 14px;
+  }
+}
+
+/* ── Add / edit partner dialog ────────────────────────────────────────────── */
+.form-dialog-sheet.partner-dialog {
+  width: min(980px, calc(100vw - 24px));
+  max-height: min(92vh, 900px);
+}
+/* Compact, right-aligned actions instead of the default stretched 1fr 1.2fr. */
+.partner-dialog .confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.partner-dialog .confirm-dialog-actions .button {
+  width: auto;
+  min-width: 128px;
+  padding-inline: 20px;
+}
+/* Tablet landscape: three columns get cramped before the global 850px
+   single-column rule kicks in, so step down to two first. */
+@media (min-width: 851px) and (max-width: 1080px) {
+  .partner-dialog .form-grid.three {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+/* Phone / small tablet: take the whole viewport, like the planner sheet.
+   FormDialog only sets a class on the sheet, so reach the scrim root via :has(). */
+@media (max-width: 850px) {
+  .confirm-dialog-root:has(> .partner-dialog) {
+    padding: 0;
+    place-items: stretch;
+    align-items: stretch;
+  }
+  .form-dialog-sheet.partner-dialog {
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    min-height: 100dvh;
+    max-height: none;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .partner-dialog .confirm-dialog-actions {
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  }
+  .partner-dialog .confirm-dialog-actions .button {
+    min-width: 116px;
+  }
+}
+
+/* ── Settings tab header action (Add partner / Add location) ──────────────── */
+.settings-card-head > .button.settings-head-action {
+  margin-left: auto;
+  flex: none;
+  align-self: flex-start;
+}
+/* .settings-card-head svg paints the leading section icon accent-teal; the
+   action button's own icon must follow the button's text colour instead,
+   or it renders teal-on-teal and disappears. */
+.settings-card-head > .button.settings-head-action svg {
+  color: inherit;
+  margin-top: 0;
+}
+/* Phone: collapse to a 44px icon-only target, matching .catalog-add-btn
+   behaviour in the view action bars. */
+@media (max-width: 850px) {
+  .settings-card-head > .button.settings-head-action {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    padding: 0;
+    gap: 0;
+    justify-content: center;
+    position: relative;
+  }
+  .settings-card-head > .button.settings-head-action .button-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+}
+
+/* ── Tenant facts: keep values on one line where the rail has room ────────── */
+/* The rail is ~228px and the three tracks are equal thirds (~69px), but
+   "DD/MM/YYYY" needs ~81px, so overflow-wrap:anywhere broke it mid-value.
+   Content-sized tracks fit comfortably (values total ~170px), so the
+   settings-facts dd stays on one line and the dt labels wrap instead. */
+@media (min-width: 851px) {
+  /* 1fr == minmax(auto, 1fr): restoring the automatic minimum (the base rule
+     sets min-width:0) lets a track grow to its content instead of clipping,
+     so the date value keeps its own column and the label wraps instead. */
+  .settings-facts {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .settings-facts > div {
+    min-width: auto;
+  }
+  .settings-facts dd {
+    overflow-wrap: normal;
+    white-space: nowrap;
+  }
+}

@@ -405,7 +405,7 @@ export class WaiverService {
         if (!template)
           throw new BadRequestException("Active waiver template not found");
         await tx.query(
-          "UPDATE bookings SET stay=$3::jsonb,cruise_call_id=NULL,accommodation_property_id=NULL WHERE tenant_id=$1 AND id=$2",
+          "UPDATE bookings SET stay=$3::jsonb,vessel_id=NULL,accommodation_property_id=NULL WHERE tenant_id=$1 AND id=$2",
           [a.tenantId, passenger.booking_id, JSON.stringify(v.stay)],
         );
         const result = {

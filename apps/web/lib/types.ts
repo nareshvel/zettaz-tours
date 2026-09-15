@@ -181,7 +181,7 @@ export type Booking = {
         kind: "cruise";
         vesselName: string;
         cabinNumber?: string;
-        cruiseCallId?: string;
+        vesselId?: string;
       }
     | {
         kind: "hotel";

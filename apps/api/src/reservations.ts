@@ -50,7 +50,7 @@ export class ReservationService {
     actor: Actor,
     input: {
       kind: string;
-      cruiseCallId?: string;
+      vesselId?: string;
       accommodationId?: string;
       vesselName?: string;
       hotelName?: string;
@@ -61,27 +61,31 @@ export class ReservationService {
     },
   ) {
     let stay = input as Record<string, unknown>;
-    let cruiseCallId: string | null = null;
+    let vesselId: string | null = null;
     let accommodationId: string | null = null;
-    if (input.kind === "cruise" && input.cruiseCallId) {
+    // Both lookups rely on RLS to scope visibility: a row is either shared
+    // (tenant_id IS NULL) or owned by this tenant, so no tenant filter here.
+    if (input.kind === "cruise" && input.vesselId) {
       const { rows } = await tx.query(
-        "SELECT id,vessel_name FROM cruise_calls WHERE tenant_id=$1 AND id=$2 AND active",
-        [actor.tenantId, input.cruiseCallId],
+        "SELECT id,name FROM vessels WHERE id=$1 AND active",
+        [input.vesselId],
       );
-      if (!rows[0]) throw new NotFoundException("Cruise call not found");
-      cruiseCallId = rows[0].id;
-      stay = { ...input, vesselName: rows[0].vessel_name };
+      if (!rows[0]) throw new NotFoundException("Vessel not found");
+      vesselId = rows[0].id;
+      // vesselName is denormalised onto the booking on purpose: a later rename
+      // or deactivation must not rewrite what a waiver already recorded.
+      stay = { ...input, vesselName: rows[0].name };
     }
     if (input.kind === "hotel" && input.accommodationId) {
       const { rows } = await tx.query(
-        "SELECT id,name FROM accommodation_properties WHERE tenant_id=$1 AND id=$2 AND active",
-        [actor.tenantId, input.accommodationId],
+        "SELECT id,name FROM accommodation_properties WHERE id=$1 AND active",
+        [input.accommodationId],
       );
       if (!rows[0]) throw new NotFoundException("Accommodation not found");
       accommodationId = rows[0].id;
       stay = { ...input, hotelName: rows[0].name };
     }
-    return { stay, cruiseCallId, accommodationId };
+    return { stay, vesselId, accommodationId };
   }
   create(actor: Actor, key: string, input: unknown) {
     const data = parse(bookingSchema, input);
@@ -97,7 +101,7 @@ export class ReservationService {
         throw new ConflictException("Hold expired or consumed");
       const resolved = await this.resolveStay(tx, actor, data.stay);
       const stay = resolved.stay;
-      const cruiseCallId = resolved.cruiseCallId;
+      const vesselId = resolved.vesselId;
       const accommodationId = resolved.accommodationId;
       let quote = current.quote as Quote;
       if (data.concession) {
@@ -154,7 +158,7 @@ export class ReservationService {
       );
       const bookingId = randomUUID();
       await tx.query(
-        `INSERT INTO bookings(tenant_id,id,hold_id,departure_id,lead_name,lead_email,source,pickup,stay,cruise_call_id,accommodation_property_id,customer_id,purchaser,emergency_contact,state)
+        `INSERT INTO bookings(tenant_id,id,hold_id,departure_id,lead_name,lead_email,source,pickup,stay,vessel_id,accommodation_property_id,customer_id,purchaser,emergency_contact,state)
          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'held')`,
         [
           actor.tenantId,
@@ -166,7 +170,7 @@ export class ReservationService {
           data.source,
           data.pickup,
           stay,
-          cruiseCallId,
+          vesselId,
           accommodationId,
           customer.id,
           purchaser,

@@ -182,6 +182,17 @@ export function PickupLocationsSettings({ session }: { session: Session }) {
             Plan pickups only sequences stops from this library.
           </p>
         </div>
+        {canWrite && (
+          <button
+            type="button"
+            className="button catalog-add-btn settings-head-action"
+            aria-label="Add location"
+            onClick={openCreateLocation}
+          >
+            <Plus size={17} />
+            <span className="button-label">Add location</span>
+          </button>
+        )}
       </div>
       {!canWrite && (
         <Notice>
@@ -264,15 +275,6 @@ export function PickupLocationsSettings({ session }: { session: Session }) {
               </article>
             ))}
           </div>
-          {canWrite && (
-            <button
-              type="button"
-              className="button secondary"
-              onClick={openCreateLocation}
-            >
-              <Plus size={16} /> Add location
-            </button>
-          )}
         </>
       )}
       <FormDialog

@@ -61,7 +61,7 @@ DELETE FROM print_templates WHERE tenant_id IN (SELECT id FROM doomed);
 DELETE FROM waiver_templates WHERE tenant_id IN (SELECT id FROM doomed);
 DELETE FROM pickup_locations WHERE tenant_id IN (SELECT id FROM doomed);
 DELETE FROM accommodation_properties WHERE tenant_id IN (SELECT id FROM doomed);
-DELETE FROM cruise_calls WHERE tenant_id IN (SELECT id FROM doomed);
+DELETE FROM vessels WHERE tenant_id IN (SELECT id FROM doomed);
 DELETE FROM partner_organizations WHERE tenant_id IN (SELECT id FROM doomed);
 DELETE FROM staff_sessions WHERE tenant_id IN (SELECT id FROM doomed);
 DELETE FROM support_sessions WHERE tenant_id IN (SELECT id FROM doomed);

@@ -636,23 +636,23 @@ async function main() {
         ]) {
           await admin.query(
             `INSERT INTO accommodation_properties(tenant_id,id,name,address,created_by)
-             VALUES($1,$2,$3,'Antigua and Barbuda',$4) ON CONFLICT(tenant_id,name) DO NOTHING`,
+             SELECT $1,$2,$3,'Antigua and Barbuda',$4
+             WHERE NOT EXISTS (
+               SELECT 1 FROM accommodation_properties
+                WHERE tenant_id = $1 AND lower(name) = lower($3)
+             )`,
             [tenantId, key(), accommodation, actor.actorId],
           );
         }
         await admin.query(
-          `INSERT INTO cruise_calls(tenant_id,id,vessel_name,call_date,port_name,scheduled_arrival,scheduled_departure,all_aboard_at,created_by)
-           VALUES($1,$2,'Rhapsody of the Seas',$3,'St. John''s Cruise Port',$4,$5,$6,$7)
-           ON CONFLICT(tenant_id,vessel_name,call_date,port_name) DO NOTHING`,
-          [
-            tenantId,
-            key(),
-            day.toISODate(),
-            day.plus({ hours: 8 }).toUTC().toISO(),
-            day.plus({ hours: 17 }).toUTC().toISO(),
-            day.plus({ hours: 16, minutes: 30 }).toUTC().toISO(),
-            actor.actorId,
-          ],
+          `INSERT INTO vessels(tenant_id,id,name)
+           SELECT $1,$2,'Rhapsody of the Seas'
+           WHERE NOT EXISTS (
+             SELECT 1 FROM vessels
+              WHERE (tenant_id IS NULL OR tenant_id = $1)
+                AND lower(name) = lower('Rhapsody of the Seas')
+           )`,
+          [tenantId, key()],
         );
       }
 

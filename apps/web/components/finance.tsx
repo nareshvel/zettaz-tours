@@ -13,6 +13,7 @@ import {
   Notice,
   Status,
 } from "./common";
+import { FinancePartners } from "./finance-partners";
 
 function amount(value: string | number) {
   return typeof value === "number" ? value : Number(value);
@@ -30,6 +31,10 @@ type StatementLine = {
 };
 
 export function Finance({ session }: { session: Session }) {
+  const [tab, setTab] = useState<"collections" | "partners">("collections");
+  const canReadStatements = session.permissions.includes(
+    "partner.statement.read",
+  );
   const claims = useResource<PartnerClaim[]>("finance/v1/partner-claims");
   const statements = useResource<StatementLine[]>(
     "finance/v1/partner-statements",
@@ -85,6 +90,45 @@ export function Finance({ session }: { session: Session }) {
     }
   }
 
+  if (tab === "partners") {
+    return (
+      <>
+        <Heading
+          eyebrow="FINANCE"
+          title="Partner settlements"
+          description="Commission accrued on attributed bookings, and the settlement periods you invoice and pay against."
+        />
+      <div className="view-action-bar">
+        <div
+          className="view-tabs compact"
+          role="tablist"
+          aria-label="Finance sections"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={false}
+            onClick={() => setTab("collections")}
+          >
+            Collections
+          </button>
+          {canReadStatements && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected
+              onClick={() => setTab("partners")}
+            >
+              Partners
+            </button>
+          )}
+        </div>
+      </div>
+        <FinancePartners session={session} />
+      </>
+    );
+  }
+
   return (
     <>
       <Heading
@@ -92,6 +136,33 @@ export function Finance({ session }: { session: Session }) {
         title="Partner collections"
         description="Review hotel and reseller collection evidence. Accepted claims create a partner obligation — they never create a guest payment."
       />
+
+      <div className="view-action-bar">
+        <div
+          className="view-tabs compact"
+          role="tablist"
+          aria-label="Finance sections"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected
+            onClick={() => setTab("collections")}
+          >
+            Collections
+          </button>
+          {canReadStatements && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={false}
+              onClick={() => setTab("partners")}
+            >
+              Partners
+            </button>
+          )}
+        </div>
+      </div>
 
       {claims.error && <Notice error>{claims.error}</Notice>}
       {!claims.data && !claims.error && <Loading />}

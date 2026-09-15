@@ -474,12 +474,11 @@ export function NewReservation({
     ),
     partners = useResource<Partner[]>("finance/v1/partners/available"),
     stays = useResource<{
-      cruiseCalls: {
+      vessels: {
         id: string;
-        vessel_name: string;
-        call_date: string;
-        port_name: string;
-        all_aboard_at: string | null;
+        name: string;
+        cruise_line: string | null;
+        tenant_owned: boolean;
       }[];
       accommodations: { id: string; name: string; address: string }[];
     }>("ops/v1/stays/options");
@@ -547,7 +546,7 @@ export function NewReservation({
     [stayKind, setStayKind] = useState(amendBooking?.stay?.kind ?? "none"),
     [stayReferenceId, setStayReferenceId] = useState(
       amendBooking?.stay?.kind === "cruise"
-        ? (amendBooking.stay.cruiseCallId ?? "")
+        ? (amendBooking.stay.vesselId ?? "")
         : amendBooking?.stay?.kind === "hotel"
           ? (amendBooking.stay.accommodationId ?? "")
           : "",
@@ -779,10 +778,10 @@ export function NewReservation({
     return stayKind === "cruise"
       ? {
           kind: "cruise" as const,
-          cruiseCallId: stayReferenceId || undefined,
+          vesselId: stayReferenceId || undefined,
           vesselName:
-            stays.data?.cruiseCalls.find((item) => item.id === stayReferenceId)
-              ?.vessel_name ||
+            stays.data?.vessels.find((item) => item.id === stayReferenceId)
+              ?.name ||
             stayPropertyName ||
             "Cruise vessel",
           cabinNumber: unitNumber,
@@ -889,11 +888,11 @@ export function NewReservation({
             stayKind === "cruise"
               ? {
                   kind: "cruise",
-                  cruiseCallId: stayReferenceId,
+                  vesselId: stayReferenceId,
                   vesselName:
-                    stays.data?.cruiseCalls.find(
+                    stays.data?.vessels.find(
                       (item) => item.id === stayReferenceId,
-                    )?.vessel_name ?? "Cruise vessel",
+                    )?.name ?? "Cruise vessel",
                   cabinNumber: unitNumber,
                 }
               : stayKind === "hotel"
@@ -2086,11 +2085,11 @@ export function NewReservation({
                             value={stayReferenceId}
                             onChange={(e) => setStayReferenceId(e.target.value)}
                           >
-                            <option value="">Choose vessel and call</option>
-                            {(stays.data?.cruiseCalls ?? []).map((item) => (
+                            <option value="">Choose vessel</option>
+                            {(stays.data?.vessels ?? []).map((item) => (
                               <option key={item.id} value={item.id}>
-                                {item.vessel_name} · {item.call_date} ·{" "}
-                                {item.port_name}
+                                {item.name}
+                                {item.cruise_line ? ` — ${item.cruise_line}` : ""}
                               </option>
                             ))}
                           </select>

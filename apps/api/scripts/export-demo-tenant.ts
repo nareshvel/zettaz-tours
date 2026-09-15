@@ -63,7 +63,7 @@ const CATALOG_TABLES = [
   "availability_exceptions",
   "pickup_locations",
   "accommodation_properties",
-  "cruise_calls",
+  "vessels",
   "partner_organizations",
   "operational_resources",
   "crew_profiles",

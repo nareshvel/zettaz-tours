@@ -150,7 +150,7 @@ export class BookingChangeService {
           data.stay ??
           (booking.stay as {
             kind: string;
-            cruiseCallId?: string;
+            vesselId?: string;
             accommodationId?: string;
           });
         const resolved = await this.reservations.resolveStay(
@@ -171,7 +171,7 @@ export class BookingChangeService {
               ? emergencyContact
               : undefined,
           stay: resolved.stay,
-          cruiseCallId: resolved.cruiseCallId,
+          vesselId: resolved.vesselId,
           accommodationId: resolved.accommodationId,
         };
         const settings = await tenant(tx, actor),
@@ -381,9 +381,9 @@ export class BookingChangeService {
           (q.input.emergencyContact as Record<string, unknown>) ?? {};
         const stay =
           (q.input.stay as Record<string, unknown>) ?? booking.stay ?? { kind: "none" };
-        const cruiseCallId =
-          (q.input.cruiseCallId as string | null | undefined) ??
-          (stay.kind === "cruise" ? (stay.cruiseCallId as string) ?? null : null);
+        const vesselId =
+          (q.input.vesselId as string | null | undefined) ??
+          (stay.kind === "cruise" ? (stay.vesselId as string) ?? null : null);
         const accommodationId =
           (q.input.accommodationId as string | null | undefined) ??
           (stay.kind === "hotel"
@@ -422,7 +422,7 @@ export class BookingChangeService {
         }
         await tx.query(
           `UPDATE bookings SET hold_id=$3,departure_id=$4,lead_name=$5,lead_email=$6,pickup=$7,
-            stay=$8,cruise_call_id=$9,accommodation_property_id=$10,purchaser=$11,emergency_contact=$12,
+            stay=$8,vessel_id=$9,accommodation_property_id=$10,purchaser=$11,emergency_contact=$12,
             customer_id=$13,version=version+1 WHERE tenant_id=$1 AND id=$2`,
           [
             actor.tenantId,
@@ -433,7 +433,7 @@ export class BookingChangeService {
             q.input.leadEmail,
             q.input.pickup,
             stay,
-            cruiseCallId,
+            vesselId,
             accommodationId,
             purchaser,
             emergencyContact,
@@ -448,7 +448,7 @@ export class BookingChangeService {
           lead_email: q.input.leadEmail,
           pickup: q.input.pickup,
           stay,
-          cruise_call_id: cruiseCallId,
+          vessel_id: vesselId,
           accommodation_property_id: accommodationId,
           purchaser,
           emergency_contact: emergencyContact,

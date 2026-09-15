@@ -770,7 +770,8 @@ export class TenantController {
         rows: [r],
       } = await tx.query(
         `SELECT
-          (SELECT COUNT(*)::int FROM products WHERE tenant_id=$1 AND active) AS products,
+          (SELECT COUNT(*)::int FROM products
+            WHERE tenant_id=$1 AND status='active') AS products,
           (SELECT COUNT(*)::int FROM departures
             WHERE tenant_id=$1 AND starts_at>clock_timestamp()) AS upcoming_departures,
           (SELECT COUNT(*)::int FROM pickup_locations WHERE tenant_id=$1 AND active) AS pickup_locations,

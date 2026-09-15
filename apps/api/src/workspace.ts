@@ -316,6 +316,446 @@ export class WorkspaceController {
       return r;
     });
   }
+  /**
+   * Cross-cutting alerts that belong to no single page: a compliance document
+   * about to expire, a hold about to lapse, money owed on a departure today.
+   *
+   * These live in the top-bar bell rather than on the Overview — they are
+   * low-frequency, they are not what the Overview is for, and they follow the
+   * user onto every page. Each is filtered by what the reader is allowed to
+   * act on, so a partner manager is not shown the day's takings.
+   */
+  private async standaloneAlerts(
+    tx: {
+      query: (text: string, values?: unknown[]) => Promise<{ rows: any[] }>;
+    },
+    actor: Actor,
+    day: string,
+  ) {
+    const may = (...codes: string[]) =>
+      codes.some((code) => actor.permissions.includes(code));
+    const items: {
+      kind: string;
+      severity: "critical" | "warning" | "info";
+      subject: string;
+      detail: string;
+      href: string;
+      action: string;
+      at: string | null;
+    }[] = [];
+
+    if (may("resources.write", "documents.expiry.manage", "config.write")) {
+      const { rows } = await tx.query(
+        `SELECT c.id,c.document_type,c.expires_on::text AS expires_on,
+           COALESCE(s.name,r.name,'Unassigned record') AS subject
+         FROM compliance_documents c
+         LEFT JOIN staff_users s ON s.id=c.crew_actor_id
+         LEFT JOIN operational_resources r ON r.tenant_id=c.tenant_id AND r.id=c.resource_id
+         WHERE c.tenant_id=$1 AND c.expires_on <= $2::date + 7
+         ORDER BY c.expires_on LIMIT 8`,
+        [actor.tenantId, day],
+      );
+      for (const c of rows)
+        items.push({
+          kind: "document",
+          severity: c.expires_on <= day ? "critical" : "warning",
+          subject: c.subject,
+          detail: `${c.document_type.replaceAll("_", " ")} ${c.expires_on <= day ? "expired" : "expires"}`,
+          href: "/resources",
+          action: "Renew",
+          at: c.expires_on,
+        });
+    }
+
+    if (may("bookings.read")) {
+      const { rows } = await tx.query(
+        `SELECT h.id,h.expires_at,h.seats,p.name AS product_name
+         FROM holds h
+         JOIN departures d ON d.tenant_id=h.tenant_id AND d.id=h.departure_id
+         JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id
+         JOIN bookings b ON b.tenant_id=h.tenant_id AND b.hold_id=h.id AND b.state='held'
+         WHERE h.tenant_id=$1 AND NOT h.consumed
+           AND h.expires_at BETWEEN clock_timestamp() AND clock_timestamp()+interval '60 minutes'
+         ORDER BY h.expires_at LIMIT 5`,
+        [actor.tenantId],
+      );
+      for (const h of rows)
+        items.push({
+          kind: "expiring_hold",
+          severity: "warning",
+          subject: h.product_name,
+          detail: `Hold on ${h.seats} seat${h.seats === 1 ? "" : "s"} expires shortly`,
+          href: "/reservations",
+          action: "Open booking",
+          at: h.expires_at,
+        });
+    }
+
+    if (may("payment.write", "payment.correct", "config.write")) {
+      const {
+        rows: [owed],
+      } = await tx.query(
+        `SELECT COUNT(*)::int AS bookings FROM (
+           SELECT b.id,
+             COALESCE((SELECT (quote->>'totalMinor')::bigint FROM price_snapshots s
+               WHERE s.tenant_id=b.tenant_id AND s.booking_id=b.id ORDER BY version DESC LIMIT 1),0)
+             - COALESCE((SELECT SUM(p.amount_minor) FROM payments p
+                 WHERE p.tenant_id=b.tenant_id AND p.booking_id=b.id AND p.status='settled'
+                 AND NOT EXISTS(SELECT 1 FROM payment_adjustments a
+                   WHERE a.tenant_id=p.tenant_id AND a.payment_id=p.id)),0)
+             - COALESCE((SELECT SUM(c.amount_minor) FROM partner_collection_claims c
+                 JOIN partner_claim_decisions x ON x.tenant_id=c.tenant_id AND x.claim_id=c.id AND x.decision='accepted'
+                 WHERE c.tenant_id=b.tenant_id AND c.booking_id=b.id),0) AS owed_minor
+           FROM bookings b
+           JOIN departures d ON d.tenant_id=b.tenant_id AND d.id=b.departure_id
+           WHERE b.tenant_id=$1 AND d.local_date=$2 AND b.state='confirmed'
+         ) scoped WHERE owed_minor > 0`,
+        [actor.tenantId, day],
+      );
+      if (owed.bookings > 0)
+        items.push({
+          kind: "balance",
+          severity: "info",
+          subject: "Balance due today",
+          detail: `${owed.bookings} booking${owed.bookings === 1 ? "" : "s"} departing today still owes money`,
+          href: "/reservations",
+          action: "Collect",
+          at: null,
+        });
+    }
+
+    const rank = { critical: 0, warning: 1, info: 2 };
+    return items.sort(
+      (a, b) =>
+        rank[a.severity] - rank[b.severity] ||
+        (a.at ? Date.parse(a.at) : Number.MAX_SAFE_INTEGER) -
+          (b.at ? Date.parse(b.at) : Number.MAX_SAFE_INTEGER),
+    );
+  }
+
+  @Get("notifications")
+  @Access("catalog.read")
+  notifications(@CurrentActor() actor: Actor) {
+    return this.db.transaction(actor, async (tx) => {
+      const {
+        rows: [t],
+      } = await tx.query("SELECT timezone FROM tenants WHERE id=$1", [
+        actor.tenantId,
+      ]);
+      const {
+        rows: [{ day }],
+      } = await tx.query(
+        "SELECT (clock_timestamp() AT TIME ZONE $1)::date::text AS day",
+        [t?.timezone ?? "UTC"],
+      );
+      const items = await this.standaloneAlerts(tx, actor, day);
+      return { day, items, count: items.length };
+    });
+  }
+
+  /**
+   * The shift briefing behind the Overview page.
+   *
+   * One round trip instead of the six the page used to make, and scoped to the
+   * operating day rather than to all of history: what is running now, what will
+   * break if nobody acts, and what the week looks like. Everything here is
+   * bounded by the tenant's own local date — a departure belongs to the day the
+   * crew calls it, not to a UTC window.
+   */
+  @Get("briefing")
+  @Access("bookings.read")
+  briefing(@CurrentActor() actor: Actor) {
+    return this.db.transaction(actor, async (tx) => {
+      const {
+        rows: [t],
+      } = await tx.query("SELECT timezone,config FROM tenants WHERE id=$1", [
+        actor.tenantId,
+      ]);
+      const timezone = t?.timezone ?? "UTC";
+      const currency = t?.config?.reportingCurrency ?? "USD";
+      const {
+        rows: [{ day }],
+      } = await tx.query(
+        "SELECT (clock_timestamp() AT TIME ZONE $1)::date::text AS day",
+        [timezone],
+      );
+
+      // ── Today ────────────────────────────────────────────────────────────
+      const {
+        rows: [today],
+      } = await tx.query(
+        `SELECT
+           COUNT(DISTINCT d.id)::int AS departures,
+           COALESCE(SUM(h.seats) FILTER(WHERE b.state='confirmed'),0)::int AS guests
+         FROM departures d
+         LEFT JOIN bookings b ON b.tenant_id=d.tenant_id AND b.departure_id=d.id
+         LEFT JOIN holds h ON h.tenant_id=b.tenant_id AND h.id=b.hold_id
+         WHERE d.tenant_id=$1 AND d.local_date=$2`,
+        [actor.tenantId, day],
+      );
+      const {
+        rows: [boarding],
+      } = await tx.query(
+        `SELECT
+           COUNT(*) FILTER(WHERE COALESCE(latest.state,'not_arrived')='boarded')::int AS boarded,
+           COUNT(*)::int AS expected
+         FROM booking_passengers bp
+         JOIN bookings b ON b.tenant_id=bp.tenant_id AND b.id=bp.booking_id
+         JOIN departures d ON d.tenant_id=b.tenant_id AND d.id=b.departure_id
+         LEFT JOIN LATERAL (
+           SELECT state FROM passenger_checkins x
+           WHERE x.tenant_id=bp.tenant_id AND x.passenger_id=bp.id
+           ORDER BY occurred_at DESC,id DESC LIMIT 1
+         ) latest ON true
+         WHERE bp.tenant_id=$1 AND d.local_date=$2
+           AND b.state='confirmed' AND bp.superseded_at IS NULL`,
+        [actor.tenantId, day],
+      );
+      const {
+        rows: [nextDeparture],
+      } = await tx.query(
+        `SELECT d.id,d.starts_at,p.name AS product_name
+         FROM departures d JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id
+         WHERE d.tenant_id=$1 AND d.starts_at>clock_timestamp() AND d.operational_status='open'
+         ORDER BY d.starts_at,d.id LIMIT 1`,
+        [actor.tenantId],
+      );
+
+      // Outstanding guest money on today's departures. Partner-settled amounts
+      // are credited, so this is what a guest can still be asked for at the
+      // gate — not the accounting balance.
+      const {
+        rows: [money],
+      } = await tx.query(
+        `SELECT COALESCE(SUM(GREATEST(total_minor-paid_minor-partner_credit_minor,0)),0)::text AS outstanding_minor,
+                COUNT(*) FILTER(WHERE total_minor-paid_minor-partner_credit_minor>0)::int AS bookings
+         FROM (
+           SELECT b.id,
+             COALESCE((SELECT (quote->>'totalMinor')::bigint FROM price_snapshots s
+               WHERE s.tenant_id=b.tenant_id AND s.booking_id=b.id ORDER BY version DESC LIMIT 1),0) AS total_minor,
+             COALESCE((SELECT SUM(p.amount_minor) FROM payments p
+               WHERE p.tenant_id=b.tenant_id AND p.booking_id=b.id AND p.status='settled'
+               AND NOT EXISTS(SELECT 1 FROM payment_adjustments a
+                 WHERE a.tenant_id=p.tenant_id AND a.payment_id=p.id)),0) AS paid_minor,
+             COALESCE((SELECT SUM(c.amount_minor) FROM partner_collection_claims c
+               JOIN partner_claim_decisions x ON x.tenant_id=c.tenant_id AND x.claim_id=c.id AND x.decision='accepted'
+               WHERE c.tenant_id=b.tenant_id AND c.booking_id=b.id),0) AS partner_credit_minor
+           FROM bookings b
+           JOIN departures d ON d.tenant_id=b.tenant_id AND d.id=b.departure_id
+           WHERE b.tenant_id=$1 AND d.local_date=$2 AND b.state='confirmed'
+         ) scoped`,
+        [actor.tenantId, day],
+      );
+
+      // ── Timeline: the next three operating days ──────────────────────────
+      const { rows: timeline } = await tx.query(
+        `SELECT d.id,d.starts_at,d.local_date::text AS local_date,d.capacity,
+           (d.committed+d.overbooked)::int AS committed,d.operational_status,
+           p.name AS product_name,
+           EXISTS(SELECT 1 FROM departure_assignments a
+             WHERE a.tenant_id=d.tenant_id AND a.departure_id=d.id AND a.status='active') AS crew_assigned,
+           COALESCE((SELECT COUNT(*)::int FROM bookings b
+             WHERE b.tenant_id=d.tenant_id AND b.departure_id=d.id
+               AND b.state='confirmed' AND b.pickup->>'kind'='unresolved'),0) AS pickup_unresolved,
+           COALESCE((SELECT COUNT(*)::int FROM bookings b
+             WHERE b.tenant_id=d.tenant_id AND b.departure_id=d.id
+               AND b.state='confirmed' AND b.pickup->>'kind'='selected'),0) AS pickup_required,
+           COALESCE((SELECT COUNT(*)::int FROM pickup_stops s
+             WHERE s.tenant_id=d.tenant_id AND s.departure_id=d.id),0) AS pickup_planned
+         FROM departures d JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id
+         WHERE d.tenant_id=$1 AND d.local_date BETWEEN $2::date AND $2::date + 2
+         ORDER BY d.starts_at,d.id LIMIT 40`,
+        [actor.tenantId, day],
+      );
+
+      // ── The month's money, for roles that can act on it ──────────────────
+      // Part-to-whole with two parts: received against still owed on this
+      // calendar month's departures. Same expression as the today figure, so
+      // the two can never disagree. A month is the window an owner actually
+      // thinks in; a rolling week cut across it arbitrarily.
+      const {
+        rows: [month],
+      } = await tx.query(
+        `SELECT COALESCE(SUM(total_minor),0)::text AS booked_minor,
+                COALESCE(SUM(paid_minor),0)::text AS received_minor,
+                COALESCE(SUM(GREATEST(total_minor-paid_minor-partner_credit_minor,0)),0)::text AS outstanding_minor,
+                COUNT(*)::int AS bookings
+         FROM (
+           SELECT b.id,
+             COALESCE((SELECT (quote->>'totalMinor')::bigint FROM price_snapshots s
+               WHERE s.tenant_id=b.tenant_id AND s.booking_id=b.id ORDER BY version DESC LIMIT 1),0) AS total_minor,
+             COALESCE((SELECT SUM(p.amount_minor) FROM payments p
+               WHERE p.tenant_id=b.tenant_id AND p.booking_id=b.id AND p.status='settled'
+               AND NOT EXISTS(SELECT 1 FROM payment_adjustments a
+                 WHERE a.tenant_id=p.tenant_id AND a.payment_id=p.id)),0) AS paid_minor,
+             COALESCE((SELECT SUM(c.amount_minor) FROM partner_collection_claims c
+               JOIN partner_claim_decisions x ON x.tenant_id=c.tenant_id AND x.claim_id=c.id AND x.decision='accepted'
+               WHERE c.tenant_id=b.tenant_id AND c.booking_id=b.id),0) AS partner_credit_minor
+           FROM bookings b
+           JOIN departures d ON d.tenant_id=b.tenant_id AND d.id=b.departure_id
+           WHERE b.tenant_id=$1 AND b.state='confirmed'
+             AND d.local_date BETWEEN date_trunc('month',$2::date)::date
+                                  AND (date_trunc('month',$2::date) + interval '1 month - 1 day')::date
+         ) scoped`,
+        [actor.tenantId, day],
+      );
+
+      // ── Demand: seven local days, for the week's shape ───────────────────
+      const { rows: demand } = await tx.query(
+        `SELECT series.day::date::text AS date,
+           COALESCE((SELECT COUNT(*)::int FROM departures d
+             WHERE d.tenant_id=$1 AND d.local_date=series.day::date),0) AS departures,
+           COALESCE((SELECT SUM(d.capacity)::int FROM departures d
+             WHERE d.tenant_id=$1 AND d.local_date=series.day::date),0) AS capacity,
+           COALESCE((SELECT SUM(h.seats)::int FROM bookings b
+             JOIN departures d ON d.tenant_id=b.tenant_id AND d.id=b.departure_id
+             JOIN holds h ON h.tenant_id=b.tenant_id AND h.id=b.hold_id
+             WHERE b.tenant_id=$1 AND d.local_date=series.day::date AND b.state='confirmed'),0) AS guests
+         -- generate_series over dates with an interval step yields TIMESTAMPS, so
+         -- every use casts back to date; ::text on the raw value would emit
+         -- "2026-09-15 00:00:00" and no date parser downstream would accept it.
+         FROM generate_series($2::date,$2::date + 6,'1 day') AS series(day)
+         ORDER BY series.day`,
+        [actor.tenantId, day],
+      );
+
+      // ── Selling slowly ───────────────────────────────────────────────────
+      // Readiness answers "can this run"; this answers "should it". A trip
+      // departing soon with seats unsold is the promote-or-cancel decision,
+      // and nothing else on the page surfaces it. Today is excluded: by the
+      // morning of departure the decision has already been made.
+      const { rows: quiet } = await tx.query(
+        `SELECT d.id,d.starts_at,d.local_date::text AS local_date,d.capacity,
+           (d.committed+d.overbooked)::int AS committed,
+           (d.local_date - $2::date)::int AS days_out,
+           p.name AS product_name
+         FROM departures d JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id
+         WHERE d.tenant_id=$1
+           AND d.local_date BETWEEN $2::date + 1 AND $2::date + 14
+           AND d.operational_status='open'
+           AND d.capacity > 0
+           AND (d.committed+d.overbooked)::numeric / d.capacity < 0.4
+         ORDER BY d.starts_at,d.id LIMIT 8`,
+        [actor.tenantId, day],
+      );
+
+      // ── The queue ────────────────────────────────────────────────────────
+      // Each row names its subject and carries the link that resolves it. A
+      // count on its own ("4 exceptions") tells nobody what to do.
+      const { rows: operational } = await tx.query(
+        `SELECT d.id,d.starts_at,d.operational_status,d.operational_reason,p.name AS product_name,
+           EXISTS(SELECT 1 FROM departure_assignments a
+             WHERE a.tenant_id=d.tenant_id AND a.departure_id=d.id AND a.status='active') AS crew_assigned,
+           COALESCE((SELECT COUNT(*)::int FROM bookings b
+             WHERE b.tenant_id=d.tenant_id AND b.departure_id=d.id
+               AND b.state='confirmed' AND b.pickup->>'kind'='unresolved'),0) AS pickup_unresolved,
+           COALESCE((SELECT SUM(h.seats)::int FROM bookings b
+             JOIN holds h ON h.tenant_id=b.tenant_id AND h.id=b.hold_id
+             WHERE b.tenant_id=d.tenant_id AND b.departure_id=d.id AND b.state='confirmed'),0) AS guests
+         FROM departures d JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id
+         WHERE d.tenant_id=$1 AND d.local_date BETWEEN $2::date AND $2::date + 2
+         ORDER BY d.starts_at,d.id`,
+        [actor.tenantId, day],
+      );
+      type QueueItem = {
+        kind: string;
+        severity: "critical" | "warning" | "info";
+        subject: string;
+        detail: string;
+        startsAt: string | null;
+        href: string;
+        /** Compliance rows carry the date separately so the client can format
+         *  it in the tenant's own style rather than shipping an ISO string. */
+        expiresOn?: string;
+        /** What the button does. "Resolve" on every row tells nobody what
+         *  they are about to open. */
+        action: string;
+      };
+      const queue: QueueItem[] = [];
+      const soon = (startsAt: string, hours: number) =>
+        new Date(startsAt).getTime() - Date.now() < hours * 3600_000;
+
+      for (const d of operational) {
+        if (d.operational_status !== "open")
+          queue.push({
+            kind: d.operational_status,
+            severity: "critical",
+            subject: d.product_name,
+            detail:
+              d.operational_reason ||
+              (d.operational_status === "closed"
+                ? "Closed — not sellable"
+                : "On weather hold"),
+            startsAt: d.starts_at,
+            href: `/operations`,
+            action:
+              d.operational_status === "closed" ? "Reopen" : "Review hold",
+          });
+        // Crew only matters once the departure is close and someone is on it.
+        if (!d.crew_assigned && d.guests > 0 && soon(d.starts_at, 24))
+          queue.push({
+            kind: "unassigned",
+            severity: "critical",
+            subject: d.product_name,
+            detail: `${d.guests} guest${d.guests === 1 ? "" : "s"}, no crew or vehicle assigned`,
+            startsAt: d.starts_at,
+            href: `/departures/${d.id}/assignments`,
+            action: "Assign",
+          });
+        if (d.pickup_unresolved > 0 && soon(d.starts_at, 48))
+          queue.push({
+            kind: "unresolved_pickup",
+            severity: soon(d.starts_at, 12) ? "critical" : "warning",
+            subject: d.product_name,
+            detail: `${d.pickup_unresolved} guest${d.pickup_unresolved === 1 ? "" : "s"} with no pickup agreed`,
+            startsAt: d.starts_at,
+            href: `/operations/${d.id}/pickups`,
+            action: "Plan pickups",
+          });
+      }
+      const rank = { critical: 0, warning: 1, info: 2 };
+      queue.sort(
+        (a, b) =>
+          rank[a.severity] - rank[b.severity] ||
+          (a.startsAt ? Date.parse(a.startsAt) : Number.MAX_SAFE_INTEGER) -
+            (b.startsAt ? Date.parse(b.startsAt) : Number.MAX_SAFE_INTEGER),
+      );
+
+      return {
+        day,
+        timezone,
+        currency,
+        today: {
+          departures: today.departures,
+          guests: today.guests,
+          boarded: boarding.boarded,
+          expected: boarding.expected,
+          outstandingMinor: money.outstanding_minor,
+          outstandingBookings: money.bookings,
+          nextDeparture: nextDeparture
+            ? {
+                id: nextDeparture.id,
+                startsAt: nextDeparture.starts_at,
+                productName: nextDeparture.product_name,
+              }
+            : null,
+        },
+        month: {
+          bookedMinor: month.booked_minor,
+          receivedMinor: month.received_minor,
+          outstandingMinor: month.outstanding_minor,
+          bookings: month.bookings,
+        },
+        quiet,
+        // Departure-derived only: the cross-cutting alerts are served to the
+        // top-bar bell by `notifications`, so nothing is counted twice.
+        queue: queue.slice(0, 12),
+        queueTotal: queue.length,
+        timeline,
+        demand,
+      };
+    });
+  }
   @Get("subscription")
   @Access("config.write")
   subscription(@CurrentActor() actor: Actor) {

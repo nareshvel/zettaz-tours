@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   LogOut,
   Menu,
+  Bell,
   ArrowRight,
   Building2,
   Settings as SettingsIcon,
@@ -27,10 +28,13 @@ import {
 } from "lucide-react";
 import type { DemoTenant, Session } from "@/lib/types";
 import {
+  currentReachability,
   errorText,
   label,
   setFormatContext,
   setTenantContext,
+  subscribeReachability,
+  useResource,
 } from "@/lib/client";
 import { Loading, Notice } from "./common";
 import {
@@ -768,9 +772,13 @@ export function Workspace({
               </strong>
             )}
           </div>
-          <span className="topbar-date" suppressHydrationWarning>
-            {topbarDate}
-          </span>
+          <div className="topbar-meta">
+            <ConnectionDot />
+            <span className="topbar-date" suppressHydrationWarning>
+              {topbarDate}
+            </span>
+            <NotificationBell session={session} />
+          </div>
         </header>
         {session.supportAccess && (
           <div className="support-access-banner" role="status">
@@ -837,4 +845,157 @@ export function Workspace({
       </div>
     </div>
   );
+}
+
+/**
+ * Live-connection indicator, replacing the "Live operational view" strip that
+ * used to sit on the Overview page. That strip restated the tenant name and
+ * timezone already shown elsewhere and claimed "live" without ever checking.
+ * This is the claim made honestly, in one dot, on every page.
+ */
+function ConnectionDot() {
+  const [state, setState] = useState<"online" | "offline">("online");
+  useEffect(() => {
+    setState(navigator.onLine ? currentReachability() : "offline");
+    const unsubscribe = subscribeReachability(setState);
+    const goOffline = () => setState("offline");
+    const goOnline = () => setState(currentReachability());
+    window.addEventListener("offline", goOffline);
+    window.addEventListener("online", goOnline);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("offline", goOffline);
+      window.removeEventListener("online", goOnline);
+    };
+  }, []);
+  const live = state === "online";
+  return (
+    <span
+      className={`status-dot ${live ? "live" : "lost"}`}
+      role="status"
+      aria-label={live ? "Connected to the workspace" : "Connection lost"}
+      title={
+        live
+          ? "Connected — data is live"
+          : "Connection lost — what you see may be out of date"
+      }
+    />
+  );
+}
+
+type WorkspaceAlert = {
+  kind: string;
+  severity: "critical" | "warning" | "info";
+  subject: string;
+  detail: string;
+  href: string;
+  action: string;
+  /** A date for a document, an instant for a hold, null for a standing item. */
+  at: string | null;
+};
+
+/**
+ * Cross-cutting alerts, in the top bar rather than on the Overview.
+ *
+ * An expiring compliance document is not what the Overview is for, and it
+ * follows the reader onto every page — which is exactly what a bell is. The
+ * list is served already filtered by what this role may act on, so a partner
+ * manager is never shown the day's takings.
+ */
+function NotificationBell({ session }: { session: Session }) {
+  const [open, setOpen] = useState(false);
+  const alerts = useResource<{ items: WorkspaceAlert[]; count: number }>(
+    session.permissions.includes("catalog.read")
+      ? "staff/v1/workspace/notifications"
+      : null,
+  );
+  const items = alerts.data?.items ?? [];
+  const unread = items.filter((item) => item.severity !== "info").length;
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    const timer = setTimeout(() => {
+      document.addEventListener("click", close);
+      document.addEventListener("keydown", close);
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("click", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [open]);
+  return (
+    <span className="topbar-bell" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        aria-label={
+          items.length ? `Notifications, ${items.length} open` : "Notifications"
+        }
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <Bell size={18} />
+        {unread > 0 && (
+          <span className="topbar-bell-count" aria-hidden="true">
+            {unread > 9 ? "9+" : unread}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div
+          className="topbar-bell-panel"
+          role="dialog"
+          aria-label="Notifications"
+        >
+          <p className="topbar-bell-head">Notifications</p>
+          {!items.length ? (
+            <p className="topbar-bell-empty">
+              Nothing needs your attention. Expiring documents, lapsing holds
+              and balances due today appear here.
+            </p>
+          ) : (
+            <ul>
+              {items.slice(0, 8).map((item, index) => (
+                <li key={`${item.kind}-${index}`}>
+                  <Link href={item.href} onClick={() => setOpen(false)}>
+                    <span
+                      className={`bell-dot ${item.severity}`}
+                      aria-hidden="true"
+                    />
+                    <span className="bell-body">
+                      <strong>{item.subject}</strong>
+                      <small>
+                        {item.detail}
+                        {item.at ? ` · ${alertWhen(item.at, session)}` : ""}
+                      </small>
+                    </span>
+                    <span className="bell-action">{item.action}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </span>
+  );
+}
+
+/** A date-only value stays a date; an instant gets its clock time. */
+function alertWhen(value: string, session: Session) {
+  const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const at = new Date(isDateOnly ? `${value}T12:00:00Z` : value);
+  if (Number.isNaN(at.getTime())) return "";
+  return new Intl.DateTimeFormat(session.tenant.config.locale || "en", {
+    day: "numeric",
+    month: "short",
+    ...(isDateOnly
+      ? { timeZone: "UTC" }
+      : {
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: session.tenant.config.timeFormat === "12h",
+          timeZone: session.tenant.timezone,
+        }),
+  }).format(at);
 }

@@ -81,10 +81,19 @@ Owner-directed pass over the Administration group. Shipped this session, all typ
 | **Localization** | Three-column layout, timezone surfaced, live preview strip; `locale` + `numberFormat` actually wired into formatting |
 | **Sidebar** | Currency / date-format / hold-window facts replaced with a setup checklist (`GET admin/v1/tenant/readiness`) |
 | **Reservations** | Pickup location is a dropdown from the tenant catalog; amend-page party steppers fixed (they used a CSS class that does not exist) |
+| **Overview rebuilt** | Shift briefing: `workspace/briefing` endpoint, today strip with countdown, decision queue with per-row actions, 72h readiness timeline, 7-day demand chart, new-tenant state. SQL is unexecuted — no DB reachable from the bridge |
 | **Installable app / link preview** | `Zettaz Tours & Charters` title, `Zettaz Tours` home-screen label, real PNG app icons (iOS ignores SVG), web manifest with standalone display, OG/Twitter share card |
 | **Payments tab** | Renamed **Payment integrations**; still a placeholder pending finance decisions |
 
-**Migrations added: 079** (`print_jobs.media_size`), **080** (print permissions for `reservations` / `finance`). Owner has applied through 080. A member of those roles needs a fresh session before print buttons appear.
+**Migrations for production.** Everything the Overview / briefing work added is read-only on existing tables, so it needs **no** migration. Three files must still reach production, in order, all idempotent and safe to re-run:
+
+| File | What it does | Notes |
+| --- | --- | --- |
+| `078_antigua_properties_seed.sql` | Seeds Antigua properties as shared rows and folds tenant duplicates into them | Repoints bookings before deleting the tenant copy |
+| `079_print_job_media_size.sql` | `print_jobs.media_size` + CHECK | `ADD COLUMN IF NOT EXISTS`; existing rows default to `a4` |
+| `080_print_permissions_for_desk_roles.sql` | Grants `print.jobs.create` / `print.jobs.read` to the `reservations` and `finance` system roles | Also recomputes `memberships.permissions`; **affected staff need a fresh session** before print buttons appear |
+
+Deploy runs them through `./deploy.sh` → `npm run db:migrate`; do not hand-apply with `psql` unless that fails.
 
 Evidence: [print-and-settings-evidence.md](../TESTING/print-and-settings-evidence.md). **Not verified:** live agent pairing / physical print (no agent reachable from the dev environment) and owner visual passes.
 

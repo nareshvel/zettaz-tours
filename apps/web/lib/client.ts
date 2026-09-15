@@ -65,16 +65,50 @@ export function errorText(data: unknown): string {
   }
   return "Something went wrong. Please try again.";
 }
+/**
+ * Whether the last request to the server actually reached it.
+ *
+ * Only a transport failure counts as offline: a 4xx or 5xx means the server
+ * answered and the connection is fine. Staff work on dock and harbour wifi
+ * where the link drops without the browser saying so, and a manifest that
+ * quietly stops updating is worse than one that says it is stale.
+ */
+type Reachability = "online" | "offline";
+let reachability: Reachability = "online";
+const reachabilityListeners = new Set<(state: Reachability) => void>();
+
+function setReachability(next: Reachability) {
+  if (reachability === next) return;
+  reachability = next;
+  for (const listener of reachabilityListeners) listener(next);
+}
+
+export function subscribeReachability(listener: (state: Reachability) => void) {
+  reachabilityListeners.add(listener);
+  return () => reachabilityListeners.delete(listener);
+}
+
+export function currentReachability() {
+  return reachability;
+}
+
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch("/api/gateway/" + path, {
-    ...init,
-    cache: "no-store",
-    headers: {
-      "Content-Type": "application/json",
-      ...(tenantContext ? { "X-Tenant-Id": tenantContext.id } : {}),
-      ...init.headers,
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch("/api/gateway/" + path, {
+      ...init,
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        ...(tenantContext ? { "X-Tenant-Id": tenantContext.id } : {}),
+        ...init.headers,
+      },
+    });
+  } catch (networkError) {
+    setReachability("offline");
+    throw networkError;
+  }
+  setReachability("online");
   const data = await res.json();
   if (!res.ok)
     throw new Error(

@@ -6823,6 +6823,31 @@ fieldset {
 .summary-panel > .muted {
   font-size: 12px;
 }
+.amend-quote-ready {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--teal) 35%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--teal) 8%, var(--surface));
+}
+.amend-quote-ready:focus {
+  outline: none;
+}
+.amend-quote-ready:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+.amend-quote-ready-copy {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+.amend-quote-ready .form-actions {
+  margin: 0;
+}
 .booking-detail-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.7fr) minmax(300px, 0.9fr);

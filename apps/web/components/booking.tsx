@@ -1018,6 +1018,26 @@ export function NewReservation({
     });
     if (q) setChangeQuote(q);
   }
+
+  const amendQuoteReadyRef = useRef<HTMLDivElement>(null);
+  const amendAcceptRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!changeQuote) return;
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    amendQuoteReadyRef.current?.scrollIntoView({
+      behavior: reduceMotion ? "auto" : "smooth",
+      block: "nearest",
+      inline: "nearest",
+    });
+    const timer = window.setTimeout(
+      () => amendAcceptRef.current?.focus({ preventScroll: true }),
+      reduceMotion ? 0 : 280,
+    );
+    return () => window.clearTimeout(timer);
+  }, [changeQuote?.quoteId]);
+
   async function acceptAmend() {
     if (!amendBooking || !changeQuote) return;
     const priorParty = amendBooking.party;
@@ -1203,17 +1223,16 @@ export function NewReservation({
             <Notice error>Quote expired. Request a fresh quote.</Notice>
           )}
           <FormActions stickyOnMobile>
-            <button
-              type="button"
+            <Link
               className="button secondary"
-              disabled={acceptMutation.busy}
-              onClick={() => {
-                setChangeQuote(null);
-                acceptMutation.clear();
+              href={`/reservations/${amendBooking!.id}`}
+              aria-disabled={acceptMutation.busy || undefined}
+              onClick={(event) => {
+                if (acceptMutation.busy) event.preventDefault();
               }}
             >
-              Revise
-            </button>
+              Cancel
+            </Link>
             <button
               type="button"
               className="button"
@@ -2365,56 +2384,117 @@ export function NewReservation({
                     />
                   </Field>
                 )}
-                <div className="form-actions mobile-sticky">
-                  {amendMode ? (
-                    <button
-                      className="button"
-                      disabled={
-                        !departureId ||
-                        partyTotal < 1 ||
-                        !amendReason.trim() ||
-                        quoteMutation.busy ||
-                        Boolean(changeQuote)
-                      }
-                    >
-                      {quoteMutation.busy
-                        ? "Calculating…"
-                        : "Review change quote"}
-                      <ArrowRight size={16} />
-                    </button>
-                  ) : (
-                    <button
-                      className="button"
-                      disabled={
-                        !hold ||
-                        (remaining <= 0 && !createdBookingId) ||
-                        bookingMutation.busy ||
-                        rosterMutation.busy ||
-                        (partnerSourceSelected && !partnerId) ||
-                        (Boolean(discountAmount.trim()) &&
-                          discountReason.trim().length < 3)
-                      }
-                    >
-                      {bookingMutation.busy
-                        ? "Creating reservation…"
-                        : rosterMutation.busy
-                          ? "Saving guest roster…"
-                          : createdBookingId
-                            ? "Retry guest roster"
-                            : "Create reservation"}
-                      <ArrowRight size={16} />
-                    </button>
-                  )}
-                  {!amendMode &&
-                    hold &&
-                    remaining <= 0 &&
-                    !createdBookingId && (
-                      <span className="muted">
-                        Hold expired — create a new hold first.
-                      </span>
+                {!(amendMode && changeQuote) && (
+                  <div className="form-actions mobile-sticky">
+                    {amendMode ? (
+                      <>
+                        <Link
+                          className="button secondary"
+                          href={`/reservations/${amendBooking!.id}`}
+                        >
+                          Cancel
+                        </Link>
+                        <button
+                          className="button"
+                          disabled={
+                            !departureId ||
+                            partyTotal < 1 ||
+                            !amendReason.trim() ||
+                            quoteMutation.busy
+                          }
+                        >
+                          {quoteMutation.busy
+                            ? "Calculating…"
+                            : "Review change quote"}
+                          <ArrowRight size={16} />
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className="button"
+                        disabled={
+                          !hold ||
+                          (remaining <= 0 && !createdBookingId) ||
+                          bookingMutation.busy ||
+                          rosterMutation.busy ||
+                          (partnerSourceSelected && !partnerId) ||
+                          (Boolean(discountAmount.trim()) &&
+                            discountReason.trim().length < 3)
+                        }
+                      >
+                        {bookingMutation.busy
+                          ? "Creating reservation…"
+                          : rosterMutation.busy
+                            ? "Saving guest roster…"
+                            : createdBookingId
+                              ? "Retry guest roster"
+                              : "Create reservation"}
+                        <ArrowRight size={16} />
+                      </button>
                     )}
-                </div>
+                    {!amendMode &&
+                      hold &&
+                      remaining <= 0 &&
+                      !createdBookingId && (
+                        <span className="muted">
+                          Hold expired — create a new hold first.
+                        </span>
+                      )}
+                  </div>
+                )}
               </fieldset>
+              {amendMode && changeQuote && (
+                <div
+                  className="amend-quote-ready"
+                  ref={amendQuoteReadyRef}
+                  tabIndex={-1}
+                  aria-live="polite"
+                >
+                  <p className="amend-quote-ready-copy">
+                    Change quote ready
+                    {` · new total ${money(changeQuote.quote.totalMinor, changeQuote.quote.currency)}`}
+                    . Accept to apply, or cancel to leave without changing this
+                    reservation.
+                  </p>
+                  {amendShortfall && (
+                    <Notice error>
+                      The tenant’s amendment payment policy is not met. A higher
+                      total cannot be accepted through this workflow until that
+                      policy is satisfied.
+                    </Notice>
+                  )}
+                  {quoteExpired && (
+                    <Notice error>
+                      Quote expired. Request a fresh quote.
+                    </Notice>
+                  )}
+                  <FormActions stickyOnMobile>
+                    <Link
+                      className="button secondary"
+                      href={`/reservations/${amendBooking!.id}`}
+                      aria-disabled={acceptMutation.busy || undefined}
+                      onClick={(event) => {
+                        if (acceptMutation.busy) event.preventDefault();
+                      }}
+                    >
+                      Cancel
+                    </Link>
+                    <button
+                      type="button"
+                      className="button"
+                      ref={amendAcceptRef}
+                      disabled={
+                        quoteExpired ||
+                        Boolean(amendShortfall) ||
+                        acceptMutation.busy
+                      }
+                      onClick={() => void acceptAmend()}
+                    >
+                      {acceptMutation.busy ? "Applying…" : "Accept change"}
+                    </button>
+                  </FormActions>
+                </div>
+              )}
               {quoteMutation.error && (
                 <Notice error>{quoteMutation.error}</Notice>
               )}

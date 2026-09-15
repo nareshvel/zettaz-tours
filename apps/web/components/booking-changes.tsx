@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Booking, Departure, Pickup, Quote, Session } from "@/lib/types";
@@ -281,10 +281,28 @@ function ChangeForm({
     [ack, setAck] = useState(false),
     [cancelOpen, setCancelOpen] = useState(false),
     [now, setNow] = useState(Date.now());
+  const quoteReadyRef = useRef<HTMLDivElement>(null);
+  const acceptRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
+  useEffect(() => {
+    if (!quote) return;
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    quoteReadyRef.current?.scrollIntoView({
+      behavior: reduceMotion ? "auto" : "smooth",
+      block: "nearest",
+      inline: "nearest",
+    });
+    const timer = window.setTimeout(
+      () => acceptRef.current?.focus({ preventScroll: true }),
+      reduceMotion ? 0 : 280,
+    );
+    return () => window.clearTimeout(timer);
+  }, [quote?.quoteId]);
   const departure = departures.items.find((d) => d.id === departureId),
     expired = Boolean(quote && new Date(quote.expiresAt).getTime() <= now);
   const editable =
@@ -546,13 +564,57 @@ function ChangeForm({
               onChange={(e) => setReason(e.target.value)}
             />
           </Field>
-          <button
-            className="button"
-            disabled={Boolean(quote) || quoteMutation.busy}
-          >
-            {quoteMutation.busy ? "Calculating…" : "Review change quote"}
-          </button>
+          {!quote && (
+            <FormActions stickyOnMobile>
+              <Link className="button secondary" href={"/reservations/" + b.id}>
+                Cancel
+              </Link>
+              <button className="button" disabled={quoteMutation.busy}>
+                {quoteMutation.busy ? "Calculating…" : "Review change quote"}
+              </button>
+            </FormActions>
+          )}
         </fieldset>
+        {quote && (
+          <div
+            className="amend-quote-ready"
+            ref={quoteReadyRef}
+            tabIndex={-1}
+            aria-live="polite"
+          >
+            <p className="amend-quote-ready-copy">
+              Change quote ready
+              {` · new total ${money(quote.quote.totalMinor, quote.quote.currency)}`}
+              . Accept to apply, or cancel to leave without changing this
+              reservation.
+            </p>
+            {shortfall && (
+              <Notice error>
+                The tenant’s amendment payment policy is not met. A higher total
+                cannot be accepted through this workflow until that policy is
+                satisfied.
+              </Notice>
+            )}
+            {expired && (
+              <Notice error>Quote expired. Request a fresh quote.</Notice>
+            )}
+            {accept.error && <Notice error>{accept.error}</Notice>}
+            <FormActions stickyOnMobile>
+              <Link className="button secondary" href={"/reservations/" + b.id}>
+                Cancel
+              </Link>
+              <button
+                type="button"
+                className="button"
+                ref={acceptRef}
+                disabled={expired || Boolean(shortfall) || accept.busy}
+                onClick={apply}
+              >
+                {accept.busy ? "Applying…" : "Accept change"}
+              </button>
+            </FormActions>
+          </div>
+        )}
         {quoteMutation.error && <Notice error>{quoteMutation.error}</Notice>}
       </form>
       <aside className="panel summary-panel">
@@ -620,17 +682,9 @@ function ChangeForm({
             )}
             {accept.error && <Notice error>{accept.error}</Notice>}
             <FormActions stickyOnMobile>
-              <button
-                type="button"
-                className="button secondary"
-                disabled={accept.busy}
-                onClick={() => {
-                  setQuote(null);
-                  accept.clear();
-                }}
-              >
-                Revise
-              </button>
+              <Link className="button secondary" href={"/reservations/" + b.id}>
+                Cancel
+              </Link>
               <button
                 type="button"
                 className="button"

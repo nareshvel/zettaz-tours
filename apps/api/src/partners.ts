@@ -161,8 +161,7 @@ const settlementAdvanceSchema = z
     invoice_pdf_path: z.string().trim().max(1000).optional().nullable(),
     void_reason: z.string().trim().max(1000).optional().nullable(),
     notes: z.string().trim().max(2000).optional().nullable(),
-  })
-  .strict();
+  });
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
 

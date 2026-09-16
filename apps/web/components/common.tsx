@@ -785,6 +785,7 @@ export function TenantDateInput({
         // Clicks inside .tenant-date-input are handled by the span below.
         if (disabled) return;
         if ((e.target as HTMLElement).closest(".tenant-date-input")) return;
+        if ((e.target as HTMLElement).closest(".tdp-popup")) return;
         setOpen((o) => !o);
       }}
     >

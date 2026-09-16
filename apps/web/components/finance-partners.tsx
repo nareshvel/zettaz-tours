@@ -11,6 +11,7 @@ import {
   Loading,
   Notice,
   SectionHeading,
+  TenantDateInput,
 } from "./common";
 
 // ─── Types (mirror finance/v1 partner settlement responses) ───────────────────
@@ -114,11 +115,13 @@ function defaultPeriod() {
 
 function GenerateDialog({
   partner,
+  session,
   open,
   onClose,
   onGenerated,
 }: {
   partner: PartnerRollup;
+  session: Session;
   open: boolean;
   onClose: () => void;
   onGenerated: () => void;
@@ -152,24 +155,20 @@ function GenerateDialog({
       onSubmit={submit}
     >
       <div className="form-grid">
-        <Field label="Period start" required>
-          <input
-            required
-            type="date"
-            value={period.start}
-            onChange={(e) =>
-              setPeriod((v) => ({ ...v, start: e.target.value }))
-            }
-          />
-        </Field>
-        <Field label="Period end" required>
-          <input
-            required
-            type="date"
-            value={period.end}
-            onChange={(e) => setPeriod((v) => ({ ...v, end: e.target.value }))}
-          />
-        </Field>
+        <TenantDateInput
+          label="Period start"
+          value={period.start}
+          onChange={(v) => setPeriod((prev) => ({ ...prev, start: v }))}
+          locale={session.tenant.config.locale}
+          dateFormat={session.tenant.config.dateFormat}
+        />
+        <TenantDateInput
+          label="Period end"
+          value={period.end}
+          onChange={(v) => setPeriod((prev) => ({ ...prev, end: v }))}
+          locale={session.tenant.config.locale}
+          dateFormat={session.tenant.config.dateFormat}
+        />
       </div>
     </FormDialog>
   );
@@ -453,6 +452,7 @@ function PartnerDetail({
 
       <GenerateDialog
         partner={partner}
+        session={session}
         open={generating}
         onClose={() => setGenerating(false)}
         onGenerated={refreshAll}

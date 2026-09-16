@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, Search, X } from "lucide-react";
 import Link from "next/link";
@@ -576,6 +576,178 @@ export function SearchBox({
     </label>
   );
 }
+// Custom cross-browser date picker — avoids Safari's ugly native calendar popup.
+function CalendarPicker({
+  value,
+  onChange,
+  min,
+  max,
+  onClose,
+  anchorRef,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  min?: string;
+  max?: string;
+  onClose: () => void;
+  anchorRef: React.RefObject<HTMLElement | null>;
+}) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const parseLocal = (iso: string) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  };
+
+  const toISO = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+  const selected = value ? parseLocal(value) : null;
+  const [view, setView] = useState<Date>(() => {
+    if (selected) return new Date(selected.getFullYear(), selected.getMonth(), 1);
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
+
+  const minDate = min ? parseLocal(min) : null;
+  const maxDate = max ? parseLocal(max) : null;
+
+  const year = view.getFullYear();
+  const month = view.getMonth();
+  const monthLabel = view.toLocaleString("default", { month: "long", year: "numeric" });
+
+  // Build calendar grid
+  const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < firstDay; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  const isDisabled = (d: number) => {
+    const dt = new Date(year, month, d);
+    if (minDate && dt < minDate) return true;
+    if (maxDate && dt > maxDate) return true;
+    return false;
+  };
+
+  const isSelected = (d: number) =>
+    selected &&
+    selected.getFullYear() === year &&
+    selected.getMonth() === month &&
+    selected.getDate() === d;
+
+  const isToday = (d: number) =>
+    today.getFullYear() === year &&
+    today.getMonth() === month &&
+    today.getDate() === d;
+
+  const pick = (d: number) => {
+    if (isDisabled(d)) return;
+    onChange(toISO(new Date(year, month, d)));
+    onClose();
+  };
+
+  // Position the popup below the anchor — use layout effect so it runs before paint (no flash)
+  const popupRef = useRef<HTMLDivElement | null>(null);
+  const [ready, setReady] = useState(false);
+  const [pos, setPos] = useState({ top: -9999, left: -9999 });
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current;
+    const popup = popupRef.current;
+    if (!anchor || !popup) return;
+    const r = anchor.getBoundingClientRect();
+    const popupW = popup.offsetWidth || 280;
+    let left = r.left + window.scrollX;
+    // Clamp so popup doesn't overflow the right edge
+    const rightEdge = left + popupW;
+    if (rightEdge > window.innerWidth - 8) {
+      left = window.scrollX + window.innerWidth - popupW - 8;
+    }
+    if (left < 8) left = 8;
+    setPos({ top: r.bottom + window.scrollY + 4, left });
+    setReady(true);
+  }, [anchorRef]);
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const popup = document.getElementById("tdp-popup");
+      const anchor = anchorRef.current;
+      if (popup && !popup.contains(e.target as Node) && anchor && !anchor.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose, anchorRef]);
+
+  const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
+
+  const popup = (
+    <div
+      id="tdp-popup"
+      ref={popupRef}
+      style={{
+        position: "absolute",
+        top: pos.top,
+        left: pos.left,
+        zIndex: 9999,
+        visibility: ready ? "visible" : "hidden",
+      }}
+      className="tdp-popup"
+    >
+      <div className="tdp-header">
+        <span className="tdp-month-label">{monthLabel}</span>
+        <div className="tdp-nav">
+          <button
+            type="button"
+            className="tdp-nav-btn"
+            aria-label="Previous month"
+            onClick={() => setView(new Date(year, month - 1, 1))}
+          >↑</button>
+          <button
+            type="button"
+            className="tdp-nav-btn"
+            aria-label="Next month"
+            onClick={() => setView(new Date(year, month + 1, 1))}
+          >↓</button>
+        </div>
+      </div>
+      <div className="tdp-grid">
+        {DAY_LABELS.map((l, i) => (
+          <span key={i} className="tdp-day-label">{l}</span>
+        ))}
+        {cells.map((d, i) =>
+          d === null ? (
+            <span key={i} />
+          ) : (
+            <button
+              key={i}
+              type="button"
+              className={
+                "tdp-day" +
+                (isSelected(d) ? " tdp-selected" : "") +
+                (isToday(d) && !isSelected(d) ? " tdp-today" : "") +
+                (isDisabled(d) ? " tdp-disabled" : "")
+              }
+              onClick={() => pick(d)}
+              disabled={isDisabled(d)}
+            >
+              {d}
+            </button>
+          )
+        )}
+      </div>
+      <div className="tdp-footer">
+        <button type="button" className="tdp-action" onClick={() => { onChange(""); onClose(); }}>Clear</button>
+        <button type="button" className="tdp-action" onClick={() => { onChange(toISO(today)); onClose(); }}>Today</button>
+      </div>
+    </div>
+  );
+
+  return createPortal(popup, document.body);
+}
+
 export function TenantDateInput({
   label: caption,
   value,
@@ -597,30 +769,70 @@ export function TenantDateInput({
   compact?: boolean;
   disabled?: boolean;
 }) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLSpanElement | null>(null);
+  const handleClose = useCallback(() => setOpen(false), []);
+
   return (
-    <label
+    <div
       className={
         (compact ? "compact-control" : "field") +
         " tenant-date-control" +
         (disabled ? " is-disabled" : "")
       }
+      onClick={(e) => {
+        // Handle clicks on the caption text (outside the input span).
+        // Clicks inside .tenant-date-input are handled by the span below.
+        if (disabled) return;
+        if ((e.target as HTMLElement).closest(".tenant-date-input")) return;
+        setOpen((o) => !o);
+      }}
     >
       <span>{caption}</span>
-      <span className="tenant-date-input">
+      <span
+        ref={anchorRef}
+        className={"tenant-date-input" + (disabled ? "" : " tdp-trigger")}
+        onClick={(e) => {
+          if (!disabled) {
+            e.stopPropagation(); // don't let this bubble to the label onClick above
+            setOpen((o) => !o);
+          }
+        }}
+        role="button"
+        tabIndex={disabled ? -1 : 0}
+        onKeyDown={(e) => { if (!disabled && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setOpen((o) => !o); } }}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+      >
+        {/*
+          Dummy input — type="text" readOnly so no native date picker fires in any browser.
+          Kept here solely so every existing CSS rule targeting `input` inside
+          .tenant-date-input (border, height, background, padding, context overrides) continues
+          to apply without any CSS changes. pointer-events:none makes it fully inert to clicks.
+        */}
         <input
-          type="date"
-          lang={locale}
-          value={value}
-          min={min}
-          max={max}
+          type="text"
+          readOnly
+          tabIndex={-1}
+          aria-hidden="true"
           disabled={disabled}
-          onChange={(event) => onChange(event.target.value)}
+          style={{ pointerEvents: "none", userSelect: "none" }}
         />
         <span aria-hidden="true">
           {value ? dateOnly(value, dateFormat, locale) : dateFormat}
         </span>
       </span>
-    </label>
+      {open && (
+        <CalendarPicker
+          value={value}
+          onChange={onChange}
+          min={min}
+          max={max}
+          onClose={handleClose}
+          anchorRef={anchorRef}
+        />
+      )}
+    </div>
   );
 }
 export function More({

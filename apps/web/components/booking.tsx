@@ -785,7 +785,8 @@ export function NewReservation({
     function onPointer(event: MouseEvent) {
       if (
         finderFilterRef.current &&
-        !finderFilterRef.current.contains(event.target as Node)
+        !finderFilterRef.current.contains(event.target as Node) &&
+        !document.getElementById("tdp-popup")?.contains(event.target as Node)
       )
         setFinderFiltersOpen(false);
     }

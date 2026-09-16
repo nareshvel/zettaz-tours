@@ -4383,6 +4383,9 @@ td small {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.compact-control .tenant-date-input {
+  min-width: 140px;
+}
 .compact-control .tenant-date-input > span {
   font-size: 12px;
 }
@@ -10575,6 +10578,7 @@ a.briefing-tile:hover {
   align-items: end;
 }
 .board-trip-toolbar-controls .compact-control .tenant-date-input {
+  min-width: 148px;
   height: var(--board-control-height);
 }
 .board-trip-toolbar-controls .compact-control .tenant-date-input input {
@@ -11799,4 +11803,117 @@ a.briefing-tile:hover {
     align-self: start;
     margin-bottom: 20px;
   }
+}
+
+/* ── Custom cross-browser date picker (TenantDateInput) ── */
+.tdp-trigger {
+  cursor: pointer;
+}
+.tdp-popup {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.12);
+  padding: 16px;
+  width: 280px;
+  font-family: inherit;
+  user-select: none;
+}
+.tdp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.tdp-month-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.tdp-nav {
+  display: flex;
+  gap: 4px;
+}
+.tdp-nav-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--muted);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  padding: 0;
+  line-height: 1;
+}
+.tdp-nav-btn:hover {
+  background: var(--bg);
+  color: var(--ink);
+}
+.tdp-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 12px;
+}
+.tdp-day-label {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 4px 0;
+}
+.tdp-day {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink);
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0;
+  font-family: inherit;
+}
+.tdp-day:hover:not(.tdp-disabled):not(.tdp-selected) {
+  background: var(--bg);
+}
+.tdp-today {
+  color: var(--accent);
+  font-weight: 700;
+}
+.tdp-selected {
+  background: var(--accent) !important;
+  color: #fff !important;
+  font-weight: 600;
+}
+.tdp-disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.tdp-footer {
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.tdp-action {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--accent);
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-family: inherit;
+}
+.tdp-action:hover {
+  background: var(--soft);
 }

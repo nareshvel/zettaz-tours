@@ -195,7 +195,8 @@ export function AssignmentsFilterButton({
   useEffect(() => {
     if (!open) return;
     function onPointer(event: MouseEvent) {
-      if (!ref.current?.contains(event.target as Node)) setOpen(false);
+      if (!ref.current?.contains(event.target as Node) &&
+        !document.getElementById("tdp-popup")?.contains(event.target as Node)) setOpen(false);
     }
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") setOpen(false);

@@ -119,7 +119,8 @@ export function SchedulesFilterButton({
   useEffect(() => {
     if (!open) return;
     function onPointer(event: MouseEvent) {
-      if (ref.current && !ref.current.contains(event.target as Node))
+      if (ref.current && !ref.current.contains(event.target as Node) &&
+        !document.getElementById("tdp-popup")?.contains(event.target as Node))
         setOpen(false);
     }
     function onKey(event: KeyboardEvent) {

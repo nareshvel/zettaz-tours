@@ -113,7 +113,8 @@ export function Reports({ session }: { session: Session }) {
     function onPointer(event: MouseEvent) {
       if (
         filterRef.current &&
-        !filterRef.current.contains(event.target as Node)
+        !filterRef.current.contains(event.target as Node) &&
+        !document.getElementById("tdp-popup")?.contains(event.target as Node)
       ) {
         setFiltersOpen(false);
       }

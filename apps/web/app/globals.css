@@ -5596,49 +5596,49 @@ fieldset {
   margin: 0 0 4px;
   font-size: 15px;
 }
+/* Search on the left, date and one Filter button on the right — the same bar
+   as Departures and Reservations. The date keeps its own control because it is
+   the field that changes on every booking; product, time of day and sold-out
+   live behind the button. */
 .booking-finder-controls {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
-  gap: 14px;
-  margin-bottom: 14px;
   align-items: end;
+  margin-bottom: 14px;
 }
-.booking-finder-controls > .field,
-.booking-finder-controls > .tenant-date-control {
-  margin-bottom: 0;
-}
-.booking-finder-controls .tenant-date-input,
-.booking-finder-controls .tenant-date-input input,
-.booking-finder-controls .field > select {
-  min-height: 44px;
-  height: 44px;
-  box-sizing: border-box;
-}
-.booking-finder-controls .tenant-date-input > span {
-  font-size: 14px;
-  font-weight: 500;
-}
-.booking-date-control {
-  display: grid;
-  gap: 8px;
-}
+/* The base .search caps at 390px, which left a dead gap between it and the
+   date control. Here the box takes the whole left column: staff search by
+   experience name, and a wider field shows more of what they typed. */
 .booking-finder-controls .search {
   max-width: none;
   min-height: 44px;
   height: 44px;
 }
-@media (max-width: 1366px), (hover: none) and (pointer: coarse) {
-  .booking-finder-controls {
-    grid-template-columns: 1fr;
-  }
-}
-.booking-finder-toolbar {
+/* The date control carries a label above its input while the search box and
+   the button do not, so the row bottom-aligns rather than centring — the three
+   controls then share one baseline. */
+.booking-finder-actions {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
+  align-items: end;
+  gap: 10px;
+}
+.booking-finder-actions .compact-control > span {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+.booking-finder-actions .tenant-date-control {
+  margin-bottom: 0;
+}
+.booking-finder-actions .filter-menu .button {
+  height: 44px;
+}
+@media (max-width: 760px) {
+  .booking-finder-actions {
+    width: 100%;
+  }
+  .booking-finder-actions .tenant-date-control {
+    flex: 1;
+    min-width: 0;
+  }
 }
 .departure-list {
   display: grid;

@@ -10,6 +10,7 @@ import {
   Clock,
   LockKeyhole,
   Mail,
+  ListFilter,
   Minus,
   Plus,
   ShoppingCart,
@@ -49,6 +50,7 @@ import { printDocument } from "@/lib/print-agent";
 import {
   Field,
   FormActions,
+  InfoTip,
   Loading,
   Notice,
   readablePickup,
@@ -624,6 +626,59 @@ export function NewReservation({
   const [returnTo, setReturnTo] = useState<string | null>(
     amendBooking ? `/reservations/${amendBooking.id}` : null,
   );
+  const [finderFiltersOpen, setFinderFiltersOpen] = useState(false);
+  const finderFilterRef = useRef<HTMLDivElement>(null);
+  // Only the non-default choices count, so the badge answers "have I narrowed
+  // this?" rather than "how many controls exist?".
+  const finderFilterCount =
+    (selectedProductId !== "all-scheduled" ? 1 : 0) +
+    (timeWindow !== "all" ? 1 : 0) +
+    (showSoldOut ? 0 : 1);
+  useEffect(() => {
+    if (!finderFiltersOpen) return;
+    function onPointer(event: MouseEvent) {
+      if (
+        finderFilterRef.current &&
+        !finderFilterRef.current.contains(event.target as Node)
+      )
+        setFinderFiltersOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setFinderFiltersOpen(false);
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [finderFiltersOpen]);
+  const partyPanelRef = useRef<HTMLDivElement>(null);
+  const partyFirstRef = useRef<HTMLButtonElement>(null);
+  // Only a selection made here should move the page; a departure that arrives
+  // already chosen (the Departures "Book" deep link, or an amendment) must not
+  // yank a freshly-loaded page down to the steppers.
+  const partyFocusArmed = useRef(false);
+  useEffect(() => {
+    if (!partyFocusArmed.current || !departureId) return;
+    partyFocusArmed.current = false;
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    partyPanelRef.current?.scrollIntoView({
+      behavior: reduceMotion ? "auto" : "smooth",
+      block: "nearest",
+      inline: "nearest",
+    });
+    // Focus lands on the first category's increment button, so the next
+    // keypress adds a guest — on a phone the panel is below the fold and the
+    // scroll alone would leave the step invisible.
+    const timer = window.setTimeout(
+      () => partyFirstRef.current?.focus({ preventScroll: true }),
+      reduceMotion ? 0 : 280,
+    );
+    return () => window.clearTimeout(timer);
+  }, [departureId]);
   const guestPanelRef = useRef<HTMLElement>(null);
   const leadNameRef = useRef<HTMLInputElement>(null);
   const remaining = useRemaining(amendMode ? undefined : hold?.expiresAt),
@@ -1416,18 +1471,18 @@ export function NewReservation({
                       : lockedDepartureId
                         ? "Selected departure"
                         : "Find departure"}
+                  <InfoTip label="finding a departure">
+                    {amendMode
+                      ? commercialLocked
+                        ? "Departure and party are locked while this reservation is held."
+                        : "Choose the updated departure and party, then review a change quote."
+                      : hold
+                        ? "Seats are reserved. Change only if you need a different departure."
+                        : lockedDepartureId
+                          ? "Booking into the departure opened from Departures. Change only if you need a different trip."
+                          : "Pick the product and travel date, then choose a live departure. Sold-out trips are listed but cannot be held without the overbooking permission."}
+                  </InfoTip>
                 </h2>
-                <p>
-                  {amendMode
-                    ? commercialLocked
-                      ? "Departure and party are locked while this reservation is held."
-                      : "Choose the updated departure and party, then review a change quote."
-                    : hold
-                      ? "Seats are reserved. Change only if you need a different departure."
-                      : lockedDepartureId
-                        ? "Booking into the departure opened from Departures. Change only if you need a different trip."
-                        : "Pick the product and travel date, then choose a live departure."}
-                </p>
               </div>
               {(hold || (amendMode && departureId)) && (
                 <Check className="step-check" size={20} />
@@ -1473,7 +1528,7 @@ export function NewReservation({
                 </div>
               ) : null}
               {amendMode && departureId && (departure || amendBooking) ? (
-                <div className="party-steppers">
+                <div className="party-steppers" ref={partyPanelRef}>
                   {(
                     departure?.categories ??
                     Object.keys(party).map((slug) => ({
@@ -1481,7 +1536,7 @@ export function NewReservation({
                       label: label(slug),
                       countsTowardCapacity: undefined,
                     }))
-                  ).map((category) => (
+                  ).map((category, categoryIndex) => (
                     <div className="party-stepper" key={category.slug}>
                       <div>
                         <strong>{category.label}</strong>
@@ -1507,6 +1562,7 @@ export function NewReservation({
                         </span>
                         <button
                           type="button"
+                          ref={categoryIndex === 0 ? partyFirstRef : undefined}
                           aria-label={`Increase ${category.label}`}
                           disabled={commercialLocked || Boolean(changeQuote)}
                           onClick={() => bumpParty(category.slug, 1)}
@@ -1561,54 +1617,155 @@ export function NewReservation({
                 )
               ) : (
                 <div className="departure-finder booking-finder">
-                  <div className="booking-finder-controls">
-                    <Field label="Product">
-                      <select
-                        value={selectedProductId}
-                        onChange={(event) => {
-                          setSelectedProductId(event.target.value);
+                  <div className="booking-finder-controls view-action-bar">
+                    <SearchBox
+                      value={departureSearch}
+                      onChange={setDepartureSearch}
+                      placeholder="Search experiences"
+                    />
+                    <div className="booking-finder-actions">
+                      <TenantDateInput
+                        label="Travel date"
+                        value={departureDate}
+                        onChange={(value) => {
+                          setDepartureDate(value);
                           setDepartureId("");
                           setParty({});
                         }}
-                      >
-                        <option value="all-scheduled">
-                          All scheduled departures
-                        </option>
-                        {(products.data ?? [])
-                          .filter(
-                            (item) => (item.status ?? "active") === "active",
-                          )
-                          .map((item) => {
-                            const mode = (item.availability_mode ??
-                              "fixed_departure") as AvailabilityMode;
-                            const meta = availabilityModes[mode];
-                            return (
-                              <option key={item.id} value={item.id}>
-                                {item.customer_title ?? item.name}
-                                {meta ? ` · ${meta.label}` : ""}
-                              </option>
-                            );
-                          })}
-                      </select>
-                    </Field>
-                    <TenantDateInput
-                      label="Travel date"
-                      value={departureDate}
-                      onChange={(value) => {
-                        setDepartureDate(value);
-                        setDepartureId("");
-                        setParty({});
-                      }}
-                      locale={session.tenant.config.locale}
-                      dateFormat={session.tenant.config.dateFormat}
-                    />
-                    <Field label="Search">
-                      <SearchBox
-                        value={departureSearch}
-                        onChange={setDepartureSearch}
-                        placeholder="Filter by experience name"
+                        locale={session.tenant.config.locale}
+                        dateFormat={session.tenant.config.dateFormat}
+                        compact
                       />
-                    </Field>
+                      {/* Product, time of day and sold-out live behind one
+                          button, as on Departures: three controls on the bar
+                          crowded out the date, which is the one people change
+                          on every booking. */}
+                      <div className="filter-menu" ref={finderFilterRef}>
+                        <button
+                          type="button"
+                          className={
+                            "button secondary catalog-add-btn" +
+                            (finderFiltersOpen || finderFilterCount
+                              ? " active-filter"
+                              : "")
+                          }
+                          aria-label="Filter departures"
+                          aria-expanded={finderFiltersOpen}
+                          aria-haspopup="dialog"
+                          onClick={() => setFinderFiltersOpen((open) => !open)}
+                        >
+                          <ListFilter size={17} />
+                          <span className="button-label">Filter</span>
+                          {finderFilterCount > 0 && (
+                            <span className="filter-count">
+                              {finderFilterCount}
+                            </span>
+                          )}
+                        </button>
+                        {finderFiltersOpen && (
+                          <div
+                            className="filter-popover"
+                            role="dialog"
+                            aria-label="Departure filters"
+                          >
+                            <div className="filter-popover-head">
+                              <strong>Filters</strong>
+                              <span>{visibleDepartures.length} shown</span>
+                            </div>
+                            <label className="compact-control">
+                              <span>Product</span>
+                              <select
+                                value={selectedProductId}
+                                onChange={(event) => {
+                                  setSelectedProductId(event.target.value);
+                                  setDepartureId("");
+                                  setParty({});
+                                }}
+                              >
+                                <option value="all-scheduled">
+                                  All scheduled departures
+                                </option>
+                                {(products.data ?? [])
+                                  .filter(
+                                    (item) =>
+                                      (item.status ?? "active") === "active",
+                                  )
+                                  .map((item) => {
+                                    const mode = (item.availability_mode ??
+                                      "fixed_departure") as AvailabilityMode;
+                                    const meta = availabilityModes[mode];
+                                    return (
+                                      <option key={item.id} value={item.id}>
+                                        {item.customer_title ?? item.name}
+                                        {meta ? ` · ${meta.label}` : ""}
+                                      </option>
+                                    );
+                                  })}
+                              </select>
+                            </label>
+                            <div className="compact-control">
+                              <span>Time of day</span>
+                              <div
+                                className="filter-range-options"
+                                role="radiogroup"
+                                aria-label="Departure time"
+                              >
+                                {(
+                                  [
+                                    ["all", "Any time"],
+                                    ["morning", "Morning"],
+                                    ["afternoon", "Afternoon"],
+                                    ["evening", "Evening"],
+                                  ] as const
+                                ).map(([value, copy]) => (
+                                  <button
+                                    key={value}
+                                    type="button"
+                                    role="radio"
+                                    aria-checked={timeWindow === value}
+                                    className={
+                                      "filter-range-option" +
+                                      (timeWindow === value ? " selected" : "")
+                                    }
+                                    onClick={() => setTimeWindow(value)}
+                                  >
+                                    {copy}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <Toggle
+                              className="toggle-inline"
+                              label="Show sold out"
+                              checked={showSoldOut}
+                              onChange={setShowSoldOut}
+                            />
+                            <div className="filter-popover-actions">
+                              <button
+                                type="button"
+                                className="text-button"
+                                onClick={() => {
+                                  setSelectedProductId("all-scheduled");
+                                  setTimeWindow("all");
+                                  setShowSoldOut(true);
+                                  setDepartureId("");
+                                  setParty({});
+                                }}
+                              >
+                                Reset
+                              </button>
+                              <button
+                                type="button"
+                                className="button"
+                                onClick={() => setFinderFiltersOpen(false)}
+                              >
+                                Done
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                   {!scheduledDiscovery && selectedProduct && (
                     <div className="departure-empty mode-unsupported">
@@ -1626,37 +1783,6 @@ export function NewReservation({
                   )}
                   {scheduledDiscovery && (
                     <>
-                      <div className="booking-finder-toolbar">
-                        <div
-                          className="time-filters"
-                          aria-label="Departure time"
-                        >
-                          {(
-                            [
-                              ["all", "Any time"],
-                              ["morning", "Morning"],
-                              ["afternoon", "Afternoon"],
-                              ["evening", "Evening"],
-                            ] as const
-                          ).map(([value, copy]) => (
-                            <button
-                              type="button"
-                              key={value}
-                              className={timeWindow === value ? "active" : ""}
-                              aria-pressed={timeWindow === value}
-                              onClick={() => setTimeWindow(value)}
-                            >
-                              {copy}
-                            </button>
-                          ))}
-                        </div>
-                        <Toggle
-                          className="toggle-inline sold-out-toggle"
-                          label="Show sold out"
-                          checked={showSoldOut}
-                          onChange={setShowSoldOut}
-                        />
-                      </div>
                       {departures.busy && !departures.items.length ? (
                         <Loading />
                       ) : visibleDepartures.length ? (
@@ -1689,6 +1815,7 @@ export function NewReservation({
                                     (departureId === item.id ? " selected" : "")
                                   }
                                   onClick={() => {
+                                    partyFocusArmed.current = true;
                                     setDepartureId(item.id);
                                     setParty({});
                                   }}
@@ -1755,12 +1882,12 @@ export function NewReservation({
                 </div>
               )}
               {scheduledDiscovery && departure && !hold && (
-                <div className="party-steppers">
+                <div className="party-steppers" ref={partyPanelRef}>
                   <div className="booking-phase-subhead">
-                    <h3>Party size</h3>
+                    <h3 tabIndex={-1}>Party size</h3>
                     <p>Set guests before holding seats.</p>
                   </div>
-                  {departure.categories.map((category) => (
+                  {departure.categories.map((category, categoryIndex) => (
                     <div className="party-stepper" key={category.slug}>
                       <div>
                         <strong>{category.label}</strong>
@@ -1783,6 +1910,7 @@ export function NewReservation({
                         </span>
                         <button
                           type="button"
+                          ref={categoryIndex === 0 ? partyFirstRef : undefined}
                           aria-label={`Increase ${category.label}`}
                           onClick={() => bumpParty(category.slug, 1)}
                         >
@@ -2464,9 +2592,7 @@ export function NewReservation({
                     </Notice>
                   )}
                   {quoteExpired && (
-                    <Notice error>
-                      Quote expired. Request a fresh quote.
-                    </Notice>
+                    <Notice error>Quote expired. Request a fresh quote.</Notice>
                   )}
                   <FormActions stickyOnMobile>
                     <Link

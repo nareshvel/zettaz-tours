@@ -118,21 +118,25 @@ function numeric(v: number | string | null | undefined) {
   return Number.isFinite(n) ? n : null;
 }
 
-function commissionSummary(p: Partner, fallback: string) {
-  if (!p.commission_type) return "No commission configured";
+function commissionRate(p: Partner, fallback: string) {
+  if (!p.commission_type) return "Not configured";
   const cur = p.commission_currency || fallback;
   const rate = numeric(p.commission_rate);
   const amt = numeric(p.commission_amount_minor);
-  const terms =
-    p.commission_type === "percentage" && rate !== null
-      ? `${(rate * 100).toFixed((rate * 100) % 1 === 0 ? 0 : 1)}%`
-      : p.commission_type === "flat_per_booking" && amt !== null
-        ? `${money(amt, cur)} / booking`
-        : p.commission_type === "flat_per_pax" && amt !== null
-          ? `${money(amt, cur)} / pax`
-          : label(p.commission_type);
+  if (p.commission_type === "percentage" && rate !== null)
+    return `${(rate * 100).toFixed((rate * 100) % 1 === 0 ? 0 : 1)}%`;
+  if (p.commission_type === "flat_per_booking" && amt !== null)
+    return `${money(amt, cur)} / booking`;
+  if (p.commission_type === "flat_per_pax" && amt !== null)
+    return `${money(amt, cur)} / pax`;
+  return label(p.commission_type);
+}
+
+function commissionSummary(p: Partner, fallback: string) {
+  const rate = commissionRate(p, fallback);
   const dir = p.commission_direction === "partner_owes_tenant" ? "partner pays us" : "we pay partner";
-  return `${terms} · ${dir}`;
+  if (!p.commission_type) return "No commission configured";
+  return `${rate} · ${dir}`;
 }
 
 function formFromPartner(p: Partner | undefined, fallback: string): PartnerForm {
@@ -1028,9 +1032,13 @@ function PartnerDetailPanel({
           </div>
 
           <div className="finance-account-tile">
-            <div className="finance-account-tile-label">Commission</div>
-            <div className="finance-account-tile-value" style={{ fontSize: "0.82rem" }}>
-              {commissionSummary(partner, fallback)}
+            <div className="finance-account-tile-label">
+              {partner.commission_direction === "partner_owes_tenant" ? "Partner pays us" : "We pay partner"}
+            </div>
+            <div className="finance-account-tile-value" style={{ fontSize: "0.85rem" }}>
+              {partner.commission_type
+                ? <>Commission: <strong>{commissionRate(partner, fallback)}</strong></>
+                : <span style={{ color: "var(--muted)", fontSize: "0.78rem" }}>No commission configured</span>}
             </div>
             <div style={{ fontSize: "0.68rem", color: "var(--muted)", marginTop: 2 }}>
               {partner.settlement_schedule ? label(partner.settlement_schedule) : "Manual"}

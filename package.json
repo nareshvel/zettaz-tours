@@ -16,6 +16,7 @@
     "dev": "npm run build && node --env-file=.env.development --env-file-if-exists=.env dist/apps/api/src/main.js",
     "db:migrate": "npm run build && node --env-file=.env.development --env-file-if-exists=.env dist/apps/api/scripts/migrate.js",
     "db:seed": "npm run build && node --env-file=.env.development --env-file-if-exists=.env dist/apps/api/scripts/seed.js",
+    "db:seed:reservations": "npm run build && node --env-file=.env.development --env-file-if-exists=.env dist/apps/api/scripts/seed-reservations.js",
     "workspace:dev": "npm run build && node --env-file=.env.development --env-file-if-exists=.env dist/apps/api/scripts/workspace.js",
     "demo": "npm run build && node --env-file-if-exists=.env.development --env-file-if-exists=.env dist/apps/api/scripts/demo.js",
     "outbox:drain": "node --env-file=.env.development --env-file-if-exists=.env dist/apps/api/scripts/drain.js",
@@ -30,6 +31,7 @@
     "mobile:start": "npm run start --workspace @zettaz/mobile",
     "mobile:typecheck": "npm run typecheck --workspace @zettaz/mobile",
     "db:migrate:prod": "npm run build && node --env-file=.env.production dist/apps/api/scripts/migrate.js",
+    "db:seed:reservations:prod": "npm run build && node --env-file=.env.production dist/apps/api/scripts/seed-reservations.js",
     "db:export-demo": "npm run build && node --env-file=.env.development --env-file-if-exists=.env dist/apps/api/scripts/export-demo-tenant.js",
     "stripe:setup": "npx ts-node --project tsconfig.json apps/api/scripts/setup-stripe-plans.ts",
     "stripe:setup:prod": "NODE_ENV=production npx ts-node --project tsconfig.json apps/api/scripts/setup-stripe-plans.ts"

@@ -3741,9 +3741,10 @@ td small {
   position: relative;
   z-index: 5;
 }
+/* The bar is a 1fr + auto grid, so the search takes whatever the filter and
+   action buttons leave. Capping it at 420px only left a dead gap. */
 .list-action-search {
   min-width: 0;
-  max-width: 420px;
 }
 .list-action-search .search {
   max-width: none;
@@ -7856,6 +7857,81 @@ dd {
   color: var(--muted);
   font-size: 13px;
 }
+/* A seat whose traveller has not been named. Muted and dashed so it reads as
+   an outstanding item rather than a person called "Guest 2". */
+.party-name-badge.is-pending {
+  border: 1px dashed var(--line);
+  background: var(--surface-soft);
+  color: var(--muted);
+}
+.party-name-badge.is-pending strong {
+  font-style: italic;
+  font-weight: 600;
+}
+
+/* A message that says its piece and leaves. Fixed to the viewport so a panel's
+   overflow cannot clip it, above the safe-area inset so a phone's home bar does
+   not sit on top of it, and motion-free for anyone who asks for that. */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  max-width: min(460px, calc(100vw - 32px));
+  padding: 12px 12px 12px 16px;
+  border-radius: 11px;
+  background: var(--nav);
+  color: #fff;
+  font-size: 13.5px;
+  line-height: 1.45;
+  box-shadow: 0 16px 38px rgba(20, 47, 54, 0.3);
+  transform: translateX(-50%);
+  animation: toast-in 180ms ease-out;
+}
+.toast.error {
+  background: #7e2f26;
+}
+.toast button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.14);
+  color: inherit;
+  cursor: pointer;
+}
+.toast button:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
+}
+/* A departure that has already left reads as closed, not as an option. */
+.availability-pill.departed {
+  background: var(--surface-soft);
+  color: var(--muted);
+}
+
 /* ── Overview briefing ────────────────────────────────────────────────────
    Data colours are their own set, not the UI accent: --teal (#176c63) has a
    chroma of 0.078, below the 0.1 floor a chart mark needs, so at small sizes

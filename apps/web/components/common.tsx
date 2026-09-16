@@ -170,6 +170,52 @@ export function InfoTip({
     </span>
   );
 }
+/**
+ * A transient message that does not hold a place on the page.
+ *
+ * Errors like "Departure has already started" answer a question the user has
+ * already moved on from; rendered inline they sit there contradicting the
+ * screen until something else re-renders. A toast says its piece, then leaves.
+ *
+ * Portaled to the body so a panel's overflow cannot clip it, and announced
+ * politely — assertively for errors, which are worth interrupting for.
+ */
+export function Toast({
+  message,
+  tone = "error",
+  duration = 6000,
+  onDismiss,
+}: {
+  message: string | null | undefined;
+  tone?: "error" | "info";
+  /** Milliseconds before it leaves on its own. */
+  duration?: number;
+  onDismiss: () => void;
+}) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    if (!message) return;
+    const timer = window.setTimeout(onDismiss, duration);
+    return () => window.clearTimeout(timer);
+    // onDismiss is a stable clear() in practice; keying on the message means a
+    // new message restarts the clock rather than inheriting the old one.
+  }, [message, duration]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!mounted || !message) return null;
+  return createPortal(
+    <div
+      className={`toast ${tone}`}
+      role={tone === "error" ? "alert" : "status"}
+      aria-live={tone === "error" ? "assertive" : "polite"}
+    >
+      <span>{message}</span>
+      <button type="button" aria-label="Dismiss" onClick={onDismiss}>
+        <X size={15} />
+      </button>
+    </div>,
+    document.body,
+  );
+}
 export function SectionHeading({
   title,
   description,

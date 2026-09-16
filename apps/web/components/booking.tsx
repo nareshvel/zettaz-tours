@@ -57,6 +57,7 @@ import {
   readablePickup,
   SearchBox,
   Status,
+  Toast,
   TenantDateInput,
   Toggle,
 } from "./common";
@@ -68,6 +69,8 @@ type Passenger = {
   name: string;
   category: string;
   is_minor: boolean;
+  /** The seat is booked but nobody has given a name for it yet. */
+  identity_pending?: boolean;
 };
 type PassengerDraft = {
   name: string;
@@ -214,6 +217,143 @@ function QuoteSummary({ quote }: { quote: Quote }) {
 
 function categoryIsMinor(category: string) {
   return /(child|infant|minor|kid)/i.test(category);
+}
+
+/** A stored placeholder, not a name anybody chose. */
+const PENDING_NAME = /· name required$/;
+function realName(passenger: { name: string; identity_pending?: boolean }) {
+  return passenger.identity_pending || PENDING_NAME.test(passenger.name)
+    ? ""
+    : passenger.name;
+}
+
+/**
+ * Corrects a roster that is already recorded.
+ *
+ * Shared by the reservation page and the amendment, because "who is on this
+ * booking" is asked in both places and the rules are identical: one row per
+ * seat in the current party, a reason for the audit trail, and a version
+ * rather than an overwrite — a signed waiver stays bound to the name it was
+ * signed under.
+ *
+ * A blank row is allowed and saved as a pending identity, which is how a
+ * booking taken over the phone works: seats now, names before boarding.
+ */
+function RosterEditor({
+  bookingId,
+  party,
+  passengers,
+  onSaved,
+  onCancel,
+}: {
+  bookingId: string;
+  party: Record<string, number>;
+  passengers: Passenger[];
+  onSaved: (message: string) => void;
+  onCancel: () => void;
+}) {
+  const correct = useMutation();
+  const [reason, setReason] = useState("");
+  // Seeded from the party, not from the rows: after an amendment the party may
+  // hold more or fewer seats than there are names, and the server rejects a
+  // roster whose composition does not match.
+  const [drafts, setDrafts] = useState(() => {
+    const pool = [...passengers];
+    return Object.entries(party).flatMap(([category, quantity]) =>
+      Array.from({ length: quantity }, () => {
+        const index = pool.findIndex((item) => item.category === category);
+        const prior = index >= 0 ? pool.splice(index, 1)[0] : undefined;
+        return {
+          name: prior ? realName(prior) : "",
+          category,
+          isMinor: prior?.is_minor ?? categoryIsMinor(category),
+        };
+      }),
+    );
+  });
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const result = await correct.run(
+      `staff/v1/bookings/${bookingId}/passengers/corrections`,
+      {
+        reason: reason.trim(),
+        passengers: drafts.map((draft, index) => {
+          const entered = draft.name.trim();
+          return {
+            name: entered || `Guest ${index + 1} · name required`,
+            category: draft.category,
+            isMinor: draft.isMinor,
+            identityPending: !entered,
+          };
+        }),
+      },
+    );
+    if (result)
+      onSaved("Traveller names updated. The previous roster is kept.");
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <p className="muted">
+        One row per seat in the current party. Leave a name blank if it is not
+        known yet — it stays flagged until someone fills it in.
+      </p>
+      <div className="stack-list compact">
+        {drafts.map((draft, index) => (
+          <div className="guest-roster-row" key={index}>
+            <span className="guest-number">{index + 1}</span>
+            <Field label={`${label(draft.category)} name`}>
+              <input
+                maxLength={120}
+                value={draft.name}
+                placeholder="Name not known yet"
+                onChange={(event) =>
+                  setDrafts((current) =>
+                    current.map((item, itemIndex) =>
+                      itemIndex === index
+                        ? { ...item, name: event.target.value }
+                        : item,
+                    ),
+                  )
+                }
+              />
+            </Field>
+          </div>
+        ))}
+      </div>
+      <Field
+        label="Reason for the change"
+        hint="Recorded in the audit trail. A signed waiver stays bound to the name it was signed under."
+      >
+        <input
+          required
+          minLength={3}
+          maxLength={500}
+          value={reason}
+          placeholder="For example, name supplied by the guest"
+          onChange={(event) => setReason(event.target.value)}
+        />
+      </Field>
+      {correct.error && <Notice error>{correct.error}</Notice>}
+      <FormActions>
+        <button
+          type="button"
+          className="button secondary"
+          onClick={onCancel}
+          disabled={correct.busy}
+        >
+          Cancel
+        </button>
+        <button
+          className="button"
+          disabled={correct.busy || reason.trim().length < 3}
+        >
+          {correct.busy ? "Saving…" : "Save names"}
+        </button>
+      </FormActions>
+    </form>
+  );
 }
 
 function partyBadgeTone(category: string) {
@@ -474,6 +614,9 @@ export function NewReservation({
       }[];
       accommodations: { id: string; name: string; address: string }[];
     }>("ops/v1/stays/options"),
+    amendPassengers = useResource<Passenger[]>(
+      amendBooking ? `staff/v1/bookings/${amendBooking.id}/passengers` : null,
+    ),
     pickupLocations = useResource<
       {
         id: string;
@@ -608,6 +751,8 @@ export function NewReservation({
       expiresAt: string;
       allowAmendmentBalance: boolean;
     } | null>(null);
+  const [editingAmendRoster, setEditingAmendRoster] = useState(false);
+  const [rosterSaved, setRosterSaved] = useState("");
   const [authorizeOverbook, setAuthorizeOverbook] = useState(false),
     [overbookReason, setOverbookReason] = useState("");
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
@@ -654,6 +799,13 @@ export function NewReservation({
       document.removeEventListener("keydown", onKey);
     };
   }, [finderFiltersOpen]);
+  // "Departure has already started" answers the previous selection. Changing
+  // the date, the product or the trip withdraws the question, so the answer
+  // goes with it rather than sitting there contradicting the screen.
+  useEffect(() => {
+    holdMutation.clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [departureId, departureDate, selectedProductId]);
   const partyPanelRef = useRef<HTMLDivElement>(null);
   const partyFirstRef = useRef<HTMLButtonElement>(null);
   // Only a selection made here should move the page; a departure that arrives
@@ -685,6 +837,14 @@ export function NewReservation({
   const remaining = useRemaining(amendMode ? undefined : hold?.expiresAt),
     departure = departures.items.find((d) => d.id === departureId);
   const partyTotal = Object.values(party).reduce((sum, n) => sum + n, 0);
+  // Whether this amendment is changing the party at all — the roster can only
+  // be corrected once the party it must match is settled.
+  const partyChangedFromBooking = Boolean(
+    amendBooking &&
+    Object.keys({ ...amendBooking.party, ...party }).some(
+      (key) => (amendBooking.party[key] ?? 0) !== (party[key] ?? 0),
+    ),
+  );
   const flowReady = amendMode || Boolean(hold);
   const quoteExpired = Boolean(
     changeQuote && new Date(changeQuote.expiresAt).getTime() <= Date.now(),
@@ -1454,6 +1614,7 @@ export function NewReservation({
           </strong>
         </div>
       </div>
+      <Toast message={holdMutation.error} onDismiss={holdMutation.clear} />
       <div className="booking-grid">
         <div className="booking-flow-main">
           <section className="panel form-panel">
@@ -1799,11 +1960,19 @@ export function NewReservation({
                             aria-label="Available departures"
                           >
                             {visibleDepartures.map((item) => {
+                              // Today's list includes trips that have already
+                              // left. The server rejects a hold on one, so the
+                              // row is closed here rather than letting staff
+                              // pick it and meet the error afterwards.
+                              const departed =
+                                new Date(item.starts_at).getTime() <=
+                                Date.now();
                               const disabled =
-                                item.available === 0 &&
-                                !session.permissions.includes(
-                                  "inventory.overbook",
-                                );
+                                departed ||
+                                (item.available === 0 &&
+                                  !session.permissions.includes(
+                                    "inventory.overbook",
+                                  ));
                               return (
                                 <button
                                   key={item.id}
@@ -1846,13 +2015,19 @@ export function NewReservation({
                                   <span
                                     className={
                                       "availability-pill" +
-                                      (item.available <= 3 ? " limited" : "")
+                                      (departed
+                                        ? " departed"
+                                        : item.available <= 3
+                                          ? " limited"
+                                          : "")
                                     }
                                   >
                                     <Users size={14} />
-                                    {item.available > 0
-                                      ? `${item.available} left`
-                                      : "Sold out"}
+                                    {departed
+                                      ? "Departed"
+                                      : item.available > 0
+                                        ? `${item.available} left`
+                                        : "Sold out"}
                                   </span>
                                   {departureId === item.id && (
                                     <Check size={18} aria-hidden="true" />
@@ -1952,9 +2127,6 @@ export function NewReservation({
                     )}
                   </div>
                 )}
-              {holdMutation.error && (
-                <Notice error>{holdMutation.error}</Notice>
-              )}
               {scheduledDiscovery && !hold && !amendMode && (
                 <div className="form-actions mobile-sticky">
                   <button
@@ -2081,6 +2253,96 @@ export function NewReservation({
                     )}
                   </div>
                 </BookingAccordion>
+                {amendMode && (
+                  <BookingAccordion
+                    id="roster"
+                    title="Travel party names"
+                    hint={
+                      partyChangedFromBooking
+                        ? "Updated after this change is accepted"
+                        : "Saved on their own, not with the amendment"
+                    }
+                    open={Boolean(openSections.roster)}
+                    onToggle={toggleSection}
+                  >
+                    {/* Names are not part of an amendment — an amendment is a
+                        priced change and a name has no price — so this saves
+                        on its own button. While the party is changing there is
+                        no valid roster to save yet: the server requires one row
+                        per seat, and the seats are what this form is altering. */}
+                    {!amendPassengers.data ? (
+                      <Loading />
+                    ) : editingAmendRoster && !partyChangedFromBooking ? (
+                      <RosterEditor
+                        bookingId={amendBooking!.id}
+                        party={amendBooking!.party}
+                        passengers={amendPassengers.data}
+                        onCancel={() => setEditingAmendRoster(false)}
+                        onSaved={(message) => {
+                          setEditingAmendRoster(false);
+                          setRosterSaved(message);
+                          amendPassengers.reload();
+                        }}
+                      />
+                    ) : (
+                      <>
+                        {amendPassengers.data.length ? (
+                          <div
+                            className="party-name-badges"
+                            aria-label="Travel party names"
+                          >
+                            {amendPassengers.data.map((passenger) => (
+                              <span
+                                className={
+                                  "party-name-badge tone-" +
+                                  partyBadgeTone(passenger.category) +
+                                  (passenger.identity_pending
+                                    ? " is-pending"
+                                    : "")
+                                }
+                                key={passenger.id}
+                                title={label(passenger.category)}
+                              >
+                                <strong>
+                                  {passenger.identity_pending
+                                    ? "Name not given yet"
+                                    : passenger.name}
+                                </strong>
+                                <small>{label(passenger.category)}</small>
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="muted">
+                            No traveller names recorded yet.
+                          </p>
+                        )}
+                        {rosterSaved && <Notice>{rosterSaved}</Notice>}
+                        {partyChangedFromBooking ? (
+                          <p className="policy-copy">
+                            The party size is changing, so names are updated
+                            once this amendment is accepted — the reservation
+                            page opens on the roster straight afterwards.
+                          </p>
+                        ) : (
+                          <FormActions>
+                            <button
+                              type="button"
+                              className="button secondary"
+                              onClick={() => {
+                                setRosterSaved("");
+                                setEditingAmendRoster(true);
+                              }}
+                            >
+                              <Pencil size={15} />
+                              <span className="button-label">Edit names</span>
+                            </button>
+                          </FormActions>
+                        )}
+                      </>
+                    )}
+                  </BookingAccordion>
+                )}
                 {!amendMode && (
                   <BookingAccordion
                     id="roster"
@@ -2771,8 +3033,6 @@ export function BookingDetail({
   // runs conditionally, and a hook that does not run on every render breaks
   // the order React relies on.
   const [correctingRoster, setCorrectingRoster] = useState(false);
-  const [correctionReason, setCorrectionReason] = useState("");
-  const correctRoster = useMutation();
   if (booking.error)
     return (
       <Notice error>
@@ -2915,60 +3175,6 @@ export function BookingDetail({
       booking.reload();
     }
   }
-  /**
-   * Correcting a roster that is already recorded.
-   *
-   * The amend flow deliberately leaves names alone — an amendment is a priced
-   * change and a name has no price — and sends the user here afterwards with
-   * "update the traveller roster to match the new party". Until now this page
-   * only offered an editor while the booking was still held, so that
-   * instruction pointed at a screen that could not carry it out.
-   *
-   * Corrections are versioned server-side: the prior roster is superseded, not
-   * overwritten, and a reason is required, because a signed waiver stays bound
-   * to the name it was signed under.
-   */
-  function startRosterCorrection() {
-    if (!booking.data) return;
-    // Seed from the party, not from the existing rows: after an amendment the
-    // party may hold more or fewer seats than there are names, and the server
-    // rejects a roster whose composition does not match.
-    const existing = [...(passengers.data ?? [])];
-    const drafts = Object.entries(booking.data.party).flatMap(
-      ([category, quantity]) =>
-        Array.from({ length: quantity }, () => {
-          const taken = existing.findIndex(
-            (item) => item.category === category,
-          );
-          const prior = taken >= 0 ? existing.splice(taken, 1)[0] : undefined;
-          return {
-            name: prior?.name ?? "",
-            category,
-            isMinor: prior?.is_minor ?? categoryIsMinor(category),
-          };
-        }),
-    );
-    setPassengerDrafts(drafts);
-    setCorrectionReason("");
-    correctRoster.clear();
-    setCorrectingRoster(true);
-  }
-
-  async function submitRosterCorrection(
-    event: React.FormEvent<HTMLFormElement>,
-  ) {
-    event.preventDefault();
-    const result = await correctRoster.run(
-      `staff/v1/bookings/${bookingId}/passengers/corrections`,
-      { passengers: passengerDrafts, reason: correctionReason.trim() },
-    );
-    if (result) {
-      setCorrectingRoster(false);
-      setSuccess("Traveller names corrected. The previous roster is kept.");
-      passengers.reload();
-    }
-  }
-
   async function recordRoster(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const result = await savePassengers.run(
@@ -3379,82 +3585,25 @@ export function BookingDetail({
                   <button
                     type="button"
                     className="button secondary"
-                    onClick={startRosterCorrection}
+                    onClick={() => setCorrectingRoster(true)}
                   >
                     <Pencil size={15} />
                     <span className="button-label">Edit names</span>
                   </button>
                 )}
             </div>
-            {correctingRoster ? (
-              <form onSubmit={submitRosterCorrection}>
-                <p className="muted">
-                  One row per seat in the current party. A correction is
-                  recorded as a new roster version; the previous names are kept
-                  as evidence.
-                </p>
-                <div className="stack-list compact">
-                  {passengerDrafts.map((passenger, index) => (
-                    <div className="guest-roster-row" key={index}>
-                      <span className="guest-number">{index + 1}</span>
-                      <Field label={`${label(passenger.category)} name`}>
-                        <input
-                          required
-                          maxLength={120}
-                          value={passenger.name}
-                          onChange={(event) =>
-                            setPassengerDrafts((current) =>
-                              current.map((item, itemIndex) =>
-                                itemIndex === index
-                                  ? { ...item, name: event.target.value }
-                                  : item,
-                              ),
-                            )
-                          }
-                        />
-                      </Field>
-                    </div>
-                  ))}
-                </div>
-                <Field
-                  label="Reason for the correction"
-                  hint="Recorded in the audit trail. A signed waiver stays bound to the name it was signed under."
-                >
-                  <input
-                    required
-                    minLength={3}
-                    maxLength={500}
-                    value={correctionReason}
-                    placeholder="For example, spelling corrected from the passport"
-                    onChange={(event) =>
-                      setCorrectionReason(event.target.value)
-                    }
-                  />
-                </Field>
-                {correctRoster.error && (
-                  <Notice error>{correctRoster.error}</Notice>
-                )}
-                <FormActions>
-                  <button
-                    type="button"
-                    className="button secondary"
-                    onClick={() => setCorrectingRoster(false)}
-                    disabled={correctRoster.busy}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className="button"
-                    disabled={
-                      correctRoster.busy ||
-                      correctionReason.trim().length < 3 ||
-                      passengerDrafts.some((item) => !item.name.trim())
-                    }
-                  >
-                    {correctRoster.busy ? "Saving…" : "Save names"}
-                  </button>
-                </FormActions>
-              </form>
+            {correctingRoster && passengers.data ? (
+              <RosterEditor
+                bookingId={bookingId}
+                party={b.party}
+                passengers={passengers.data}
+                onCancel={() => setCorrectingRoster(false)}
+                onSaved={(message) => {
+                  setCorrectingRoster(false);
+                  setSuccess(message);
+                  passengers.reload();
+                }}
+              />
             ) : passengers.data && passengers.data.length > 0 ? (
               <div
                 className="party-name-badges"
@@ -3472,7 +3621,11 @@ export function BookingDetail({
                       (passenger.is_minor ? " · minor" : "")
                     }
                   >
-                    <strong>{passenger.name}</strong>
+                    <strong>
+                      {passenger.identity_pending
+                        ? "Name not given yet"
+                        : passenger.name}
+                    </strong>
                     <small>{label(passenger.category)}</small>
                   </span>
                 ))}

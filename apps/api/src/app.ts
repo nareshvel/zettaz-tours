@@ -29,6 +29,7 @@ import { DocumentStorageService } from "./document-storage";
 import { DocumentLibraryService } from "./document-library";
 import { CrewController, CrewService } from "./crew";
 import { PartnerController, PartnerService } from "./partners";
+import { ExpenseController, ExpenseService } from "./expenses";
 import { IntegrationController, IntegrationService } from "./integrations";
 import { PassengerController, PassengerService } from "./passengers";
 import { NotificationModule } from "./notifications";
@@ -117,6 +118,7 @@ class SystemController {
     PrintController,
     CrewController,
     PartnerController,
+    ExpenseController,
     IntegrationController,
     PassengerController,
     StayController,
@@ -136,6 +138,7 @@ class SystemController {
     DocumentLibraryService,
     CrewService,
     PartnerService,
+    ExpenseService,
     IntegrationService,
     PassengerService,
     StayService,

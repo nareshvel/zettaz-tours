@@ -75,12 +75,8 @@ export const configSchema = z
       .default({ quotaBytes: 1073741824 }),
   })
   .strict()
-  .refine(
-    (c) =>
-      c.bookingCurrency === c.collectionCurrency &&
-      c.bookingCurrency === c.reportingCurrency,
-    "Cross-currency collection/reporting requires the later FX workflow",
-  );
+  ; // Multi-currency supported: bookingCurrency, collectionCurrency, and reportingCurrency
+  // may each differ. FX conversion is deferred; expense records store their own currency.
 export type TenantConfig = z.infer<typeof configSchema>;
 export const tenantSchema = z
   .object({

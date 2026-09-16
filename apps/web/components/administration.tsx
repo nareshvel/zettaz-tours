@@ -92,7 +92,6 @@ import {
   type AssignmentListFilters,
 } from "./catalog-assignments";
 import { PickupLocationsSettings } from "./pickup-locations";
-import { PartnerSettings } from "./partner-settings";
 import { PrintersSettings } from "./printers-settings";
 import { WaiverSettings } from "./waiver-settings";
 import { StaysSettings } from "./stays-settings";
@@ -123,8 +122,7 @@ const SETTINGS_TABS = new Set([
   "printers",
   "stays",
   "pickups",
-  "resellers",
-  "payments",
+    "payments",
   "waivers",
   "integrations",
   "security",
@@ -2699,8 +2697,6 @@ export function Settings({
   }, [tab]);
   function selectTab(next: string) {
     if (!SETTINGS_TABS.has(next)) return;
-    if (next === "resellers" && !session.permissions.includes("partner.manage"))
-      return;
     if (
       next === "integrations" &&
       !session.permissions.includes("integration.manage")
@@ -2857,17 +2853,7 @@ export function Settings({
               <span className="settings-nav-label">Waiver templates</span>
               <span className="settings-nav-label-short">Waivers</span>
             </button>
-            {session.permissions.includes("partner.manage") && (
-              <button
-                className={tab === "resellers" ? "active" : ""}
-                type="button"
-                onClick={() => selectTab("resellers")}
-              >
-                <Handshake size={16} />
-                <span className="settings-nav-label">Partners / Resellers</span>
-                <span className="settings-nav-label-short">Partners</span>
-              </button>
-            )}
+
             <p>PLATFORM</p>
             <button
               className={tab === "payments" ? "active" : ""}
@@ -2912,11 +2898,7 @@ export function Settings({
           <div className="panel form-panel settings-tab-content">
             <StaysSettings session={session} />
           </div>
-        ) : tab === "resellers" &&
-          session.permissions.includes("partner.manage") ? (
-          <div className="panel form-panel settings-tab-content">
-            <PartnersResellersSettings session={session} />
-          </div>
+
         ) : (
           <form className="panel form-panel" onSubmit={submit}>
             {tab === "general" && (
@@ -3394,27 +3376,88 @@ export function Settings({
                 <h2>
                   Currency &amp; tax context
                   <InfoTip label="currency and tax context">
-                    Track A requires booking, collection, and reporting
-                    currencies to be the same. FX conversion is out of scope, so
-                    these fields are read-only after tenant create. Change them
-                    only through an approved finance migration — not from this
-                    screen. Tax rate editing lives under Taxes &amp; commercial.
+                    Three separate currency roles: Booking (what guests pay in),
+                    Expense / Collection (your local operating currency — used as
+                    the default when recording expenses), and Reporting (the
+                    currency shown on financial summaries). Enter any ISO 4217
+                    three-letter code. Tax rate editing lives under Taxes &amp;
+                    commercial.
                   </InfoTip>
                 </h2>
                 <p className="policy-copy">
-                  Set when the tenant was created and fixed from here.
+                  Each currency role can be set independently.
+                  Reporting currency also serves as the base currency
+                  for expense FX calculations and system-wide fallbacks.
                 </p>
-                <div className="form-grid three">
-                  <Field label="Booking currency">
-                    <input value={config.bookingCurrency} disabled />
-                  </Field>
-                  <Field label="Collection currency">
-                    <input value={config.collectionCurrency} disabled />
-                  </Field>
-                  <Field label="Reporting currency">
-                    <input value={config.reportingCurrency} disabled />
-                  </Field>
-                </div>
+                {(() => {
+                  const CURRENCIES: { code: string; label: string }[] = [
+                    { code: "USD", label: "USD – US Dollar" },
+                    { code: "XCD", label: "XCD – East Caribbean Dollar" },
+                    { code: "ANG", label: "ANG – Netherlands Antillean Guilder" },
+                    { code: "AWG", label: "AWG – Aruban Florin" },
+                    { code: "BBD", label: "BBD – Barbadian Dollar" },
+                    { code: "BSD", label: "BSD – Bahamian Dollar" },
+                    { code: "BZD", label: "BZD – Belize Dollar" },
+                    { code: "CAD", label: "CAD – Canadian Dollar" },
+                    { code: "DOP", label: "DOP – Dominican Peso" },
+                    { code: "EUR", label: "EUR – Euro" },
+                    { code: "GBP", label: "GBP – British Pound" },
+                    { code: "GHS", label: "GHS – Ghanaian Cedi" },
+                    { code: "GYD", label: "GYD – Guyanese Dollar" },
+                    { code: "HTG", label: "HTG – Haitian Gourde" },
+                    { code: "JMD", label: "JMD – Jamaican Dollar" },
+                    { code: "KES", label: "KES – Kenyan Shilling" },
+                    { code: "KYD", label: "KYD – Cayman Islands Dollar" },
+                    { code: "MXN", label: "MXN – Mexican Peso" },
+                    { code: "NGN", label: "NGN – Nigerian Naira" },
+                    { code: "BRL", label: "BRL – Brazilian Real" },
+                    { code: "TTD", label: "TTD – Trinidad & Tobago Dollar" },
+                    { code: "ZAR", label: "ZAR – South African Rand" },
+                  ];
+                  const CurrencySelect = ({
+                    value,
+                    onChange,
+                  }: {
+                    value: string;
+                    onChange: (v: string) => void;
+                  }) => (
+                    <select value={value} onChange={(e) => onChange(e.target.value)}>
+                      {CURRENCIES.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                  );
+                  return (
+                    <div className="form-grid three">
+                      <Field label="Base / Reporting currency">
+                        <CurrencySelect
+                          value={config.reportingCurrency}
+                          onChange={(v) =>
+                            setConfig((c) => ({ ...c, reportingCurrency: v }))
+                          }
+                        />
+                      </Field>
+                      <Field label="Expense currency">
+                        <CurrencySelect
+                          value={config.collectionCurrency}
+                          onChange={(v) =>
+                            setConfig((c) => ({ ...c, collectionCurrency: v }))
+                          }
+                        />
+                      </Field>
+                      <Field label="Booking currency">
+                        <CurrencySelect
+                          value={config.bookingCurrency}
+                          onChange={(v) =>
+                            setConfig((c) => ({ ...c, bookingCurrency: v }))
+                          }
+                        />
+                      </Field>
+                    </div>
+                  );
+                })()}
                 <div className="form-divider" />
               </section>
             )}
@@ -3765,9 +3808,7 @@ function CodeListEditor({
   );
 }
 
-function PartnersResellersSettings({ session }: { session: Session }) {
-  return <PartnerSettings session={session} />;
-}
+
 function SupportAccessSettings() {
   const grants = useResource<{ items: SupportGrant[] }>(
     "admin/v1/support-access",

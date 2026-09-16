@@ -66,7 +66,7 @@ import { Profile } from "./profile";
 import { Entry, Signup, VerifyEmail } from "./auth";
 import { Resources } from "./resources";
 import { DocumentLibrary } from "./document-library";
-import { Finance } from "./finance";
+import { Finance, type FinanceSection } from "./finance";
 import { Integrations } from "./integrations";
 import { Reports } from "./reports";
 import { CustomerDetailPage, Customers } from "./customers";
@@ -562,6 +562,7 @@ export function Workspace({
     permission = "authenticated";
     content = <Profile session={session} section="subscription" />;
   } else if (area === "finance") {
+    // Finance sub-sections: overview | partners | expenses | reports
     permission =
       [
         "payment.write",
@@ -569,7 +570,19 @@ export function Workspace({
         "partner.statement.read",
         "partner.collection.verify",
       ].find(can) ?? "partner.collection.verify";
-    content = <Finance session={session} />;
+    const financeSection = (
+      segments[1] === "overview" ||
+      segments[1] === "partners" ||
+      segments[1] === "expenses" ||
+      segments[1] === "reports"
+        ? segments[1]
+        : "overview"
+    ) as FinanceSection;
+    // /finance/partners/:id → pass partnerId to Finance
+    const financePartnerId = segments[1] === "partners" && segments[2]
+      ? segments[2]
+      : undefined;
+    content = <Finance session={session} section={financeSection} partnerId={financePartnerId} />;
   } else if (area === "integrations") {
     permission = "integration.manage";
     content = <Integrations />;

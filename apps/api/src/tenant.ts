@@ -74,13 +74,17 @@ export class TenantService {
       const tenantId = randomUUID(),
         ownerId = randomUUID();
       await tx.query(
-        `INSERT INTO tenants(id,slug,name,timezone,config,business_profile,authorized_contact,is_mock) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+        `INSERT INTO tenants(id,slug,name,timezone,config,base_currency,booking_currency,expense_currency,reporting_currency,business_profile,authorized_contact,is_mock) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
         [
           tenantId,
           data.slug,
           data.name,
           data.timezone,
           data.config,
+          data.config?.reportingCurrency ?? "XCD",
+          data.config?.bookingCurrency ?? "USD",
+          data.config?.collectionCurrency ?? "XCD",
+          data.config?.reportingCurrency ?? "XCD",
           {
             displayName: data.name,
             streetAddress: "",
@@ -166,8 +170,22 @@ export class TenantService {
           "Currency changes after catalog setup require a migration workflow",
         );
       await tx.query(
-        "UPDATE tenants SET config=$2,version=version+1 WHERE id=$1",
-        [actor.tenantId, data.config],
+        `UPDATE tenants SET
+           config=$2,
+           base_currency=$3,
+           booking_currency=$4,
+           expense_currency=$5,
+           reporting_currency=$6,
+           version=version+1
+         WHERE id=$1`,
+        [
+          actor.tenantId,
+          data.config,
+          data.config.reportingCurrency,
+          data.config.bookingCurrency,
+          data.config.collectionCurrency,
+          data.config.reportingCurrency,
+        ],
       );
       await record(
         tx,

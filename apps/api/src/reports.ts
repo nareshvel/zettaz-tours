@@ -20,10 +20,10 @@ export class ReportService {
     return this.db.transaction(actor, async (tx) => {
       const {
         rows: [tenant],
-      } = await tx.query("SELECT config FROM tenants WHERE id=$1", [
+      } = await tx.query("SELECT base_currency FROM tenants WHERE id=$1", [
         actor.tenantId,
       ]);
-      const currency = tenant.config.reportingCurrency;
+      const currency = tenant.base_currency ?? "XCD";
       const {
         rows: [commercial],
       } = await tx.query(

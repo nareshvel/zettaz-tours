@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, Landmark, X } from "lucide-react";
+import { Check, ChevronRight, Landmark, SlidersHorizontal, X } from "lucide-react";
+import Link from "next/link";
 import type { PartnerClaim, Session } from "@/lib/types";
-import { dateTime, money, useMutation, useResource } from "@/lib/client";
+import { dateTime, label, money, useMutation, useResource } from "@/lib/client";
 import {
   ConfirmDialog,
   Empty,
@@ -12,8 +13,12 @@ import {
   Loading,
   Notice,
   Status,
+  TenantDateInput,
 } from "./common";
 import { FinancePartners } from "./finance-partners";
+import { FinanceOverview } from "./finance-overview";
+import { FinanceExpenses } from "./finance-expenses";
+import { FinanceReports } from "./finance-reports";
 
 function amount(value: string | number) {
   return typeof value === "number" ? value : Number(value);
@@ -30,390 +35,199 @@ type StatementLine = {
   created_at: string;
 };
 
-export function Finance({ session }: { session: Session }) {
-  const [tab, setTab] = useState<"collections" | "partners">("collections");
-  const canReadStatements = session.permissions.includes(
-    "partner.statement.read",
-  );
-  const claims = useResource<PartnerClaim[]>("finance/v1/partner-claims");
-  const statements = useResource<StatementLine[]>(
-    "finance/v1/partner-statements",
-  );
-  const [reason, setReason] = useState<Record<string, string>>({});
-  const [stateFilter, setStateFilter] = useState<
-    "all" | "unverified" | "accepted" | "rejected"
-  >("unverified");
-  const [partnerFilter, setPartnerFilter] = useState("all");
-  const [pending, setPending] = useState<{
-    claim: PartnerClaim;
-    decision: "accepted" | "rejected";
-  } | null>(null);
-  const decision = useMutation();
+// ─── Period helpers ───────────────────────────────────────────────────────────
 
-  const partners = useMemo(() => {
-    if (!claims.data) return [];
-    return [...new Map(claims.data.map((c) => [c.partner_id, c.partner_name]))];
-  }, [claims.data]);
+export type PeriodKey = "this_week" | "this_month" | "last_month" | "this_year" | "last_year" | "custom";
 
-  const filteredClaims = useMemo(() => {
-    if (!claims.data) return [];
-    return claims.data.filter(
-      (claim) =>
-        (stateFilter === "all" ||
-          (claim.decision ?? "unverified") === stateFilter) &&
-        (partnerFilter === "all" || claim.partner_id === partnerFilter),
-    );
-  }, [claims.data, partnerFilter, stateFilter]);
+export const PERIOD_LABELS: Record<PeriodKey, string> = {
+  this_week:  "This Week",
+  this_month: "This Month",
+  last_month: "Last Month",
+  this_year:  "This Year",
+  last_year:  "Last Year",
+  custom:     "Custom Range",
+};
 
-  const unverifiedCount =
-    claims.data?.filter((claim) => !claim.decision).length ?? 0;
-  const acceptedCount =
-    claims.data?.filter((claim) => claim.decision === "accepted").length ?? 0;
-  const statementCount =
-    statements.data?.filter(
-      (line) => partnerFilter === "all" || line.partner_id === partnerFilter,
-    ).length ?? 0;
+export function periodDates(key: PeriodKey, customFrom: string, customTo: string): { from: string; to: string } {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-  async function confirmDecision() {
-    if (!pending) return;
-    const result = await decision.run(
-      `finance/v1/partner-claims/${pending.claim.id}/decision`,
-      {
-        decision: pending.decision,
-        reason: reason[pending.claim.id] ?? "",
-      },
-    );
-    if (result) {
-      setPending(null);
-      claims.reload();
-      statements.reload();
-    }
+  if (key === "custom") return { from: customFrom, to: customTo };
+
+  const y = now.getFullYear();
+  const m = now.getMonth();
+
+  if (key === "this_week") {
+    const dow = now.getDay();
+    const mon = new Date(now); mon.setDate(now.getDate() - ((dow + 6) % 7));
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    return { from: iso(mon), to: iso(sun) };
   }
+  if (key === "this_month") {
+    return { from: `${y}-${pad(m + 1)}-01`, to: iso(new Date(y, m + 1, 0)) };
+  }
+  if (key === "last_month") {
+    const lm = m === 0 ? 11 : m - 1;
+    const ly = m === 0 ? y - 1 : y;
+    return { from: `${ly}-${pad(lm + 1)}-01`, to: iso(new Date(ly, lm + 1, 0)) };
+  }
+  if (key === "this_year") {
+    return { from: `${y}-01-01`, to: `${y}-12-31` };
+  }
+  return { from: `${y - 1}-01-01`, to: `${y - 1}-12-31` };
+}
 
-  if (tab === "partners") {
-    return (
-      <>
-        <Heading
-          eyebrow="FINANCE"
-          title="Partner settlements"
-          description="Commission accrued on attributed bookings, and the settlement periods you invoice and pay against."
-        />
-        <div className="view-action-bar">
-          <div
-            className="view-tabs compact"
-            role="tablist"
-            aria-label="Finance sections"
+// ─── Period selector (right-side slot for Overview tab) ───────────────────────
+
+function PeriodSelector({
+  period, onPeriod, customFrom, customTo, onCustomFrom, onCustomTo,
+}: {
+  period: PeriodKey;
+  onPeriod: (k: PeriodKey) => void;
+  customFrom: string;
+  customTo: string;
+  onCustomFrom: (v: string) => void;
+  onCustomTo: (v: string) => void;
+}) {
+  return (
+    <div className="finance-period-selector catalog-view-actions">
+      {/* On mobile this collapses — the select itself stays, label hidden */}
+      <label className="finance-period-label">Period</label>
+      <select
+        value={period}
+        onChange={(e) => onPeriod(e.target.value as PeriodKey)}
+        className="finance-period-select"
+      >
+        {(Object.keys(PERIOD_LABELS) as PeriodKey[]).map((k) => (
+          <option key={k} value={k}>{PERIOD_LABELS[k]}</option>
+        ))}
+      </select>
+      {period === "custom" && (
+        <>
+          <input type="date" value={customFrom} onChange={(e) => onCustomFrom(e.target.value)}
+            className="finance-period-date" />
+          <span className="finance-period-dash">–</span>
+          <input type="date" value={customTo} onChange={(e) => onCustomTo(e.target.value)}
+            className="finance-period-date" />
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Shared subnav ────────────────────────────────────────────────────────────
+
+export type FinanceSection = "overview" | "partners" | "expenses" | "reports";
+
+function FinanceNav({
+  section,
+  actions,
+}: {
+  section: FinanceSection;
+  actions?: React.ReactNode;
+}) {
+  const tabs: { href: string; label: string; key: FinanceSection }[] = [
+    { href: "/finance/overview", label: "Overview", key: "overview" },
+    { href: "/finance/partners", label: "Partners", key: "partners" },
+    { href: "/finance/expenses", label: "Expenses", key: "expenses" },
+    { href: "/finance/reports", label: "Reports", key: "reports" },
+  ];
+  return (
+    <div className="view-action-bar">
+      <div
+        className="view-tabs compact"
+        role="tablist"
+        aria-label="Finance sections"
+      >
+        {tabs.map((tab) => (
+          <Link
+            key={tab.key}
+            className="view-tab-link"
+            href={tab.href}
+            role="tab"
+            aria-selected={section === tab.key}
           >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={false}
-              onClick={() => setTab("collections")}
-            >
-              Collections
-            </button>
-            {canReadStatements && (
-              <button
-                type="button"
-                role="tab"
-                aria-selected
-                onClick={() => setTab("partners")}
-              >
-                Partners
-              </button>
-            )}
-          </div>
+            {tab.label}
+          </Link>
+        ))}
+      </div>
+      {actions && (
+        <div className="catalog-view-actions">
+          {actions}
         </div>
-        <FinancePartners session={session} />
-      </>
-    );
-  }
+      )}
+    </div>
+  );
+}
+
+// ─── Page shell ───────────────────────────────────────────────────────────────
+
+const SECTION_HEADINGS: Record<FinanceSection, { title: string; description: string }> = {
+  overview: {
+    title: "Finance Overview",
+    description: "Work queue, net financial position, and recent activity across all partners.",
+  },
+  partners: {
+    title: "Partner Accounts",
+    description: "Commission accruals, collections, and settlement history per partner.",
+  },
+  expenses: {
+    title: "Expenses",
+    description: "Operating costs — fuel, equipment, maintenance, licenses, and more.",
+  },
+  reports: {
+    title: "Reports",
+    description: "Partner aging, expense summaries, and financial statements.",
+  },
+};
+
+export function Finance({
+  session,
+  section,
+  partnerId,
+}: {
+  session: Session;
+  section: FinanceSection;
+  partnerId?: string;
+}) {
+  // Period state lives here so the selector can sit inline in the nav bar
+  const [period, setPeriod] = useState<PeriodKey>("this_month");
+  const [customFrom, setCustomFrom] = useState(() => {
+    const d = new Date(); d.setDate(1);
+    return d.toISOString().slice(0, 10);
+  });
+  const [customTo, setCustomTo] = useState(() => new Date().toISOString().slice(0, 10));
+
+  const { from, to } = useMemo(
+    () => periodDates(period, customFrom, customTo),
+    [period, customFrom, customTo],
+  );
+  const periodLabel = period === "custom" ? `${from} – ${to}` : PERIOD_LABELS[period];
+
+  const heading = section === "partners" && partnerId
+    ? { title: "Partner Account", description: "Transaction register and settlement history for this partner." }
+    : SECTION_HEADINGS[section] ?? SECTION_HEADINGS.overview;
+
+  // Right-side slot differs per tab
+  const navActions = section === "overview" ? (
+    <PeriodSelector
+      period={period} onPeriod={setPeriod}
+      customFrom={customFrom} customTo={customTo}
+      onCustomFrom={setCustomFrom} onCustomTo={setCustomTo}
+    />
+  ) : undefined;
 
   return (
     <>
-      <Heading
-        eyebrow="FINANCE"
-        title="Partner collections"
-        description="Review hotel and reseller collection evidence. Accepted claims create a partner obligation — they never create a guest payment."
-      />
-
-      <div className="view-action-bar">
-        <div
-          className="view-tabs compact"
-          role="tablist"
-          aria-label="Finance sections"
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected
-            onClick={() => setTab("collections")}
-          >
-            Collections
-          </button>
-          {canReadStatements && (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={false}
-              onClick={() => setTab("partners")}
-            >
-              Partners
-            </button>
-          )}
-        </div>
-      </div>
-
-      {claims.error && <Notice error>{claims.error}</Notice>}
-      {!claims.data && !claims.error && <Loading />}
-
-      {claims.data && (
-        <>
-          <div className="finance-metrics">
-            <div className={unverifiedCount ? "attention" : ""}>
-              <strong>{unverifiedCount}</strong>
-              <span>Unverified claims</span>
-            </div>
-            <div>
-              <strong>{acceptedCount}</strong>
-              <span>Accepted claims</span>
-            </div>
-            <div>
-              <strong>{statementCount}</strong>
-              <span>Statement lines</span>
-            </div>
-          </div>
-
-          <section className="panel finance-filters">
-            <div className="form-grid compact">
-              <Field label="Review state">
-                <select
-                  value={stateFilter}
-                  onChange={(event) =>
-                    setStateFilter(event.target.value as typeof stateFilter)
-                  }
-                >
-                  <option value="unverified">Unverified</option>
-                  <option value="accepted">Accepted</option>
-                  <option value="rejected">Rejected</option>
-                  <option value="all">All claims</option>
-                </select>
-              </Field>
-              <Field label="Partner">
-                <select
-                  value={partnerFilter}
-                  onChange={(event) => setPartnerFilter(event.target.value)}
-                >
-                  <option value="all">All partners</option>
-                  {partners.map(([id, name]) => (
-                    <option key={id} value={id}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-            <Notice>
-              Keep guest receipts on the reservation. Partner collections are
-              verified here and stay separate by currency.
-            </Notice>
-          </section>
-
-          {!filteredClaims.length ? (
-            <Empty title="No partner collection claims">
-              <p>
-                Claims recorded against confirmed partner-collection bookings
-                appear here.
-              </p>
-            </Empty>
-          ) : (
-            <div className="stack-list finance-claim-list">
-              {filteredClaims.map((claim) => (
-                <article className="panel finance-claim" key={claim.id}>
-                  <div className="panel-heading plain">
-                    <div>
-                      <p className="eyebrow">{claim.partner_name}</p>
-                      <h2>
-                        {money(amount(claim.amount_minor), claim.currency)}
-                      </h2>
-                      <p>
-                        {claim.reference} · recorded{" "}
-                        {dateTime(claim.recorded_at, session.tenant.timezone)}
-                      </p>
-                      <p className="mono muted">
-                        Booking {claim.booking_id.slice(0, 8).toUpperCase()} ·{" "}
-                        {claim.currency}
-                      </p>
-                    </div>
-                    <Status state={claim.decision ?? "unverified"} />
-                  </div>
-                  <p className="muted">
-                    {claim.notes || "No collection note supplied."}
-                  </p>
-                  {claim.decision ? (
-                    <p className="decision-note">
-                      <Landmark size={16} /> {claim.decision_reason}
-                    </p>
-                  ) : (
-                    <div className="finance-decision">
-                      <Field
-                        label="Finance decision reason"
-                        required
-                        hint="Required before accept or reject. Stored on the claim audit trail."
-                      >
-                        <input
-                          required
-                          maxLength={500}
-                          value={reason[claim.id] ?? ""}
-                          onChange={(event) =>
-                            setReason({
-                              ...reason,
-                              [claim.id]: event.target.value,
-                            })
-                          }
-                          placeholder="Explain the approval or rejection"
-                        />
-                      </Field>
-                      {decision.error && pending?.claim.id === claim.id && (
-                        <Notice error>{decision.error}</Notice>
-                      )}
-                      <div className="button-row finance-decision-actions">
-                        <button
-                          type="button"
-                          className="button"
-                          disabled={!reason[claim.id]?.trim() || decision.busy}
-                          onClick={() =>
-                            setPending({ claim, decision: "accepted" })
-                          }
-                        >
-                          <Check size={16} /> Accept claim
-                        </button>
-                        <button
-                          type="button"
-                          className="button destructive"
-                          disabled={!reason[claim.id]?.trim() || decision.busy}
-                          onClick={() =>
-                            setPending({ claim, decision: "rejected" })
-                          }
-                        >
-                          <X size={16} /> Reject claim
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </article>
-              ))}
-            </div>
-          )}
-        </>
+      <Heading eyebrow="FINANCE" title={heading.title} description={heading.description} />
+      <FinanceNav section={section} actions={navActions} />
+      {section === "overview" && (
+        <FinanceOverview session={session} dateFrom={from} dateTo={to} periodLabel={periodLabel} />
       )}
-
-      {statements.error && <Notice error>{statements.error}</Notice>}
-      {statements.data && statementCount > 0 && (
-        <section className="panel finance-statements">
-          <div className="panel-heading">
-            <div>
-              <p className="eyebrow">PARTNER OBLIGATIONS</p>
-              <h2>Statement lines</h2>
-              <p className="muted">
-                Accepted claims and invoice obligations by partner currency.
-              </p>
-            </div>
-          </div>
-          <div className="table-scroll finance-statements-table">
-            <table>
-              <thead>
-                <tr>
-                  <th>Partner</th>
-                  <th>Kind</th>
-                  <th>Amount</th>
-                  <th>Booking</th>
-                  <th>Recorded</th>
-                </tr>
-              </thead>
-              <tbody>
-                {statements.data
-                  .filter(
-                    (line) =>
-                      partnerFilter === "all" ||
-                      line.partner_id === partnerFilter,
-                  )
-                  .map((line) => (
-                    <tr key={line.id}>
-                      <td>{line.partner_name}</td>
-                      <td>{line.kind.replaceAll("_", " ")}</td>
-                      <td>
-                        {money(Number(line.amount_minor), line.currency)}
-                        <small className="currency-tag"> {line.currency}</small>
-                      </td>
-                      <td className="mono">
-                        {line.booking_id.slice(0, 8).toUpperCase()}
-                      </td>
-                      <td>
-                        {dateTime(line.created_at, session.tenant.timezone)}
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="finance-statement-cards">
-            {statements.data
-              .filter(
-                (line) =>
-                  partnerFilter === "all" || line.partner_id === partnerFilter,
-              )
-              .map((line) => (
-                <article key={line.id} className="finance-statement-card">
-                  <div>
-                    <strong>{line.partner_name}</strong>
-                    <small>{line.kind.replaceAll("_", " ")}</small>
-                  </div>
-                  <div className="finance-statement-amount">
-                    <strong>
-                      {money(Number(line.amount_minor), line.currency)}
-                    </strong>
-                    <small>
-                      {line.currency} ·{" "}
-                      {line.booking_id.slice(0, 8).toUpperCase()}
-                    </small>
-                  </div>
-                  <small>
-                    {dateTime(line.created_at, session.tenant.timezone)}
-                  </small>
-                </article>
-              ))}
-          </div>
-        </section>
-      )}
-
-      <ConfirmDialog
-        open={pending !== null}
-        title={
-          pending?.decision === "accepted"
-            ? "Accept this partner claim?"
-            : "Reject this partner claim?"
-        }
-        description={
-          pending
-            ? `${pending.claim.partner_name} · ${money(amount(pending.claim.amount_minor), pending.claim.currency)}. ${
-                pending.decision === "accepted"
-                  ? "Acceptance creates a partner obligation. It does not record a guest payment."
-                  : "Rejection keeps the claim history for audit. No obligation is created."
-              }`
-            : undefined
-        }
-        confirmLabel={
-          pending?.decision === "accepted" ? "Accept claim" : "Reject claim"
-        }
-        danger={pending?.decision === "rejected"}
-        busy={decision.busy}
-        error={decision.error}
-        onClose={() => {
-          if (!decision.busy) setPending(null);
-        }}
-        onConfirm={() => void confirmDecision()}
-      />
+      {section === "partners" && <FinancePartners session={session} initialPartnerId={partnerId} />}
+      {section === "expenses" && <FinanceExpenses session={session} />}
+      {section === "reports" && <FinanceReports session={session} />}
     </>
   );
 }

@@ -155,6 +155,8 @@ const settlementAdvanceSchema = z
   .object({
     status: z.enum(["invoiced", "sent", "paid", "overdue", "void"]),
     payment_ref: z.string().trim().max(400).optional().nullable(),
+    payment_date: z.string().trim().optional().nullable(),
+    confirmed_amount_minor: z.number().int().optional().nullable(),
     invoice_number: z.string().trim().max(100).optional().nullable(),
     invoice_pdf_path: z.string().trim().max(1000).optional().nullable(),
     void_reason: z.string().trim().max(1000).optional().nullable(),

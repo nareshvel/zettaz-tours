@@ -96,8 +96,8 @@ type UnsettledBooking = { id: string; amount_minor: number; currency: string };
 const WEEKDAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 const DAY_SCHEDULES = ["monthly","weekly","biweekly"];
 const NEXT_STATUSES: Record<string, string[]> = {
-  draft: ["issued", "voided"],
-  issued: ["sent", "voided"],
+  draft: ["invoiced", "voided"],
+  invoiced: ["sent", "voided"],
   sent: ["paid", "voided"],
   paid: [],
   voided: [],
@@ -449,9 +449,9 @@ function PartnerFormModal({
 
 // ─── Settlement pipeline stepper ─────────────────────────────────────────────
 
-const PIPELINE_STEPS = ["draft", "issued", "sent", "paid"] as const;
+const PIPELINE_STEPS = ["draft", "invoiced", "sent", "paid"] as const;
 const PIPELINE_LABELS: Record<string, string> = {
-  draft: "Draft", issued: "Issued", sent: "Sent", paid: "Paid",
+  draft: "Draft", invoiced: "Invoiced", sent: "Sent", paid: "Paid",
 };
 
 function SettlementStepper({
@@ -609,8 +609,9 @@ function MarkPaidDialog({
 
   async function submit() {
     if (!settlement) return;
-    const body: Record<string, unknown> = { status: "paid", payment_date: paymentDate };
-    if (paymentRef) body.payment_reference = paymentRef;
+    const body: Record<string, unknown> = { status: "paid" };
+    if (paymentRef) body.payment_ref = paymentRef;
+    if (paymentDate) body.payment_date = paymentDate;
     if (confirmedAmount) body.confirmed_amount_minor = Math.round(Number(confirmedAmount) * 100);
     const result = await mut.run(
       `finance/v1/partners/${partnerId}/settlements/${settlement.id}`, body, "PATCH",
@@ -696,13 +697,13 @@ function AdvanceDialog({
     if (result) { advance.clear(); onAdvanced(); }
   }
 
-  const titleMap: Record<string, string> = { issued: "Issue Settlement", sent: "Mark as Sent", voided: "Void Settlement" };
+  const titleMap: Record<string, string> = { invoiced: "Issue Settlement", sent: "Mark as Sent", voided: "Void Settlement" };
 
   return (
     <FormDialog open={open && !!settlement} title={titleMap[effectiveStatus] ?? "Advance Settlement"} busy={advance.busy}
       error={advance.error} onSubmit={submit} onClose={onClose}
       submitLabel={effectiveStatus === "voided" ? "Void" : "Confirm"}>
-      {effectiveStatus === "issued" && (
+      {effectiveStatus === "invoiced" && (
         <Field label="Invoice number" hint="Reference number you'll send to the partner.">
           <input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} />
         </Field>
@@ -753,7 +754,7 @@ function PartnerDetailPanel({
 }) {
   const [page, setPage] = useState(1);
   // Status filter covers both booking states and settlement pipeline states
-  const [statusFilter, setStatusFilter] = useState<"" | "unsettled" | "settled" | "draft" | "issued" | "sent" | "paid" | "voided">("");
+  const [statusFilter, setStatusFilter] = useState<"" | "unsettled" | "settled" | "draft" | "invoiced" | "sent" | "paid" | "voided">("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
@@ -787,7 +788,7 @@ function PartnerDetailPanel({
     statusFilter === "unsettled" ? "unsettled" :
     statusFilter === "settled"   ? "settled"   :
     // For settlement pipeline statuses, we show settled bookings + filter by settlement status client-side
-    ["draft","issued","sent","paid","voided"].includes(statusFilter) ? "settled" :
+    ["draft","invoiced","sent","paid","voided"].includes(statusFilter) ? "settled" :
     ""
   );
 
@@ -832,7 +833,7 @@ function PartnerDetailPanel({
   }
 
   // When filtering by a settlement pipeline status, further filter entries client-side
-  const settlementStatusFilter = ["draft","issued","sent","paid","voided"].includes(statusFilter) ? statusFilter : null;
+  const settlementStatusFilter = ["draft","invoiced","sent","paid","voided"].includes(statusFilter) ? statusFilter : null;
 
   return (
     <>
@@ -920,7 +921,7 @@ function PartnerDetailPanel({
                 <div className="compact-control">
                   <span>Settlement status</span>
                   <div className="filter-range-options" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
-                    {([["draft","Draft"],["issued","Issued"],["sent","Sent"],["paid","Paid"],["voided","Voided"]] as const).map(([v, lbl]) => (
+                    {([["draft","Draft"],["invoiced","Invoiced"],["sent","Sent"],["paid","Paid"],["voided","Voided"]] as const).map(([v, lbl]) => (
                       <button
                         key={v}
                         type="button"

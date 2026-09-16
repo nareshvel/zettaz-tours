@@ -1114,7 +1114,7 @@ function PartnerDetailPanel({
           title="Delete Draft Settlement"
           busy={delSmt.busy}
           error={delSmt.error}
-          confirmLabel="Delete"
+          submitLabel="Delete"
           danger
           onSubmit={async () => {
             const ok = await delSmt.run(

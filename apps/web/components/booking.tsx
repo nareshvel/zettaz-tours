@@ -12,6 +12,7 @@ import {
   Mail,
   ListFilter,
   Minus,
+  Pencil,
   Plus,
   ShoppingCart,
   Users,
@@ -2155,6 +2156,11 @@ export function NewReservation({
                   open={Boolean(openSections.pickup)}
                   onToggle={toggleSection}
                 >
+                  {/* Disposition and location are one decision — "who is
+                      collecting this guest, and from where" — so they sit side
+                      by side rather than stacking the answer under the
+                      question. The location column is simply absent when no
+                      pickup is arranged. */}
                   <div className="form-grid">
                     <Field label="Pickup disposition">
                       <select
@@ -2171,39 +2177,39 @@ export function NewReservation({
                         <option value="unresolved">Pickup to arrange</option>
                       </select>
                     </Field>
-                  </div>
-                  {pickupKind === "selected" && (
-                    <Field
-                      label="Pickup location"
-                      hint="From the tenant's pickup locations. Add a missing one under Settings › Pickup locations."
-                    >
-                      <select
-                        required
-                        value={location}
-                        onChange={(e) => setLocation(e.target.value)}
+                    {pickupKind === "selected" && (
+                      <Field
+                        label="Pickup location"
+                        hint="From the tenant's pickup locations. Add a missing one under Settings › Pickup locations."
                       >
-                        <option value="">Select a pickup location</option>
-                        {(pickupLocations.data ?? []).map((item) => (
-                          <option key={item.id} value={item.name}>
-                            {item.name}
-                            {item.address ? ` — ${item.address}` : ""}
-                          </option>
-                        ))}
-                        {/* An older booking may name a place that has since
-                            been renamed or retired. Keeping it as an option
-                            means amending some other field cannot silently
-                            rewrite where the guest is being collected. */}
-                        {location &&
-                          !(pickupLocations.data ?? []).some(
-                            (item) => item.name === location,
-                          ) && (
-                            <option value={location}>
-                              {location} (not in settings)
+                        <select
+                          required
+                          value={location}
+                          onChange={(e) => setLocation(e.target.value)}
+                        >
+                          <option value="">Select a pickup location</option>
+                          {(pickupLocations.data ?? []).map((item) => (
+                            <option key={item.id} value={item.name}>
+                              {item.name}
+                              {item.address ? ` — ${item.address}` : ""}
                             </option>
-                          )}
-                      </select>
-                    </Field>
-                  )}
+                          ))}
+                          {/* An older booking may name a place that has since
+                              been renamed or retired. Keeping it as an option
+                              means amending some other field cannot silently
+                              rewrite where the guest is being collected. */}
+                          {location &&
+                            !(pickupLocations.data ?? []).some(
+                              (item) => item.name === location,
+                            ) && (
+                              <option value={location}>
+                                {location} (not in settings)
+                              </option>
+                            )}
+                        </select>
+                      </Field>
+                    )}
+                  </div>
                   {pickupKind === "selected" &&
                     pickupLocations.data &&
                     !pickupLocations.data.length && (
@@ -2761,6 +2767,12 @@ export function BookingDetail({
     setPassengerDrafts(drafts);
     setRosterBookingId(booking.data.id);
   }, [booking.data, passengers.data?.length, rosterBookingId]);
+  // Declared here, with the other hooks: everything below the early returns
+  // runs conditionally, and a hook that does not run on every render breaks
+  // the order React relies on.
+  const [correctingRoster, setCorrectingRoster] = useState(false);
+  const [correctionReason, setCorrectionReason] = useState("");
+  const correctRoster = useMutation();
   if (booking.error)
     return (
       <Notice error>
@@ -2903,6 +2915,60 @@ export function BookingDetail({
       booking.reload();
     }
   }
+  /**
+   * Correcting a roster that is already recorded.
+   *
+   * The amend flow deliberately leaves names alone — an amendment is a priced
+   * change and a name has no price — and sends the user here afterwards with
+   * "update the traveller roster to match the new party". Until now this page
+   * only offered an editor while the booking was still held, so that
+   * instruction pointed at a screen that could not carry it out.
+   *
+   * Corrections are versioned server-side: the prior roster is superseded, not
+   * overwritten, and a reason is required, because a signed waiver stays bound
+   * to the name it was signed under.
+   */
+  function startRosterCorrection() {
+    if (!booking.data) return;
+    // Seed from the party, not from the existing rows: after an amendment the
+    // party may hold more or fewer seats than there are names, and the server
+    // rejects a roster whose composition does not match.
+    const existing = [...(passengers.data ?? [])];
+    const drafts = Object.entries(booking.data.party).flatMap(
+      ([category, quantity]) =>
+        Array.from({ length: quantity }, () => {
+          const taken = existing.findIndex(
+            (item) => item.category === category,
+          );
+          const prior = taken >= 0 ? existing.splice(taken, 1)[0] : undefined;
+          return {
+            name: prior?.name ?? "",
+            category,
+            isMinor: prior?.is_minor ?? categoryIsMinor(category),
+          };
+        }),
+    );
+    setPassengerDrafts(drafts);
+    setCorrectionReason("");
+    correctRoster.clear();
+    setCorrectingRoster(true);
+  }
+
+  async function submitRosterCorrection(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+    const result = await correctRoster.run(
+      `staff/v1/bookings/${bookingId}/passengers/corrections`,
+      { passengers: passengerDrafts, reason: correctionReason.trim() },
+    );
+    if (result) {
+      setCorrectingRoster(false);
+      setSuccess("Traveller names corrected. The previous roster is kept.");
+      passengers.reload();
+    }
+  }
+
   async function recordRoster(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const result = await savePassengers.run(
@@ -3187,6 +3253,19 @@ export function BookingDetail({
             </Link>
           </div>
         )}
+      {/* Amend and Cancel simply vanished once a departure had left, which
+          reads as a missing feature rather than a closed door — especially
+          beside a Travel party section that still offers Edit names. Say which
+          it is. */}
+      {!expired &&
+        ["held", "confirmed"].includes(b.state) &&
+        new Date(b.departure.starts_at).getTime() <= Date.now() &&
+        session.permissions.includes("bookings.write") && (
+          <Notice>
+            This departure has already left, so it can no longer be amended or
+            cancelled. Traveller names can still be corrected for the record.
+          </Notice>
+        )}
       <div className="booking-detail-layout">
         <article className="panel booking-detail-main">
           <section className="booking-detail-section">
@@ -3290,8 +3369,93 @@ export function BookingDetail({
           </section>
 
           <section className="booking-detail-section">
-            <h2>Travel party</h2>
-            {passengers.data && passengers.data.length > 0 ? (
+            <div className="booking-detail-section-head">
+              <h2>Travel party</h2>
+              {passengers.data &&
+                passengers.data.length > 0 &&
+                !correctingRoster &&
+                b.state !== "cancelled" &&
+                session.permissions.includes("bookings.write") && (
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={startRosterCorrection}
+                  >
+                    <Pencil size={15} />
+                    <span className="button-label">Edit names</span>
+                  </button>
+                )}
+            </div>
+            {correctingRoster ? (
+              <form onSubmit={submitRosterCorrection}>
+                <p className="muted">
+                  One row per seat in the current party. A correction is
+                  recorded as a new roster version; the previous names are kept
+                  as evidence.
+                </p>
+                <div className="stack-list compact">
+                  {passengerDrafts.map((passenger, index) => (
+                    <div className="guest-roster-row" key={index}>
+                      <span className="guest-number">{index + 1}</span>
+                      <Field label={`${label(passenger.category)} name`}>
+                        <input
+                          required
+                          maxLength={120}
+                          value={passenger.name}
+                          onChange={(event) =>
+                            setPassengerDrafts((current) =>
+                              current.map((item, itemIndex) =>
+                                itemIndex === index
+                                  ? { ...item, name: event.target.value }
+                                  : item,
+                              ),
+                            )
+                          }
+                        />
+                      </Field>
+                    </div>
+                  ))}
+                </div>
+                <Field
+                  label="Reason for the correction"
+                  hint="Recorded in the audit trail. A signed waiver stays bound to the name it was signed under."
+                >
+                  <input
+                    required
+                    minLength={3}
+                    maxLength={500}
+                    value={correctionReason}
+                    placeholder="For example, spelling corrected from the passport"
+                    onChange={(event) =>
+                      setCorrectionReason(event.target.value)
+                    }
+                  />
+                </Field>
+                {correctRoster.error && (
+                  <Notice error>{correctRoster.error}</Notice>
+                )}
+                <FormActions>
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={() => setCorrectingRoster(false)}
+                    disabled={correctRoster.busy}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="button"
+                    disabled={
+                      correctRoster.busy ||
+                      correctionReason.trim().length < 3 ||
+                      passengerDrafts.some((item) => !item.name.trim())
+                    }
+                  >
+                    {correctRoster.busy ? "Saving…" : "Save names"}
+                  </button>
+                </FormActions>
+              </form>
+            ) : passengers.data && passengers.data.length > 0 ? (
               <div
                 className="party-name-badges"
                 aria-label="Travel party names"

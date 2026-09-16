@@ -6899,6 +6899,19 @@ fieldset {
   margin: 0 0 10px;
   font-size: 14px;
 }
+/* Section title with an action beside it — the roster editor's entry point
+   belongs next to the names, not at the bottom of the card. Declared after the
+   plain h2 rule so its zero margin wins. */
+.booking-detail-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.booking-detail-section-head h2 {
+  margin: 0;
+}
 .booking-detail-section .muted {
   margin: 0 0 10px;
 }

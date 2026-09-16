@@ -535,7 +535,7 @@ function GenerateDialog({
   // Clear any previous submission error when dates change
   useEffect(() => { gen.clear(); }, [periodStart, periodEnd]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const noBookings = preview !== undefined && preview.count === 0;
+  const noBookings = preview != null && preview.count === 0;
 
   async function submit() {
     if (noBookings) return;

@@ -1115,7 +1115,6 @@ function PartnerDetailPanel({
           busy={delSmt.busy}
           error={delSmt.error}
           submitLabel="Delete"
-          danger
           onSubmit={async () => {
             const ok = await delSmt.run(
               `finance/v1/partners/${partner.id}/settlements/${deletingSettlement.id}`,

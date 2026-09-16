@@ -522,7 +522,7 @@ function GenerateDialog({
   const [periodEnd, setPeriodEnd] = useState(defEnd);
   const gen = useMutation();
 
-  // Preview: how many unsettled bookings in period
+  // Preview: how many unsettled bookings in period — cleared whenever dates change
   const { data: preview } = useResource<{ count: number; total_minor: number; currency: string }>(
     open ? `finance/v1/partners/${partner.id}/bookings/unsettled-summary?from=${periodStart}&to=${periodEnd}` : null,
   );
@@ -532,7 +532,13 @@ function GenerateDialog({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // Clear any previous submission error when dates change
+  useEffect(() => { gen.clear(); }, [periodStart, periodEnd]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const noBookings = preview !== undefined && preview.count === 0;
+
   async function submit() {
+    if (noBookings) return;
     const result = await gen.run<Settlement>(
       `finance/v1/partners/${partner.id}/settlements`,
       { period_start: periodStart, period_end: periodEnd },
@@ -546,10 +552,11 @@ function GenerateDialog({
       title={`Generate Settlement — ${partner.name}`}
       description="Creates a settlement grouping all unsettled bookings in the period. You can then issue, send and record payment."
       busy={gen.busy}
-      error={gen.error}
+      error={noBookings ? undefined : gen.error}
       onSubmit={submit}
       onClose={onClose}
       submitLabel="Generate"
+      submitDisabled={noBookings}
     >
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <TenantDateInput
@@ -568,17 +575,33 @@ function GenerateDialog({
         />
       </div>
 
+      {/* Preview / no-bookings notice — toast-style banner */}
       {preview && (
-        <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "10px 14px", fontSize: "0.82rem" }}>
-          {preview.count === 0 ? (
-            <span style={{ color: "var(--muted)" }}>No unsettled bookings in this period.</span>
-          ) : (
-            <>
+        noBookings ? (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8,
+            background: "color-mix(in srgb, var(--warning, #f59e0b) 12%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--warning, #f59e0b) 35%, transparent)",
+            borderRadius: 8, padding: "10px 14px", fontSize: "0.82rem",
+            color: "var(--warning-text, #92400e)",
+          }}>
+            <span style={{ fontSize: "1rem" }}>⚠️</span>
+            No unsettled bookings found in this period. Adjust the dates to include bookings.
+          </div>
+        ) : (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8,
+            background: "color-mix(in srgb, var(--success, #10b981) 10%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--success, #10b981) 30%, transparent)",
+            borderRadius: 8, padding: "10px 14px", fontSize: "0.82rem",
+          }}>
+            <span style={{ fontSize: "1rem" }}>✓</span>
+            <span>
               <strong>{preview.count}</strong> unsettled booking{preview.count !== 1 ? "s" : ""} ·{" "}
-              <strong>{money(preview.total_minor, preview.currency || currency)}</strong> commission
-            </>
-          )}
-        </div>
+              <strong>{money(preview.total_minor, preview.currency || currency)}</strong>
+            </span>
+          </div>
+        )
       )}
     </FormDialog>
   );

@@ -60,7 +60,7 @@ Shipped:
 
 Runbook: [crew-mobile-store-publish.md](crew-mobile-store-publish.md). Evidence: [crew-mobile-store-readiness-evidence.md](../TESTING/crew-mobile-store-readiness-evidence.md).
 
-Owner remaining: Expo `eas init`, Apple Developer, Google Play Console, reviewer demo account, device screenshots. Offline / Pay / GPS stay deferred.
+Owner remaining: Apple Developer, Google Play Console, reviewer demo account, device screenshots. Expo project `@zettazglobal/zettaz-crew` is linked. Offline / Pay / GPS stay deferred.
 
 After the web deploy that includes `/api/mobile`, continue Administration / non-Ops verification unless the owner stays on store submission.
 

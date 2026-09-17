@@ -151,11 +151,13 @@ export default function App() {
     setBusy(true);
     setError("");
     try {
-      const result = await call<{ token: string }>(
+      const result = await call<{ token?: string }>(
         "/auth/v1/sign-in",
         undefined,
         { method: "POST", body: JSON.stringify({ email, password }) },
       );
+      if (!result.token)
+        throw new Error("Sign-in did not return a session. Try again.");
       await SecureStore.setItemAsync(SESSION_KEY, result.token);
       setToken(result.token);
     } catch (reason) {

@@ -73,6 +73,9 @@ const config: ExpoConfig = {
   extra: {
     apiBaseUrl,
     webOrigin,
+    eas: {
+      projectId: "06c5ee72-752e-4e24-8519-a148f57b84d3",
+    },
   },
 };
 

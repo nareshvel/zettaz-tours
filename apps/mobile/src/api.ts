@@ -60,16 +60,29 @@ export async function call<T>(
   } catch (reason) {
     throw new ApiError(networkMessage(reason), 0);
   }
+  const contentType = response.headers.get("content-type") ?? "";
   let data: unknown = null;
-  try {
-    data = await response.json();
-  } catch {
-    data = null;
+  if (
+    contentType.includes("application/json") ||
+    contentType.includes("problem+json")
+  ) {
+    try {
+      data = await response.json();
+    } catch {
+      data = null;
+    }
+  } else {
+    throw new ApiError(
+      "Can't reach the crew service. The mobile API is not live on this server yet.",
+      response.status,
+    );
   }
   if (!response.ok)
     throw new ApiError(
       readMessage(data, networkMessage(new Error("Request failed"))),
       response.status,
     );
+  if (!data || typeof data !== "object")
+    throw new ApiError("Crew service returned an empty response.", response.status);
   return data as T;
 }

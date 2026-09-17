@@ -16,14 +16,14 @@ Connected 1.0 is in scope. Encrypted offline, crew-mobile Pay, GPS, and retained
 
 ## Owner accounts (cannot be done in git)
 
-1. [Expo](https://expo.dev) account → from `apps/mobile` run `npx eas-cli login` then `npx eas-cli init` (writes `extra.eas.projectId` into `app.config.ts`).
+1. [Expo](https://expo.dev) account — **done 17 Sep:** logged in as `zettazglobal`, project `@zettazglobal/zettaz-crew`, id `06c5ee72-752e-4e24-8519-a148f57b84d3` in `app.config.ts` (`eas init` cannot write a dynamic config).
 2. Apple Developer Program ($99/year) → App Store Connect app **Zettaz Crew**, bundle `com.zettaz.crew`.
 3. Google Play Console ($25 one-time) → app **Zettaz Crew**, package `com.zettaz.crew`.
 4. Create a **reviewer demo** staff user on production with `crew.trip.read` / `checkin.write`, assigned to a departure on the review day. Put the email/password only in App Review notes — not in git.
 
 ## Build
 
-After `eas init` and a web deploy that includes `/api/mobile`:
+After a web deploy that includes `/api/mobile`:
 
 ```sh
 cd apps/mobile

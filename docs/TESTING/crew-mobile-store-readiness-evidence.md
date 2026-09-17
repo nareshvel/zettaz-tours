@@ -22,7 +22,7 @@
 
 ## Still owner / device work
 
-- `npx eas-cli login` + `eas init` (Expo project id)
+- Expo login + project `@zettazglobal/zettaz-crew` (`06c5ee72-752e-4e24-8519-a148f57b84d3`) — written into `app.config.ts`
 - Apple Developer + Google Play Console accounts
 - Deploy web so `/api/mobile` is live, then preview build on a physical iPhone and Android
 - App Review demo staff account with a same-day assignment

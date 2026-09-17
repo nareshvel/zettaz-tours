@@ -3254,10 +3254,26 @@ test("crew mobile façade exposes only assigned trips and restricts crew check-i
     ).status,
     400,
   );
+  const financeMember = await post("/admin/v1/members", t.token, {
+    name: "Mock Finance",
+    email: `finance-${randomUUID()}@example.invalid`,
+    role: "finance",
+  });
+  const finance = await issueSession(
+    admin,
+    financeMember.body.actorId,
+    t.tenantId,
+  );
   assert.equal(
-    (await get(`/crew/v1/today?date=${today.body.date}`, b.token)).status,
+    (await get(`/crew/v1/today?date=${today.body.date}`, finance)).status,
     403,
   );
+  const otherTenant = await get(
+    `/crew/v1/today?date=${today.body.date}`,
+    b.token,
+  );
+  assert.equal(otherTenant.status, 200);
+  assert.equal(otherTenant.body.trips.length, 0);
 });
 
 test("partner organizations are tenant-scoped and require partner management permission", async () => {

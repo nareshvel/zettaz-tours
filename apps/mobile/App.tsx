@@ -14,7 +14,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { call, isUnauthorized, requestKey } from "./src/api";
+import { call, crewLoadMessage, isUnauthorized, requestKey } from "./src/api";
 import { APP_VERSION, SESSION_KEY, SUPPORT_EMAIL, WEB } from "./src/config";
 type Passenger = {
   id: string;
@@ -139,7 +139,7 @@ export default function App() {
         setActive(result.trips.find((trip) => trip.id === active.id) ?? null);
     } catch (reason) {
       if (isUnauthorized(reason)) await clearSession();
-      else setError((reason as Error).message);
+      else setError(crewLoadMessage(reason));
     } finally {
       setBusy(false);
     }
@@ -832,7 +832,9 @@ export default function App() {
               <View style={styles.empty}>
                 <Text style={styles.cardTitle}>No assigned trips today</Text>
                 <Text style={styles.muted}>
-                  Pull to refresh after dispatch assigns a trip.
+                  Only departures you are assigned to as crew appear here.
+                  Assign this person under Team & resources, or sign in as
+                  that guide or driver.
                 </Text>
               </View>
             ) : (

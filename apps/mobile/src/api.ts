@@ -42,6 +42,15 @@ export function isUnauthorized(reason: unknown) {
   return /unauthor|sign in to continue/i.test(text);
 }
 
+export function crewLoadMessage(reason: unknown) {
+  if (reason instanceof ApiError && reason.status === 403)
+    return "This app only shows trips you are assigned to as crew. Use a guide or driver account, or assign this person on a departure.";
+  const text = reason instanceof Error ? reason.message : String(reason);
+  if (/^forbidden$/i.test(text))
+    return "This app only shows trips you are assigned to as crew. Use a guide or driver account, or assign this person on a departure.";
+  return text;
+}
+
 export async function call<T>(
   path: string,
   token?: string,

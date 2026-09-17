@@ -563,10 +563,22 @@ export function Workspace({
     content = <Settings session={session} refresh={load} />;
   } else if (area === "profile") {
     permission = "authenticated";
-    content = <Profile session={session} section={segments[1] ?? "profile"} />;
+    content = (
+      <Profile
+        session={session}
+        section={segments[1] ?? "profile"}
+        onSessionReload={() => load({ silent: true })}
+      />
+    );
   } else if (area === "subscription") {
     permission = "authenticated";
-    content = <Profile session={session} section="subscription" />;
+    content = (
+      <Profile
+        session={session}
+        section="subscription"
+        onSessionReload={() => load({ silent: true })}
+      />
+    );
   } else if (area === "finance") {
     // Finance sub-sections: overview | partners | expenses | reports
     permission =

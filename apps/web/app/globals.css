@@ -439,6 +439,11 @@ textarea:focus-visible {
   align-items: center;
   gap: 16px;
 }
+.account-profile-page .catalog-metrics strong {
+  overflow-wrap: anywhere;
+  font-size: 15px;
+  font-weight: 700;
+}
 .account-profile-layout {
   display: grid;
   grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);

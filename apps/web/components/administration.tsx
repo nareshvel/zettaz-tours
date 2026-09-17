@@ -3104,7 +3104,12 @@ export function Settings({
                       disabled={logoBusy}
                       onChange={(e) => void uploadLogo(e.target.files?.[0])}
                     />
-                    <small>JPG, PNG, WebP or SVG · maximum 2 MB</small>
+                    <small>
+                      JPG, PNG, WebP or SVG · maximum 2 MB
+                      {session.tenant.logo_path && !logoUnavailable
+                        ? " · click the image to replace"
+                        : ""}
+                    </small>
                   </div>
                   <div className="identity-fields">
                     <Field label="Business name">

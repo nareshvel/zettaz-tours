@@ -12,9 +12,9 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 
 ## Owner priority (17 September 2026 — non-Ops after Crew field pass)
 
-1. **Crew app.** Phases 1–4 plus retained waiver PDF download are in the working tree on top of production `cad0ed8`. Owner deploys this increment (`document_artifacts` GRANT + PDF after sign), then builds EAS preview and runs the full device test including airplane-mode (4.8). **Do not start Phase 5.**
+1. **Crew app.** Phases 1–4 are on production `cad0ed8`. Retained waiver PDF + Crew sync-centre sign-out are on `origin/main` at `0acc028` (no new numbered migration). Owner deploys that tip, then builds EAS preview and runs the full device test including airplane-mode (4.8). **Do not start Phase 5.**
 2. **Operations menu group** remains functionally complete pending testing. Do not open new Ops web feature work unless testing finds a bug.
-3. **Non-Ops:** Customers, Audit, and Document library polish are on production (`cad0ed8`; owner visual still outstanding). Tenant settings remaining tabs already have earlier polish; Security non-owner empty state added. Next: Profile owner visual. Reports already polished.
+3. **Non-Ops:** Customers, Audit, and Document library polish are on production (`cad0ed8`; owner visual still outstanding). **Profile polish follow-up** is local (uncommitted) — see [profile-polish-evidence.md](../TESTING/profile-polish-evidence.md). Next: remaining Administration owner visual (General & branding, Taxes, Guest stays, Partners). Reports already polished.
 4. **Hold Subscription messaging.**
 
 ---
@@ -25,7 +25,8 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 | --- | --- |
 | Branch | `main` |
 | Tip deployed | `cad0ed8` (Crew Phases 1–4 + Customers / Audit / Document library polish) |
-| Mac ↔ `origin/main` | In sync at this VPS deploy |
+| `origin/main` | `0acc028` (retained waiver PDF + Crew sync-centre sign-out). **Owner deploying.** Profile polish is local until committed. |
+| Mac ↔ `origin/main` | Ahead locally with Profile polish; VPS still `cad0ed8` until `./deploy.sh` |
 | Migrations | Through **`089_crew_captain_roles.sql`** on production. Prod migrate **COMPLETE**, Applied this run: **088**, **089**, Pending: 0 |
 | Email verification / trial auth | **Already on `main`** (`060`–`061`); do not invent “never pushed” |
 
@@ -55,7 +56,7 @@ Phased delivery: [crew-app-delivery.md](../STRATEGY/crew-app-delivery.md).
 
 **On production (`cad0ed8`):** Phases 1–4 including encrypted offline (088) and Crew/Captain roles (089).
 
-**Now:** owner deploys this increment, builds a new EAS preview, and runs the full device test including one airplane-mode cycle. **Do not start Phase 5.**
+**Now:** owner deploys `0acc028` (and later the Profile polish commit), builds a new EAS preview, and runs the full device test including one airplane-mode cycle. **Do not start Phase 5.**
 
 Evidence: [crew-app-phase-2-evidence.md](../TESTING/crew-app-phase-2-evidence.md), [crew-app-phase-3-evidence.md](../TESTING/crew-app-phase-3-evidence.md), [crew-app-phase-4-evidence.md](../TESTING/crew-app-phase-4-evidence.md).
 
@@ -110,7 +111,7 @@ Deploy runs them through `./deploy.sh` → `npm run db:migrate`; do not hand-app
 
 Evidence: [print-and-settings-evidence.md](../TESTING/print-and-settings-evidence.md). **Not verified:** live agent pairing / physical print (no agent reachable from the dev environment) and owner visual passes.
 
-Remaining in this group: owner visual on General & branding, Taxes & commercial, Guest stays, Partners. Security non-owner empty state shipped 17 Sep. Document library and Audit have polish passes (owner visual outstanding).
+Remaining in this group: owner visual on General & branding, Taxes & commercial, Guest stays, Partners. Logo dropzone now says to click the image to replace when a logo is already on file. Security non-owner empty state shipped 17 Sep. Document library, Audit, and Profile have polish passes (owner visual outstanding).
 
 ---
 
@@ -142,7 +143,7 @@ Work **outside** the Operations aside group. Suggested order (adjust with owner)
 - **Audit — polish implemented 17 Sep.** Evidence: [audit-polish-evidence.md](../TESTING/audit-polish-evidence.md)
 
 ### 4. Profile (account shell)
-- Profile / Security — MFA still deferred honestly
+- **Profile polish follow-up implemented 17 Sep.** Evidence: [profile-polish-evidence.md](../TESTING/profile-polish-evidence.md). Owner visual still outstanding. MFA still deferred honestly.
 - Subscription tab: **hold messaging polish**; only fix blockers if broken
 
 For each surface: verify against [ui-waiver-launch-task-list.md](../STRATEGY/ui-waiver-launch-task-list.md), fix clear UX/functional gaps in one bounded pass, write/extend `docs/TESTING/*-evidence.md`, update row status.

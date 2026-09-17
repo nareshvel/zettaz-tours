@@ -25,9 +25,11 @@ function isOwner(session: Session) {
 export function Profile({
   session,
   section = "profile",
+  onSessionReload,
 }: {
   session: Session;
   section?: string;
+  onSessionReload?: () => Promise<void> | void;
 }) {
   const router = useRouter();
   const path = usePathname();
@@ -78,8 +80,29 @@ export function Profile({
       <Heading
         eyebrow="ACCOUNT"
         title="My profile"
-        description="Manage your personal information, security, and preferences."
+        description="Your name, sign-in email, and password for this workspace. Owners also see the subscription tab."
       />
+      <div
+        className="catalog-metrics reservation-insights"
+        aria-label="Account summary"
+      >
+        <div>
+          <strong>{label(session.role)}</strong>
+          <span>Role</span>
+        </div>
+        <div>
+          <strong>{session.tenant.name}</strong>
+          <span>Workspace</span>
+        </div>
+        <div>
+          <strong>{session.actorEmail}</strong>
+          <span>Sign-in email</span>
+        </div>
+        <div>
+          <strong>{session.actorPhone?.trim() ? "On file" : "Not set"}</strong>
+          <span>Phone</span>
+        </div>
+      </div>
 
       <div className="account-profile-layout">
         <aside className="panel account-profile-rail">
@@ -110,7 +133,12 @@ export function Profile({
         </aside>
 
         <div className="account-profile-content">
-          {active === "profile" && <ProfileDetails session={session} />}
+          {active === "profile" && (
+            <ProfileDetails
+              session={session}
+              onSessionReload={onSessionReload}
+            />
+          )}
           {active === "security" && <SecurityDetails session={session} />}
           {active === "subscription" && isOwner(session) && (
             <div className="panel form-panel account-profile-panel">
@@ -131,12 +159,24 @@ export function Profile({
   );
 }
 
-function ProfileDetails({ session }: { session: Session }) {
+function ProfileDetails({
+  session,
+  onSessionReload,
+}: {
+  session: Session;
+  onSessionReload?: () => Promise<void> | void;
+}) {
   const mutation = useMutation();
   const [name, setName] = useState(session.actorName);
   const [email, setEmail] = useState(session.actorEmail);
   const [phoneNumber, setPhoneNumber] = useState(session.actorPhone ?? "");
   const [profileMessage, setProfileMessage] = useState("");
+
+  useEffect(() => {
+    setName(session.actorName);
+    setEmail(session.actorEmail);
+    setPhoneNumber(session.actorPhone ?? "");
+  }, [session.actorName, session.actorEmail, session.actorPhone]);
 
   async function saveProfile(event: React.FormEvent) {
     event.preventDefault();
@@ -146,7 +186,10 @@ function ProfileDetails({ session }: { session: Session }) {
       { name, email, phoneNumber },
       "PATCH",
     );
-    if (result) setProfileMessage("Profile saved.");
+    if (result) {
+      setProfileMessage("Profile saved.");
+      await onSessionReload?.();
+    }
   }
 
   return (
@@ -156,7 +199,9 @@ function ProfileDetails({ session }: { session: Session }) {
           <UserRound size={20} />
           <div>
             <h2>Personal information</h2>
-            <p>Used for your workspace identity and account communications.</p>
+            <p>
+              Name and phone appear to other staff. Email is how you sign in.
+            </p>
           </div>
         </div>
         <div className="form-grid">
@@ -182,6 +227,7 @@ function ProfileDetails({ session }: { session: Session }) {
               value={phoneNumber}
               onChange={(event) => setPhoneNumber(event.target.value)}
               autoComplete="tel"
+              placeholder="Optional"
             />
           </Field>
         </div>
@@ -274,8 +320,8 @@ function SecurityDetails({ session }: { session: Session }) {
             <div>
               <h2>Change password</h2>
               <p>
-                Use at least 12 characters. Changing password keeps this
-                session.
+                Use at least 12 characters. This browser stays signed in after
+                a password change.
               </p>
             </div>
           </div>
@@ -311,7 +357,12 @@ function SecurityDetails({ session }: { session: Session }) {
             </Field>
           </div>
           {(password.error || passwordMessage) && (
-            <Notice error={Boolean(password.error)}>
+            <Notice
+              error={
+                Boolean(password.error) ||
+                passwordMessage === "New passwords do not match."
+              }
+            >
               {password.error || passwordMessage}
             </Notice>
           )}
@@ -330,11 +381,11 @@ function SecurityDetails({ session }: { session: Session }) {
             <div>
               <div className="account-section-title-row">
                 <h2>Two-factor authentication</h2>
-                <span className="status-pill muted">Disabled</span>
+                <span className="status-pill muted">Not available yet</span>
               </div>
               <p>
-                Privileged MFA (TOTP and recovery codes) is planned for launch
-                hardening and is not enabled yet.
+                Privileged MFA (TOTP and recovery codes) is not switched on
+                yet. This is not a broken setting.
               </p>
             </div>
           </div>

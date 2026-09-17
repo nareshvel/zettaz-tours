@@ -15,7 +15,7 @@
   - Localization explains why booking / collection / reporting currencies are read-only (Track A same-currency; FX out of scope).
   - Taxes & commercial explains the rate is applied exclusively on new-hold subtotals; inclusive pricing is not modeled.
   - Desktop aside meta/facts type slightly smaller; mobile/tablet tab-to-content spacing tightened.
-- Config / profile / support-access API contracts unchanged.
+- **Follow-up 17 September 2026:** when a tenant logo is already on file, the helper under the dropzone says to click the image to replace it.
 
 ## Owner acceptance still needed
 
@@ -24,3 +24,4 @@
 - Open `/settings?tab=waivers` and `/settings?tab=security` directly.
 - Approve or revoke a support grant with a reason when a request exists.
 - Save general profile and commercial settings without losing other tabs’ draft values unexpectedly.
+- Confirm an existing logo can be replaced by clicking the image (helper text under the dropzone).

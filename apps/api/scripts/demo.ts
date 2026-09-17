@@ -158,6 +158,7 @@ async function main() {
         timezone: "America/Antigua",
         ownerName: "Mock Owner",
         ownerEmail: `${slug}@example.invalid`,
+        ownerPhone: "+12685550100",
         country: "AG",
         config,
       });

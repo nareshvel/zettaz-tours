@@ -105,9 +105,13 @@ export class TenantService {
             postalCode: "",
             country: data.country.toUpperCase(),
             email: data.ownerEmail,
-            phone: "",
+            phone: data.ownerPhone,
           },
-          { name: data.ownerName, email: data.ownerEmail, phone: "" },
+          {
+            name: data.ownerName,
+            email: data.ownerEmail,
+            phone: data.ownerPhone,
+          },
           false,
         ],
       );
@@ -139,11 +143,10 @@ export class TenantService {
         );
         if (code === "owner") ownerRoleId = role.id;
       }
-      await tx.query(`INSERT INTO staff_users VALUES($1,$2,$3)`, [
-        ownerId,
-        data.ownerName,
-        data.ownerEmail,
-      ]);
+      await tx.query(
+        `INSERT INTO staff_users(id,name,email,phone_number) VALUES($1,$2,$3,$4)`,
+        [ownerId, data.ownerName, data.ownerEmail, data.ownerPhone],
+      );
       await tx.query(
         `INSERT INTO memberships(tenant_id,actor_id,role,role_id,permissions) VALUES($1,$2,'owner',$3,$4)`,
         [tenantId, ownerId, ownerRoleId, grants.owner],

@@ -55,6 +55,7 @@ async function setupTenant(slug: string, config = mockConfig) {
     timezone: "America/Antigua",
     ownerName: "Mock Owner",
     ownerEmail: `${slug}@example.invalid`,
+    ownerPhone: "+12685550100",
     country: "AG",
     config,
   });
@@ -1861,6 +1862,7 @@ test("recurring schedules reject DST gaps/ambiguities and honor blackout dates",
     timezone: "America/New_York",
     ownerName: "Mock Owner",
     ownerEmail: "dst@example.invalid",
+    ownerPhone: "+12125550100",
     country: "US",
     config: mockConfig,
   });

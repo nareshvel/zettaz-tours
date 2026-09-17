@@ -1282,6 +1282,24 @@ textarea:focus-visible {
   gap: 18px;
   margin-top: 26px;
 }
+.signup-account-form .signup-account-grid {
+  margin: 0;
+  gap: 14px 16px;
+}
+.signup-account-form .signup-account-email {
+  grid-column: 1 / -1;
+}
+.signup-account-form .field {
+  margin: 0;
+}
+@media (max-width: 560px) {
+  .signup-account-form .signup-account-grid {
+    grid-template-columns: 1fr;
+  }
+  .signup-account-form .signup-account-email {
+    grid-column: auto;
+  }
+}
 .login-card .button {
   justify-content: center;
 }

@@ -43,6 +43,7 @@ const registerSchema = z
     planId: z.string().uuid().optional(),
     ownerName: z.string().min(2).max(120),
     email: z.string().email().max(254),
+    phone: z.string().trim().min(7).max(40),
     password: z.string().min(12).max(1024),
   })
   .strict();
@@ -324,6 +325,7 @@ export class AuthController {
       config: defaultConfig,
       ownerName: input.ownerName,
       ownerEmail: input.email,
+      ownerPhone: input.phone,
       country: input.country,
       planId,
     });

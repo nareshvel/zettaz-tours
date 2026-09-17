@@ -92,6 +92,7 @@ export const tenantSchema = z
     }),
     ownerName: label,
     ownerEmail: z.string().email().max(254),
+    ownerPhone: z.string().trim().min(7).max(40),
     country: z.string().min(2).max(2),
     config: configSchema,
     planId: z.string().uuid().optional(),

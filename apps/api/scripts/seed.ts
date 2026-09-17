@@ -335,6 +335,8 @@ async function main() {
           timezone: "America/Antigua",
           ownerName: "Sample Tenant Owner",
           ownerEmail: `${seed.slug}@example.invalid`,
+          ownerPhone: "+12685550100",
+          country: "AG",
           config: config(seed.currency),
         });
         tenantRow = { id: created.tenantId };

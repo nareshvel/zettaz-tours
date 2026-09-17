@@ -612,6 +612,7 @@ export function Signup() {
   const [planId, setPlanId] = useState("3e595412-81e5-4c76-8216-25321d7ba56a");
   const [ownerName, setOwnerName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [agreed, setAgreed] = useState(false);
@@ -641,6 +642,7 @@ export function Signup() {
           planId,
           ownerName,
           email,
+          phone,
           password,
         }),
       });
@@ -723,7 +725,7 @@ export function Signup() {
       </div>
       <section
         className="login-card"
-        style={{ maxWidth: step === 1 ? "800px" : "480px" }}
+        style={{ maxWidth: step === 1 ? "800px" : "560px" }}
       >
         <p className="eyebrow">FREE 14-DAY TRIAL · NO CARD REQUIRED</p>
         <h1>{step === 1 ? "Set up your workspace" : "Create your account"}</h1>
@@ -938,51 +940,69 @@ export function Signup() {
             </button>
           </form>
         ) : (
-          <form onSubmit={handleSubmit}>
-            <label className="field">
-              <span>Your full name</span>
-              <input
-                required
-                value={ownerName}
-                onChange={(e) => setOwnerName(e.target.value)}
-                placeholder="Alex Morgan"
-              />
-            </label>
-            <label className="field">
-              <span>Work email</span>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@company.com"
-                autoComplete="email"
-              />
-            </label>
-            <label className="field">
-              <span>
-                Password <small>(12+ characters)</small>
-              </span>
-              <input
-                type="password"
-                minLength={12}
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="new-password"
-              />
-            </label>
-            <label className="field">
-              <span>Confirm password</span>
-              <input
-                type="password"
-                minLength={12}
-                required
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                autoComplete="new-password"
-              />
-            </label>
+          <form onSubmit={handleSubmit} className="signup-account-form">
+            <div className="form-grid signup-account-grid">
+              <label className="field">
+                <span>Your full name</span>
+                <input
+                  required
+                  minLength={2}
+                  maxLength={120}
+                  value={ownerName}
+                  onChange={(e) => setOwnerName(e.target.value)}
+                  placeholder="Alex Morgan"
+                  autoComplete="name"
+                />
+              </label>
+              <label className="field">
+                <span>Phone number</span>
+                <input
+                  type="tel"
+                  required
+                  minLength={7}
+                  maxLength={40}
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="+1 268 555 0100"
+                  autoComplete="tel"
+                />
+              </label>
+              <label className="field signup-account-email">
+                <span>Work email</span>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@company.com"
+                  autoComplete="email"
+                />
+              </label>
+              <label className="field">
+                <span>
+                  Password <small>(12+ characters)</small>
+                </span>
+                <input
+                  type="password"
+                  minLength={12}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </label>
+              <label className="field">
+                <span>Confirm password</span>
+                <input
+                  type="password"
+                  minLength={12}
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </label>
+            </div>
             {confirmPassword && password !== confirmPassword && (
               <Notice error>Passwords do not match.</Notice>
             )}
@@ -1011,7 +1031,11 @@ export function Signup() {
             {error && <Notice error>{error}</Notice>}
             <button
               className="button"
-              disabled={password !== confirmPassword || !agreed}
+              disabled={
+                password !== confirmPassword ||
+                !agreed ||
+                phone.trim().length < 7
+              }
               type="submit"
               style={{ width: "100%" }}
             >

@@ -10,9 +10,9 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 
 ---
 
-## Owner priority (17 September 2026 — Crew Phases 2–3)
+## Owner priority (17 September 2026 — Crew field pass)
 
-1. **Crew app.** Phase 1 is live on production and EAS preview. Phase 1 UI notes are **parked** until after Phase 2–3 for one planned field pass. Phases 2–3 (Pay + tablet) are in the working tree.
+1. **Crew app.** Phases 1–3 deployed at `02dc7ea`. Phase 1–3 device notes are the current engineering stream (one planned field pass). **Do not start Phase 4 offline** until after the first connected live week.
 2. **Operations menu group** remains functionally complete pending testing. Do not open new Ops web feature work unless testing finds a bug.
 3. **Hold Subscription messaging.**
 
@@ -23,16 +23,16 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 | Fact | Value |
 | --- | --- |
 | Branch | `main` |
-| Tip deployed | `34047a3` (Crew Phase 1 + catalog cover images) |
-| Mac ↔ `origin/main` | Check `git status`; Phase 2 Pay and Phase 3 tablet may still be local |
+| Tip deployed | `02dc7ea` (Crew Phases 2–3: Pay + tablet dock) |
+| Mac ↔ `origin/main` | In sync at deploy time; field-pass fixes may still be local |
 | Migrations | Through **`087_product_cover_image.sql`**; prod migrate **COMPLETE**, Pending: 0 |
 | Email verification / trial auth | **Already on `main`** (`060`–`061`); do not invent “never pushed” |
 
 **VPS deploy completed 17 September 2026** (`/var/www/zettaz-tours`):
 
-- Fast-forward `a7ad226..34047a3`, npm install, API + web build, migration `087` applied, Pending: 0, PM2 `tours-api` + `tours-web` restarted online.
-- EAS preview Android `1ca2c4ba-…` and iOS `2fc95609-…` installed; owner confirmed assigned-trip Phase 1 UI.
-- Phase 1 device issues: park until after Phase 2–3, then one planned field pass.
+- Fast-forward through `02dc7ea` (Crew Pay + tablet). Migrations through **087**, Pending: 0, PM2 restarted.
+- Rebuild EAS **preview** so phones/tablets pick up Pay and Day Board (the `1ca2c4ba` / `2fc95609` binaries are Phase 1 only).
+- Phase 4 encrypted offline waits for the first connected live week.
 
 If a later pull fails on dirty lockfile again:
 
@@ -48,19 +48,15 @@ Server may still show local-only drift (`apps/mobile/package.json`, `ecosystem.c
 
 ---
 
-## Crew app — Phases 2–3 in working tree (17 September 2026)
+## Crew app — field pass after Phases 2–3 deploy (17 September 2026)
 
 Phased delivery: [crew-app-delivery.md](../STRATEGY/crew-app-delivery.md).
 
-**Shipped on production / preview:** Phase 1 connected field (roster search, pickups, start/no-show, clearance badges). Empty Today is correct when unassigned.
+**Shipped on production:** Phase 1 field + Phase 2 Pay + Phase 3 tablet (`02dc7ea`). Empty Today is correct when unassigned. Day Board is tablet-width + `manifest.read`.
 
-**Parked:** Phase 1 device UX notes until after Phase 2–3, then one planned field pass / re-engineer.
+**Now:** field-pass fixes (desk Pay, hide 403 actions, phone copy for desk roles), then a new EAS preview. **Do not start Phase 4 offline** until after the first connected live week.
 
-**Now:** commit/push Crew Pay + tablet dock, VPS `./deploy.sh`, new EAS preview. Do not start Phase 4 offline until after the first connected live week.
-
-Pay: `POST /crew/v1/bookings/{id}/payments`. Tablet: `GET /crew/v1/board`, walk-up, weather, print/share. Evidence: [crew-app-phase-2-evidence.md](../TESTING/crew-app-phase-2-evidence.md), [crew-app-phase-3-evidence.md](../TESTING/crew-app-phase-3-evidence.md).
-
-Later: Phase 4 offline after the first connected live week. GPS / card-present stay Track B.
+Evidence: [crew-app-phase-2-evidence.md](../TESTING/crew-app-phase-2-evidence.md), [crew-app-phase-3-evidence.md](../TESTING/crew-app-phase-3-evidence.md).
 
 ---
 

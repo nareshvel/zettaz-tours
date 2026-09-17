@@ -177,6 +177,7 @@ export type BoardPayload = {
   items: BoardItem[];
   paymentMethods?: string[];
   collectionCurrency?: string | null;
+  waiverTemplate?: { id: string; version: number; title: string; body: string } | null;
 };
 export type WalkUpQuote = {
   totalMinor: number;

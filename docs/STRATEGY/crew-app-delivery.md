@@ -1,7 +1,7 @@
 # Zettaz Crew — delivery plan
 
 **Updated:** 17 September 2026  
-**Status:** Owner-accepted 17 September 2026. Phase 1 on production (`34047a3`) and EAS preview. Phase 2 Pay and Phase 3 tablet implemented in working tree. Phase 1 device notes parked until after Phase 2–3.  
+**Status:** Owner-accepted 17 September 2026. Phases 1–3 on production (`02dc7ea`). Field pass in progress. Phase 4 offline waits for the first connected live week.  
 **Audience:** owner + any IDE agent  
 **Scope authority:** [launch-contract.md](launch-contract.md) · **epic:** E08/E07 in [delivery.md](delivery.md) · **facade:** [crew-mobile-facade.md](../FEATURES/operations/crew-mobile-facade.md)
 
@@ -236,4 +236,4 @@ Google Places/routing, Plan pickups Phase 2 (multi-product van), live GPS, consu
 
 ## Start gate
 
-Owner accepted 17 September 2026. Phase 1 is live on production and EAS preview. Phase 2 Pay and Phase 3 tablet are in the working tree. Phase 1 UI notes are parked until after Phase 2–3 so the full field pass can be planned once. Next: commit/push Phases 2–3, VPS deploy, new EAS preview. Phase 4 offline waits for the first connected live week.
+Owner accepted 17 September 2026. Phases 1–3 are on production (`02dc7ea`). A field pass is in progress so Pay and tablet can be used without 403 dead-ends. Phase 4 offline waits for the first connected live week. Rebuild EAS preview so devices pick up the new UI.

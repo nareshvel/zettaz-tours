@@ -234,6 +234,7 @@ export default function App() {
           setPaymentMethods(result.paymentMethods);
         if (result.collectionCurrency !== undefined)
           setCollectionCurrency(result.collectionCurrency ?? null);
+        if (result.waiverTemplate) setWaiverTemplate(result.waiverTemplate);
         if (fromBoard && active) {
           const trip = await call<Trip>(
             `/crew/v1/board/${active.id}`,
@@ -675,6 +676,10 @@ export default function App() {
   const showBoard =
     width >= TABLET_MIN_WIDTH &&
     Boolean(profile?.permissions?.includes("manifest.read"));
+  const can = (code: string) => Boolean(profile?.permissions?.includes(code));
+  const canPay = can("checkin.write") || can("payment.write");
+  const canCheckin = can("checkin.write");
+  const canEvents = can("crew.trip.read");
   const header = (
     <View style={styles.header}>
       <View style={styles.grow}>
@@ -690,7 +695,9 @@ export default function App() {
         </Text>
       </View>
       <View style={styles.headerActions}>
-        {!showProfile && (trips.length > 0 || active || scanned) ? (
+        {!showProfile &&
+        canCheckin &&
+        (trips.length > 0 || active || scanned) ? (
           <Button quiet onPress={() => void openScanner()}>
             Scan
           </Button>
@@ -1331,23 +1338,29 @@ export default function App() {
                 {active.no_show_guests ?? 0} no-show
               </Text>
               <View style={styles.actions}>
-                {["preparing", "boarding", "departed", "completed"].map(
-                  (state) => (
-                    <Button
-                      key={state}
-                      disabled={busy}
-                      onPress={() =>
-                        void mutate(`/crew/v1/departures/${active.id}/events`, {
-                          state,
-                        })
-                      }
-                    >
-                      {state.replace("_", " ")}
-                    </Button>
-                  ),
-                )}
+                {canEvents
+                  ? ["preparing", "boarding", "departed", "completed"].map(
+                      (state) => (
+                        <Button
+                          key={state}
+                          disabled={busy}
+                          onPress={() =>
+                            void mutate(
+                              `/crew/v1/departures/${active.id}/events`,
+                              {
+                                state,
+                              },
+                            )
+                          }
+                        >
+                          {state.replace("_", " ")}
+                        </Button>
+                      ),
+                    )
+                  : null}
               </View>
               {!tripStarted(active) ? (
+                canCheckin ? (
                 startOpen ? (
                   <View style={styles.startSheet}>
                     <Text style={styles.cardTitle}>
@@ -1395,6 +1408,7 @@ export default function App() {
                     Start trip
                   </Button>
                 )
+                ) : null
               ) : (
                 <Text style={styles.muted}>
                   Trip started
@@ -1470,7 +1484,7 @@ export default function App() {
                       {stayLabel(guest.stay)}
                       {aboard ? ` · all aboard ${aboard}` : ""}
                     </Text>
-                    {guest.boarding_clearance === "due" ? (
+                    {guest.boarding_clearance === "due" && canPay ? (
                       <Button disabled={busy} onPress={() => openPay(guest)}>
                         Pay
                       </Button>
@@ -1479,7 +1493,11 @@ export default function App() {
                       <Pressable
                         style={styles.person}
                         key={passenger.id}
-                        onPress={() => openWaiver(guest, passenger)}
+                        onPress={() =>
+                          canCheckin
+                            ? openWaiver(guest, passenger)
+                            : undefined
+                        }
                       >
                         <View style={styles.grow}>
                           <Text style={styles.personName}>
@@ -1498,7 +1516,7 @@ export default function App() {
                         </View>
                         {!["boarded", "no_show"].includes(
                           passenger.checkin_state ?? "",
-                        ) ? (
+                        ) && canCheckin ? (
                           <View style={styles.rowActions}>
                             <Button
                               disabled={busy}
@@ -1530,7 +1548,7 @@ export default function App() {
                             >
                               No-show
                             </Button>
-                            {guest.boarding_clearance === "due" ? (
+                            {guest.boarding_clearance === "due" && canPay ? (
                               <Button
                                 quiet
                                 disabled={busy}
@@ -1654,9 +1672,9 @@ export default function App() {
               <View style={styles.empty}>
                 <Text style={styles.cardTitle}>No assigned trips today</Text>
                 <Text style={styles.muted}>
-                  Only departures you are assigned to as crew appear here.
-                  Assign this person under Team & resources, or sign in as that
-                  guide or driver.
+                  {can("manifest.read") && !showBoard
+                    ? "This phone view only lists trips assigned to you as crew. Open Zettaz Crew on a tablet for Day Board and walk-up."
+                    : "Only departures you are assigned to as crew appear here. Assign this person under Team & resources, or sign in as that guide or driver."}
                 </Text>
               </View>
             ) : (

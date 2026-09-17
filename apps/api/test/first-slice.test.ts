@@ -3731,6 +3731,23 @@ test("crew tablet board, walk-up, and weather stay hidden from guides", async ()
     ),
     true,
   );
+  const dueWalkUp = roster.body.guests.find(
+    (guest: { lead_name: string }) => guest.lead_name === "Walk Up Guest",
+  );
+  assert.equal(dueWalkUp.boarding_clearance, "due");
+  const deskPay = await post(
+    `/crew/v1/bookings/${dueWalkUp.booking_id}/payments`,
+    reservations,
+    {
+      amountMinor: dueWalkUp.guest_balance_minor,
+      currency: dueWalkUp.currency,
+      method: "cash",
+      status: "settled",
+      occurredAt: new Date().toISOString(),
+      reason: "Booth collection",
+    },
+  );
+  assert.equal(deskPay.status, 201, JSON.stringify(deskPay.body));
   const weather = await post(
     `/crew/v1/departures/${dep.departureId}/operational-status`,
     t.token,

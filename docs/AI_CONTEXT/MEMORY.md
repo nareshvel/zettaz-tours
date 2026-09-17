@@ -7,10 +7,10 @@ Keep under 200 lines. Update after sessions that change standing decisions.
 ## Current focus (agents)
 
 - **Sprint board:** [../HANDOFF/agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) — prefer over chat history.
-- **Owner priority (17 Sep):** Crew Phases 2–3 (Pay + tablet) in the working tree, then deploy. Operations menu group = complete until testing finds gaps. **Hold** Subscription messaging. Phase 1 device notes parked for one later field pass.
+- **Owner priority (17 Sep):** Crew field pass after Phases 2–3 deploy (`02dc7ea`). Do not start Phase 4 offline until after the first connected live week. Operations menu group = complete until testing finds gaps. **Hold** Subscription messaging.
 - **In progress (15 Sep):** Tenant settings pass — printing, waivers, integrations, localization, sidebar. See the 15 September section below.
-- **Crew app (17 Sep):** Plan accepted. Phase 1 live on production + EAS preview. Phase 1 UI notes parked until after Phase 2–3. Phase 2 Pay and Phase 3 tablet are in the working tree. Next: commit/push, deploy, new preview. Phase 4 offline waits for the first connected live week.
-- **Deploy:** VPS at tip `34047a3` via `./deploy.sh` (migrations through **087**, Pending: 0). Phase 2 Pay and Phase 3 tablet may still be local — check `git status`.
+- **Crew app (17 Sep):** Phases 1–3 on production (`02dc7ea`). Field pass: desk Pay, hide 403 actions, tablet waiver template on board. Next: deploy field-pass, new EAS preview. Phase 4 offline waits for the first connected live week.
+- **Deploy:** VPS at tip `02dc7ea` via `./deploy.sh` (migrations through **087**, Pending: 0). Field-pass fixes may still be local — check `git status`.
 - Claude paste brief: [../HANDOFF/claude-handoff-2026-09-14.md](../HANDOFF/claude-handoff-2026-09-14.md).
 
 ## Standing decisions

@@ -6,7 +6,7 @@
 ## Implemented
 
 - `POST /crew/v1/bookings/{id}/payments` (`checkin.write`) records a **settled** manual payment through the same `FinanceService.record` path as the web manifest. Idempotent command key. Never last-write-wins.
-- Assignment is required for every role on this crew endpoint. Guide/driver still lack `payment.write`, so `POST /staff/v1/bookings/{id}/payments` stays 403.
+- Assignment is required for **guide/driver**. Desk roles with `payment.write` (reservations/owner) may collect on the crew Pay path without being assigned, so a tablet walk-up can take cash. `POST /staff/v1/bookings/{id}/payments` stays closed to guides.
 - Partner invoice / partner-collects bookings are rejected (`skip Pay`). Pay is hidden when Today clearance is `partner` or `settled`.
 - `/api/mobile` allowlists only the crew payment path. Finance/admin remain closed.
 - Expo Pay sheet: amount, tenant manual methods (not `reseller_payment`), optional passenger attribution / equal-share default, receipt reference. If booking currency ≠ collection currency, the sheet explains conversion is not enabled and does not invent a rate.

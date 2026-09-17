@@ -3,6 +3,7 @@ import {
   Body,
   ConflictException,
   Controller,
+  ForbiddenException,
   Get,
   Headers,
   HttpException,
@@ -425,6 +426,13 @@ export class CrewService {
           (tenant.config?.manualPaymentMethods as string[] | undefined) ?? []
         ).filter((method) => method !== "reseller_payment"),
         collectionCurrency: tenant.config?.collectionCurrency ?? null,
+        waiverTemplate:
+          (
+            await tx.query(
+              "SELECT id,version,title,body FROM waiver_templates WHERE tenant_id=$1 AND active ORDER BY version DESC LIMIT 1",
+              [actor.tenantId],
+            )
+          ).rows[0] ?? null,
       };
     });
     const board = await this.dispatch.board(actor, { date: meta.date });
@@ -447,6 +455,7 @@ export class CrewService {
       date: board.date,
       paymentMethods: meta.paymentMethods,
       collectionCurrency: meta.collectionCurrency,
+      waiverTemplate: meta.waiverTemplate,
       capabilities: {
         walkUp: actor.permissions.includes("bookings.write"),
         weather: actor.permissions.includes("operations.write"),
@@ -840,12 +849,17 @@ export class CrewController {
       body,
     );
   }
-  @Post("bookings/:id/payments") @Access("checkin.write") payment(
+  @Post("bookings/:id/payments") @Access("authenticated") payment(
     @CurrentActor() actor: Actor,
     @Param("id") value: string,
     @Headers("idempotency-key") key: string,
     @Body() body: unknown,
   ) {
+    if (
+      !actor.permissions.includes("checkin.write") &&
+      !actor.permissions.includes("payment.write")
+    )
+      throw new ForbiddenException();
     return this.service.payment(
       actor,
       parse(departureId, value),

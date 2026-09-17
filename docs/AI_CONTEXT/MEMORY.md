@@ -2,7 +2,7 @@
 
 Keep under 200 lines. Update after sessions that change standing decisions.
 
-**Last updated:** 2026-09-15
+**Last updated:** 2026-09-17
 
 ## Current focus (agents)
 
@@ -17,6 +17,8 @@ Keep under 200 lines. Update after sessions that change standing decisions.
 - **External partners/resellers:** means hotels/resellers belonging to a tenant's partner network, not tenant staff. Track A uses staff-managed partner records, evidence, obligations and remittances; no shared tenant-staff login for partners. Partner portal and automated settlement remain Track B.
 - **Booking source vs settlement:** source slugs (`phone`, `walk_in`, `website`, `partner_reseller`) are channel attribution. Guest vs partner money follows collection mode and ledger facts. Channel brands (Viator, GetYourGuide) are partner organizations under Partner / reseller, not separate booking sources.
 - **Boarding money:** `partner_invoice` and `partner_collects_for_tenant` clear boarding without a new guest payment; other bookings collect remaining guest balance on the web manifest Pay sheet. Pending: complimentary/prepaid flags, boarding exceptions, mixed allocation, crew-mobile Pay. See [../FEATURES/operations/boarding-balance-collection.md](../FEATURES/operations/boarding-balance-collection.md).
+
+- **Crew mobile production API:** phones call `https://tours.zettaz.com/api/mobile` (allowlisted Next.js proxy, Bearer only). Do not expose the full Nest API on the public hostname. Store runbook: [../HANDOFF/crew-mobile-store-publish.md](../HANDOFF/crew-mobile-store-publish.md).
 
 - **Requirements package:** [../STRATEGY/requirements-plan.md](../STRATEGY/requirements-plan.md) indexes module/feature map, proposed RBAC, admin/navigation, tenant payments, first-slice specification and acceptance checklist. Owner accepted recommendations for implementation with mock data. Production business inputs remain open.
 

@@ -4,7 +4,9 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -12,13 +14,8 @@ import {
   TextInput,
   View,
 } from "react-native";
-
-const API =
-  process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ??
-  "http://127.0.0.1:3190";
-const SESSION_KEY = "zettaz-crew-session";
-const requestKey = () =>
-  `mobile_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+import { call, isUnauthorized, requestKey } from "./src/api";
+import { APP_VERSION, SESSION_KEY, SUPPORT_EMAIL, WEB } from "./src/config";
 type Passenger = {
   id: string;
   name: string;
@@ -56,21 +53,6 @@ type ScannedPassenger = {
   name: string;
   category: string;
 };
-
-async function call<T>(path: string, token?: string, init: RequestInit = {}) {
-  const response = await fetch(`${API}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...init.headers,
-    },
-  });
-  const data = await response.json();
-  if (!response.ok)
-    throw new Error(data?.detail?.message ?? data?.detail ?? "Request failed");
-  return data as T;
-}
 
 function Button({
   children,
@@ -127,12 +109,21 @@ export default function App() {
     { x: number; y: number }[]
   >([]);
   const [padSize, setPadSize] = useState({ width: 1, height: 1 });
+  const [recovering, setRecovering] = useState(false);
+  const [recoverySent, setRecoverySent] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     SecureStore.getItemAsync(SESSION_KEY)
       .then(setToken)
       .finally(() => setReady(true));
   }, []);
+  async function clearSession() {
+    await SecureStore.deleteItemAsync(SESSION_KEY);
+    setToken(null);
+    setTrips([]);
+    setActive(null);
+  }
   async function load(session = token) {
     if (!session) return;
     setBusy(true);
@@ -147,7 +138,8 @@ export default function App() {
       if (active)
         setActive(result.trips.find((trip) => trip.id === active.id) ?? null);
     } catch (reason) {
-      setError((reason as Error).message);
+      if (isUnauthorized(reason)) await clearSession();
+      else setError((reason as Error).message);
     } finally {
       setBusy(false);
     }
@@ -172,6 +164,21 @@ export default function App() {
       setBusy(false);
     }
   }
+  async function requestRecovery() {
+    setBusy(true);
+    setError("");
+    try {
+      await call("/auth/v1/password-recovery/request", undefined, {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      });
+      setRecoverySent(true);
+    } catch (reason) {
+      setError((reason as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function mutate(path: string, body: unknown) {
     if (!token) return;
     setBusy(true);
@@ -184,7 +191,8 @@ export default function App() {
       });
       await load(token);
     } catch (reason) {
-      setError((reason as Error).message);
+      if (isUnauthorized(reason)) await clearSession();
+      else setError((reason as Error).message);
       setBusy(false);
     }
   }
@@ -193,10 +201,15 @@ export default function App() {
       try {
         await call("/auth/v1/sign-out", token, { method: "POST" });
       } catch {}
-    await SecureStore.deleteItemAsync(SESSION_KEY);
-    setToken(null);
-    setTrips([]);
-    setActive(null);
+    await clearSession();
+  }
+  async function refresh() {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }
+  function openWeb(path: string) {
+    void Linking.openURL(`${WEB}${path}`);
   }
   function openWaiver(guest: Guest, passenger: Passenger) {
     setSigning({ guest, passenger });
@@ -254,7 +267,8 @@ export default function App() {
       setSigning(null);
       await load(token);
     } catch (reason) {
-      setError((reason as Error).message);
+      if (isUnauthorized(reason)) await clearSession();
+      else setError((reason as Error).message);
       setBusy(false);
     }
   }
@@ -275,7 +289,8 @@ export default function App() {
       setScanned(result);
       setScanning(false);
     } catch (reason) {
-      setError((reason as Error).message);
+      if (isUnauthorized(reason)) await clearSession();
+      else setError((reason as Error).message);
       setScanning(false);
     } finally {
       setBusy(false);
@@ -305,8 +320,14 @@ export default function App() {
         <StatusBar style="dark" />
         <View style={styles.login}>
           <Text style={styles.brand}>ZETTAZ</Text>
-          <Text style={styles.title}>Crew sign in</Text>
-          <Text style={styles.muted}>Use your assigned staff account.</Text>
+          <Text style={styles.title}>
+            {recovering ? "Reset password" : "Crew sign in"}
+          </Text>
+          <Text style={styles.muted}>
+            {recovering
+              ? "We’ll email a reset link if this address has a staff account."
+              : "Use your assigned staff account. This app is for crew check-in, not public booking."}
+          </Text>
           <TextInput
             style={styles.input}
             autoCapitalize="none"
@@ -316,22 +337,78 @@ export default function App() {
             value={email}
             onChangeText={setEmail}
           />
-          <TextInput
-            style={styles.input}
-            autoCapitalize="none"
-            autoComplete="current-password"
-            secureTextEntry
-            placeholder="Password"
-            value={password}
-            onChangeText={setPassword}
-          />
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Button
-            disabled={busy || !email || !password}
-            onPress={() => void signIn()}
-          >
-            {busy ? "Signing in…" : "Sign in"}
-          </Button>
+          {recovering ? (
+            <>
+              {recoverySent ? (
+                <Text style={styles.success}>
+                  If an account exists for that email, a reset link is on its
+                  way. Check your inbox, then return here to sign in.
+                </Text>
+              ) : null}
+              {error ? <Text style={styles.error}>{error}</Text> : null}
+              <Button
+                disabled={busy || !email || recoverySent}
+                onPress={() => void requestRecovery()}
+              >
+                {busy ? "Sending…" : "Email reset link"}
+              </Button>
+              <Button
+                quiet
+                onPress={() => {
+                  setRecovering(false);
+                  setRecoverySent(false);
+                  setError("");
+                }}
+              >
+                Back to sign in
+              </Button>
+            </>
+          ) : (
+            <>
+              <TextInput
+                style={styles.input}
+                autoCapitalize="none"
+                autoComplete="current-password"
+                secureTextEntry
+                placeholder="Password"
+                value={password}
+                onChangeText={setPassword}
+              />
+              {error ? <Text style={styles.error}>{error}</Text> : null}
+              <Button
+                disabled={busy || !email || !password}
+                onPress={() => void signIn()}
+              >
+                {busy ? "Signing in…" : "Sign in"}
+              </Button>
+              <Button
+                quiet
+                onPress={() => {
+                  setRecovering(true);
+                  setRecoverySent(false);
+                  setError("");
+                }}
+              >
+                Forgot password?
+              </Button>
+            </>
+          )}
+          <View style={styles.legalRow}>
+            <Pressable onPress={() => openWeb("/privacy")}>
+              <Text style={styles.legalLink}>Privacy</Text>
+            </Pressable>
+            <Text style={styles.muted}>·</Text>
+            <Pressable onPress={() => openWeb("/terms")}>
+              <Text style={styles.legalLink}>Terms</Text>
+            </Pressable>
+            <Text style={styles.muted}>·</Text>
+            <Pressable
+              onPress={() => void Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
+            >
+              <Text style={styles.legalLink}>Support</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.version}>Version {APP_VERSION}</Text>
         </View>
       </SafeAreaView>
     );
@@ -625,7 +702,13 @@ export default function App() {
       {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={undefined}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void refresh()}
+            tintColor="#087b72"
+          />
+        }
       >
         {scanned ? (
           <View style={styles.scanResult}>
@@ -869,6 +952,16 @@ const styles = StyleSheet.create({
   personName: { color: "#17353a", fontWeight: "700" },
   grow: { flex: 1 },
   empty: { alignItems: "center", gap: 6, paddingVertical: 64 },
+  success: { color: "#087b72", lineHeight: 20 },
+  legalRow: {
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    marginTop: 12,
+    alignItems: "center",
+  },
+  legalLink: { color: "#087b72", fontWeight: "700" },
+  version: { color: "#8aa0a4", fontSize: 12, textAlign: "center" },
   scannerScreen: { flex: 1, backgroundColor: "#061f23" },
   camera: { flex: 1 },
   scannerOverlay: {

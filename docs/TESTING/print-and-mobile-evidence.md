@@ -21,4 +21,4 @@ The complete PostgreSQL test suite applies migrations 001–051 to a fresh isola
 - QR capture uses Expo Camera, retains no image, resolves an opaque expiring token and relies on the API's assignment predicate before exposing the passenger.
 - The existing PostgreSQL/API integration test proves assigned-trip isolation, unassigned-trip denial, permission denial and idempotent trip events.
 
-Physical-device iOS/Android interaction, accessibility, signing, store submission and unreliable-network behavior remain release acceptance work. Encrypted offline storage is not enabled because the privacy, device-expiry, retention and conflict policies remain unresolved.
+Physical-device iOS/Android interaction, accessibility, and unreliable-network behavior remain release acceptance work; store packaging for connected 1.0 is tracked in [crew-mobile-store-readiness-evidence.md](crew-mobile-store-readiness-evidence.md). Encrypted offline storage is not enabled because the privacy, device-expiry, retention and conflict policies remain unresolved.

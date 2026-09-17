@@ -14,13 +14,13 @@ Guide and driver/skipper roles have `crew.trip.read` and `checkin.write`. For th
 
 `apps/mobile` now provides the bounded Today → assigned trip → guest check-in → trip-event flow for iOS and Android. It signs in through the database-backed identity API, stores only the opaque session token in Expo SecureStore, and consumes the assignment-scoped crew endpoints. The camera scans opaque expiring passenger tokens without saving an image; the server still checks that the crew member is assigned to the departure. The client offers no tenant administration, unrestricted booking search, payment values, partner finance, or full customer history.
 
-Set `EXPO_PUBLIC_API_BASE_URL` to an API URL reachable from the device; loopback works only for a simulator sharing the development host. A production build, app-store signing, device QA and release configuration remain deployment work.
+Set `EXPO_PUBLIC_API_BASE_URL` for local devices (`http://<lan-ip>:3190`). Store and preview builds use `https://tours.zettaz.com/api/mobile`, the allowlisted Next.js crew proxy. See [crew mobile store publish](../../HANDOFF/crew-mobile-store-publish.md).
 
 Reservation capture now materializes one passenger slot for every booked seat. Names may remain pending at booking time. The waiver screen collects a pending passenger's full name before consent, and the server completes identity and records waiver evidence atomically. Direct waiver and clearance calls reject unresolved identities.
 
 ## Deliberate boundary
 
-This is connected-first. `POST /crew/v1/departures/{id}/events` records an idempotent, append-only trip-run state event for an assigned crew member and never changes booking or passenger state. Completed and cancelled runs are final. An encrypted offline data cache and mutation queue, payment collection, waiver capture, and push notification are not implemented. The next waiver slice adds a passenger detail view, cruise/hotel/private-accommodation/local stay capture, touch signature, offline command/media sync and server-generated retained PDF as specified in [the launch task list](../../STRATEGY/ui-waiver-launch-task-list.md). Live GPS remains separate. These additions must retain server-side assignment predicates and follow the offline conflict policy before release.
+This is connected-first. `POST /crew/v1/departures/{id}/events` records an idempotent, append-only trip-run state event for an assigned crew member and never changes booking or passenger state. Completed and cancelled runs are final. An encrypted offline data cache and mutation queue, payment collection, and push notification are not implemented. Stay capture, touch signature, and the connected waiver screen shipped earlier; offline command/media sync and server-generated retained PDF remain as specified in [the launch task list](../../STRATEGY/ui-waiver-launch-task-list.md). Live GPS remains separate. These additions must retain server-side assignment predicates and follow the offline conflict policy before release.
 
 ## Evidence
 

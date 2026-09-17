@@ -48,6 +48,24 @@ Server may still show local-only drift (`apps/mobile/package.json`, `ecosystem.c
 
 ---
 
+## Crew mobile store packaging — 17 September 2026
+
+Owner asked to get Zettaz Crew ready to publish. Engineering for connected 1.0 packaging is in the repo; **store consoles and physical-device QA are still owner work**.
+
+Shipped:
+
+- `/api/mobile/…` allowlisted Bearer proxy (must be on production before any store/preview binary is used)
+- EAS `preview` + `production`, icons/splash, version `1.0.0`, `com.zettaz.crew`
+- Password reset, privacy/terms/support links, pull-to-refresh, offline error copy
+
+Runbook: [crew-mobile-store-publish.md](crew-mobile-store-publish.md). Evidence: [crew-mobile-store-readiness-evidence.md](../TESTING/crew-mobile-store-readiness-evidence.md).
+
+Owner remaining: Expo `eas init`, Apple Developer, Google Play Console, reviewer demo account, device screenshots. Offline / Pay / GPS stay deferred.
+
+After the web deploy that includes `/api/mobile`, continue Administration / non-Ops verification unless the owner stays on store submission.
+
+---
+
 ## Operations menu group — closed pending testing
 
 Nav group **Operations** (aside): Day Board, Departures, Reservations, Catalog — plus Day Board child flows (manifest/boarding gate, Plan pickups, Print pickup list, Start trip, weather hold/close/reopen). Pickup location library lives under **Tenant settings → Pickup locations** (not Ops aside).

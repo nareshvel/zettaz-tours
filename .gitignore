@@ -10,3 +10,7 @@ dist/
 apps/api/scripts/sql/generated/
 apps/mobile/node_modules
 **/.expo/
+*.jks
+*.keystore
+google-services.json
+GoogleService-Info.plist

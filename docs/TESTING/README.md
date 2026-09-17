@@ -13,6 +13,7 @@ Test plans, golden datasets, and acceptance evidence. Launch-blocking criteria t
 - [Operations and pickup planning](operations-pickup-evidence.md)
 - [Print/PDF and connected crew](print-and-mobile-evidence.md)
 - [Crew passenger waiver online](crew-waiver-online-evidence.md)
+- [Crew mobile store readiness](crew-mobile-store-readiness-evidence.md)
 - [Catalog and departures foundation](catalog-departures-evidence.md)
 - [Day Board polish](day-board-polish-evidence.md)
 - [Manifest boarding polish](manifest-boarding-polish-evidence.md)

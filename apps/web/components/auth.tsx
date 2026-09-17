@@ -597,8 +597,13 @@ export function Entry({
               rights reserved.
             </small>
             <nav className="landing-footer-links">
-              <Link href="/login">Sign in</Link>
-              <Link href="/signup">Free trial</Link>
+              <a
+                href="https://zettaz.com/contact"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Contact
+              </a>
             </nav>
           </div>
         </footer>

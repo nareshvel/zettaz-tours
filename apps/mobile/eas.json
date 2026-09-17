@@ -1,0 +1,41 @@
+{
+  "cli": {
+    "version": ">= 16.17.4",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "http://127.0.0.1:3190",
+        "EXPO_PUBLIC_WEB_ORIGIN": "http://127.0.0.1:3191"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://tours.zettaz.com/api/mobile",
+        "EXPO_PUBLIC_WEB_ORIGIN": "https://tours.zettaz.com"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://tours.zettaz.com/api/mobile",
+        "EXPO_PUBLIC_WEB_ORIGIN": "https://tours.zettaz.com"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "draft"
+      }
+    }
+  }
+}

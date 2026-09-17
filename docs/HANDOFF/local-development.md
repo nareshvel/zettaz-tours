@@ -47,7 +47,7 @@ The demo uses owner sessions. Team administration creates mock membership record
 - `npm run web:typecheck`: frontend types without a build.
 - `npm run web:smoke`: HTTP integration checks against the running demo at port 3191; creates a synthetic booking. It does not automate browser clicks.
 - `npm run mobile:typecheck`: validate the connected Expo crew client.
-- `EXPO_PUBLIC_API_BASE_URL=http://<device-reachable-host>:3190 npm run mobile:start`: start the crew client for iOS/Android development.
+- `EXPO_PUBLIC_API_BASE_URL=http://<device-reachable-host>:3190 npm run mobile:start`: start the crew client for iOS/Android development. Production/preview binaries use `https://tours.zettaz.com/api/mobile` (see [crew mobile store publish](crew-mobile-store-publish.md)).
 
 - `npm run typecheck`: strict TypeScript checks.
 - `npm test`: build and execute real database/API tests in an isolated native PostgreSQL cluster. If PostgreSQL binaries are not installed, set `TEST_ADMIN_DATABASE_URL` to a fresh disposable PostgreSQL database; never a production or shared database.

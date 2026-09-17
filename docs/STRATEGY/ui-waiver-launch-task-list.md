@@ -61,7 +61,7 @@ Catalog, fixed availability, and the operational departure-list views were verif
 
 ### 3. Deliver the departure passenger waiver vertical slice
 
-The connected API and Expo sub-increment is implemented and integration-verified; see [crew passenger waiver online evidence](../TESTING/crew-waiver-online-evidence.md). Physical-device UI acceptance, encrypted offline behavior, retained PDF, and drive copies remain open and must be verified separately.
+The connected API and Expo sub-increment is implemented and integration-verified; see [crew passenger waiver online evidence](../TESTING/crew-waiver-online-evidence.md). Store packaging for connected 1.0 is in [crew mobile store readiness](../TESTING/crew-mobile-store-readiness-evidence.md); physical-device UI acceptance, Expo/Apple/Google account setup, encrypted offline behavior, retained PDF, and drive copies remain open and must be verified separately.
 
 #### Crew interaction
 

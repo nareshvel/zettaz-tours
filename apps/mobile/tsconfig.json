@@ -4,5 +4,5 @@
     "strict": true,
     "noUncheckedIndexedAccess": true
   },
-  "include": ["App.tsx"]
+  "include": ["App.tsx", "app.config.ts", "src/**/*.ts"]
 }

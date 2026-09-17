@@ -53,7 +53,8 @@ Do not create a product-named folder at `docs/` root (no `timeclock`-style excep
 10. [ARCHITECTURE/ux-security-reporting.md](ARCHITECTURE/ux-security-reporting.md)
 11. [STRATEGY/delivery.md](STRATEGY/delivery.md) — first slice, backlog, agent prompt
 12. [STRATEGY/implementation-backlog.md](STRATEGY/implementation-backlog.md) — current execution order and unresolved decisions
-13. [ARCHITECTURE/configuration-schema.md](ARCHITECTURE/configuration-schema.md) — seed / workbook
+13. [STRATEGY/crew-app-delivery.md](STRATEGY/crew-app-delivery.md) — Zettaz Crew phases (one binary; Track A/B leftovers)
+14. [ARCHITECTURE/configuration-schema.md](ARCHITECTURE/configuration-schema.md) — seed / workbook
 
 ## Coding agents
 

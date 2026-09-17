@@ -1,6 +1,6 @@
 # Agent current sprint board
 
-**Updated:** 15 September 2026 · **Audience:** any IDE agent (Cursor, Claude, Codex, Devin, ChatGPT)
+**Updated:** 17 September 2026 · **Audience:** any IDE agent (Cursor, Claude, Codex, Devin, ChatGPT)
 
 This is the **single “what next” page**. Read it before inventing a deploy or backlog plan from chat history.
 
@@ -10,11 +10,11 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 
 ---
 
-## Owner priority (14 September 2026 — supersedes earlier “do Subscription next”)
+## Owner priority (17 September 2026 — Crew Phase 1)
 
-1. **Operations menu group = functionally complete for now.** Do not open new Ops feature work unless testing finds a clear bug/gap. Treat polish as closed until further owner testing.
-2. **Hold Subscription messaging** (ui row 17) until remaining functional features/modules elsewhere are in better shape. Do not start subscription copy/banners unless the owner reopens that task.
-3. **Next agent work:** verify and improve **non-Operations** menu groups as required (Workspace, Insights, Administration — and Profile). Find gaps, fix bounded issues, document evidence; one surface at a time.
+1. **Crew app plan accepted.** Phase 1 connected field is the current engineering stream. See the Crew section below.
+2. **Operations menu group** remains functionally complete pending testing. Do not open new Ops web feature work unless testing finds a bug.
+3. **Hold Subscription messaging.** Administration / non-Ops verification resumes after the Crew Phase 1 device pass unless the owner redirects.
 
 ---
 
@@ -48,21 +48,21 @@ Server may still show local-only drift (`apps/mobile/package.json`, `ecosystem.c
 
 ---
 
-## Crew mobile store packaging — 17 September 2026
+## Crew app — owner accepted 17 September 2026 · Phase 1 in repo
 
-Owner asked to get Zettaz Crew ready to publish. Engineering for connected 1.0 packaging is in the repo; **store consoles and physical-device QA are still owner work**.
+Phased delivery: [crew-app-delivery.md](../STRATEGY/crew-app-delivery.md). Owner accepted; Phase 1 connected field is implemented locally.
 
-Shipped:
+**Now:**
 
-- `/api/mobile/…` allowlisted Bearer proxy (must be on production before any store/preview binary is used)
-- EAS `preview` + `production`, icons/splash, version `1.0.0`, `com.zettaz.crew`
-- Password reset, privacy/terms/support links, pull-to-refresh, offline error copy
+1. Commit/push this increment, then VPS `./deploy.sh` (discard dirty `package-lock.json` if pull blocks).
+2. Sign out/in after migrate `086` if that session is still old.
+3. Assign a **guide** to a **today** departure; empty Today is correct when unassigned.
+4. New EAS **preview** so phones pick up Phase 1 UI.
+5. Do **not** start Phase 2 (Pay) until the device pass on Phase 1.
 
-Runbook: [crew-mobile-store-publish.md](crew-mobile-store-publish.md). Evidence: [crew-mobile-store-readiness-evidence.md](../TESTING/crew-mobile-store-readiness-evidence.md).
+Phase 1 in this increment: roster search, assigned pickup sequence on Today, start/no-show, balance-due / partner-settled badge, stay/pickup labels. Evidence: [crew-app-phase-1-evidence.md](../TESTING/crew-app-phase-1-evidence.md).
 
-Owner remaining: Apple Developer, Google Play Console, reviewer demo account, device screenshots. Expo project `@zettazglobal/zettaz-crew` is linked. Offline / Pay / GPS stay deferred.
-
-After the web deploy that includes `/api/mobile`, continue Administration / non-Ops verification unless the owner stays on store submission.
+Connected 1.0 packaging already on `main` (store consoles still owner work). Runbook: [crew-mobile-store-publish.md](crew-mobile-store-publish.md).
 
 ---
 
@@ -167,8 +167,8 @@ Not the current focus. When owner returns to platform/track work:
 | 2 | E10 Finance | Live Stripe Connect Checkout (USD) + webhooks; XCD rate policy |
 | 3 | E06 Ops print | **Agent client + paper profiles shipped 15 Sep (ADR 018).** Left: live agent acceptance on real hardware; tenant-shared printer routing (needs agent-side job polling — `printer_routes` dormant); tenant-designed templates |
 | 4 | Comms | Tenant-editable templates, suppression, delivery webhooks |
-| 5 | Boarding money | Complimentary/prepaid flags, mixed allocation, per-passenger owed, crew-mobile Pay |
-| 6 | E07/E08 Crew | Encrypted offline sync; retained waiver PDFs |
+| 5 | Boarding money | Complimentary/prepaid flags, mixed allocation, per-passenger owed; crew-mobile Pay is Phase 2 of [crew-app-delivery.md](../STRATEGY/crew-app-delivery.md) |
+| 6 | E07/E08 Crew | See [crew-app-delivery.md](../STRATEGY/crew-app-delivery.md). Offline + retained waiver PDFs are Phase 4 / server, not the next epic |
 | 7 | E12/E13 | WP/OTA transforms (blocked on payload evidence) |
 | 8 | Cutover | Parallel run + Rock workbook sign-off |
 

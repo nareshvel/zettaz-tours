@@ -1,6 +1,6 @@
 # UI quality and departure-waiver launch task list
 
-**Updated:** 14 September 2026  
+**Updated:** 17 September 2026  
 **Scope:** Track A launch quality for web, tablet, and the Expo crew app
 
 **Agent execution focus:** [../HANDOFF/agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) (prefer over chat history).
@@ -9,7 +9,7 @@
 
 The web workspace and connected crew client provide broad development functionality, but they have not received a systematic page-by-page responsive and accessibility acceptance pass. Existing responsive CSS and prior fixes are foundations, not proof that every page has production-quality UI/UX.
 
-The API stores versioned waiver templates, append-only passenger/guardian waiver evidence, stay details, pending passenger identity, and passenger clearance states. The web manifest can record waiver/check-in evidence, collect remaining guest balances via an on-manifest Pay sheet, and clear partner invoice/collect bookings by policy. The Expo client lists assigned trips and passengers, scans check-in tokens, captures pending passenger names and cruise/hotel/private/local stay information, renders the active waiver, collects a drawn signature, and records check-in/trip events. Encrypted offline operation, retained waiver PDFs, drive copies, crew-mobile Pay, and physical-device acceptance remain open. See [boarding balance collection](../FEATURES/operations/boarding-balance-collection.md).
+The API stores versioned waiver templates, append-only passenger/guardian waiver evidence, stay details, pending passenger identity, and passenger clearance states. The web manifest can record waiver/check-in evidence, collect remaining guest balances via an on-manifest Pay sheet, and clear partner invoice/collect bookings by policy. The Expo client lists assigned trips and passengers, scans check-in tokens, captures pending passenger names and cruise/hotel/private/local stay information, renders the active waiver, collects a drawn signature, and records check-in/trip events. Remaining Crew increments (field pickups, Pay, tablet dock, then offline) are sequenced in [crew-app-delivery.md](crew-app-delivery.md) and must not start until that plan is owner-accepted. See [boarding balance collection](../FEATURES/operations/boarding-balance-collection.md).
 
 **Next owner-directed surface:** verify and improve **non-Operations** menu groups (Workspace, Insights, Administration, Profile). **Operations** (Day Board / Departures / Reservations / Catalog + child flows) is considered functionally complete until further testing finds gaps — do not open new Ops feature work. **Subscription messaging polish (row 17) is held** until other modules are in better shape. Day Board / pickups owner-accepted 11 Sep; Settings pickup modal + Print + Esri map shipped 14 Sep and deployed to VPS (`a18e083`). See [agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) and [claude-handoff-2026-09-14.md](../HANDOFF/claude-handoff-2026-09-14.md).
 
@@ -61,7 +61,7 @@ Catalog, fixed availability, and the operational departure-list views were verif
 
 ### 3. Deliver the departure passenger waiver vertical slice
 
-The connected API and Expo sub-increment is implemented and integration-verified; see [crew passenger waiver online evidence](../TESTING/crew-waiver-online-evidence.md). Store packaging for connected 1.0 is in [crew mobile store readiness](../TESTING/crew-mobile-store-readiness-evidence.md); physical-device UI acceptance, Expo/Apple/Google account setup, encrypted offline behavior, retained PDF, and drive copies remain open and must be verified separately.
+The connected API and Expo sub-increment is implemented and integration-verified; see [crew passenger waiver online evidence](../TESTING/crew-waiver-online-evidence.md). Store packaging for connected 1.0 is in [crew mobile store readiness](../TESTING/crew-mobile-store-readiness-evidence.md). Remaining Crew work (physical-device QA, store listing, pickups, Pay, tablet, encrypted offline, retained PDF) follows [crew-app-delivery.md](crew-app-delivery.md).
 
 #### Crew interaction
 

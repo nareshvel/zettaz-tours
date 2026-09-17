@@ -4,6 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Linking,
   Modal,
   Pressable,
@@ -17,24 +18,17 @@ import {
 } from "react-native";
 import { call, crewLoadMessage, isUnauthorized, requestKey } from "./src/api";
 import { APP_VERSION, SESSION_KEY, SUPPORT_EMAIL, WEB } from "./src/config";
-type Passenger = {
-  id: string;
-  name: string;
-  category: string;
-  is_minor: boolean;
-  identity_pending: boolean;
-  checkin_state: string | null;
-  waiver_signed: boolean;
-};
-type Guest = {
-  booking_id: string;
-  lead_name: string;
-  party_size: number;
-  pickup: { kind?: string };
-  stay: Record<string, string>;
-  checkin_state: string;
-  passengers: Passenger[];
-};
+import {
+  allAboardLabel,
+  clearanceLabel,
+  guestMatchesQuery,
+  pickupLabel,
+  stayLabel,
+  tripStarted,
+  type Guest,
+  type Passenger,
+  type Trip,
+} from "./src/field";
 type WaiverTemplate = {
   id: string;
   version: number;
@@ -42,13 +36,6 @@ type WaiverTemplate = {
   body: string;
 };
 type Signing = { guest: Guest; passenger: Passenger };
-type Trip = {
-  id: string;
-  starts_at: string;
-  product_name: string;
-  assignment_roles: string[];
-  guests: Guest[];
-};
 type ScannedPassenger = {
   passengerId: string;
   name: string;
@@ -133,6 +120,9 @@ export default function App() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [rosterQuery, setRosterQuery] = useState("");
+  const [startOpen, setStartOpen] = useState(false);
+  const [startReason, setStartReason] = useState("");
 
   useEffect(() => {
     SecureStore.getItemAsync(SESSION_KEY)
@@ -170,6 +160,7 @@ export default function App() {
       setWaiverTemplate(result.waiverTemplate);
       if (active)
         setActive(result.trips.find((trip) => trip.id === active.id) ?? null);
+      else setStartOpen(false);
     } catch (reason) {
       if (isUnauthorized(reason)) await clearSession();
       else setError(crewLoadMessage(reason));
@@ -330,6 +321,51 @@ export default function App() {
     } finally {
       setBusy(false);
     }
+  }
+  async function startAssignedTrip() {
+    if (!active || !token) return;
+    const pending = active.boarding_pending ?? 0;
+    if (pending > 0 && startReason.trim().length < 3) {
+      setError("Add a short reason before marking remaining guests no-show.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await call(`/ops/v1/departures/${active.id}/start`, token, {
+        method: "POST",
+        headers: { "Idempotency-Key": requestKey() },
+        body: JSON.stringify({
+          markRemainingNoShow: pending > 0,
+          reason:
+            pending > 0 ? startReason.trim() : startReason.trim() || undefined,
+        }),
+      });
+      setStartOpen(false);
+      setStartReason("");
+      await load(token);
+    } catch (reason) {
+      if (isUnauthorized(reason)) await clearSession();
+      else setError((reason as Error).message);
+      setBusy(false);
+    }
+  }
+  function confirmNoShow(passenger: Passenger) {
+    Alert.alert(
+      "Mark no-show?",
+      `${passenger.name} will be recorded as no-show on this trip.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Mark no-show",
+          style: "destructive",
+          onPress: () =>
+            void mutate(`/staff/v1/passengers/${passenger.id}/checkin`, {
+              state: "no_show",
+            }),
+        },
+      ],
+    );
   }
   async function openScanner() {
     const permission = cameraPermission?.granted
@@ -812,6 +848,14 @@ export default function App() {
       </SafeAreaView>
     );
   }
+  const visibleGuests = active
+    ? active.guests.filter((guest) => guestMatchesQuery(guest, rosterQuery))
+    : [];
+  const cruiseAboard = active
+    ? active.guests
+        .map((guest) => allAboardLabel(guest.stay))
+        .find((value) => value)
+    : null;
   return (
     <SafeAreaView style={styles.screen}>
       <StatusBar style="dark" />
@@ -853,7 +897,15 @@ export default function App() {
           <ActivityIndicator />
         ) : active ? (
           <>
-            <Button quiet onPress={() => setActive(null)}>
+            <Button
+              quiet
+              onPress={() => {
+                setActive(null);
+                setRosterQuery("");
+                setStartOpen(false);
+                setStartReason("");
+              }}
+            >
               Back to trips
             </Button>
             <View style={styles.card}>
@@ -865,6 +917,21 @@ export default function App() {
               </Text>
               <Text style={styles.muted}>
                 {active.assignment_roles.join(" · ")}
+                {active.trip_run_state
+                  ? ` · ${active.trip_run_state.replace(/_/g, " ")}`
+                  : ""}
+                {active.operational_status &&
+                active.operational_status !== "open"
+                  ? ` · ${active.operational_status.replace(/_/g, " ")}`
+                  : ""}
+              </Text>
+              {cruiseAboard ? (
+                <Text style={styles.muted}>All aboard {cruiseAboard}</Text>
+              ) : null}
+              <Text style={styles.muted}>
+                {active.boarded_guests ?? 0} boarded ·{" "}
+                {active.boarding_pending ?? 0} pending ·{" "}
+                {active.no_show_guests ?? 0} no-show
               </Text>
               <View style={styles.actions}>
                 {["preparing", "boarding", "departed", "completed"].map(
@@ -883,63 +950,192 @@ export default function App() {
                   ),
                 )}
               </View>
-            </View>
-            <Text style={styles.section}>GUESTS</Text>
-            {active.guests.map((guest) => (
-              <View style={styles.card} key={guest.booking_id}>
-                <Text style={styles.cardTitle}>{guest.lead_name}</Text>
-                <Text style={styles.muted}>
-                  {guest.party_size} guests · pickup{" "}
-                  {guest.pickup.kind ?? "none"}
-                </Text>
-                {guest.passengers.map((passenger) => (
-                  <Pressable
-                    style={styles.person}
-                    key={passenger.id}
-                    onPress={() => openWaiver(guest, passenger)}
-                  >
-                    <View style={styles.grow}>
-                      <Text style={styles.personName}>{passenger.name}</Text>
+              {!tripStarted(active) ? (
+                startOpen ? (
+                  <View style={styles.startSheet}>
+                    <Text style={styles.cardTitle}>
+                      {(active.boarding_pending ?? 0) > 0
+                        ? "Start trip with no-shows?"
+                        : "Start this trip?"}
+                    </Text>
+                    {(active.boarding_pending ?? 0) > 0 ? (
                       <Text style={styles.muted}>
-                        {passenger.category}
-                        {passenger.is_minor ? " · minor" : ""} ·{" "}
-                        {passenger.checkin_state ?? "not arrived"} ·{" "}
-                        {passenger.waiver_signed
-                          ? "waiver signed"
-                          : "waiver required"}
+                        {active.boarding_pending} guest
+                        {active.boarding_pending === 1 ? "" : "s"} still not
+                        boarded will be marked no-show. Add a reason to
+                        continue.
                       </Text>
-                    </View>
-                    {!["boarded", "no_show"].includes(
-                      passenger.checkin_state ?? "",
-                    ) ? (
-                      <Button
-                        disabled={busy}
-                        onPress={() =>
-                          void mutate(
-                            `/staff/v1/passengers/${passenger.id}/checkin`,
-                            {
-                              state:
-                                passenger.checkin_state === "arrived"
-                                  ? "cleared_to_board"
-                                  : passenger.checkin_state ===
-                                      "cleared_to_board"
-                                    ? "boarded"
-                                    : "arrived",
-                            },
-                          )
-                        }
-                      >
-                        {passenger.checkin_state === "arrived"
-                          ? "Clear"
-                          : passenger.checkin_state === "cleared_to_board"
-                            ? "Board"
-                            : "Arrived"}
-                      </Button>
+                    ) : (
+                      <Text style={styles.muted}>
+                        Records that this run has left. Boarding for remaining
+                        guests closes.
+                      </Text>
+                    )}
+                    {(active.boarding_pending ?? 0) > 0 ? (
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Reason (required)"
+                        value={startReason}
+                        onChangeText={setStartReason}
+                      />
                     ) : null}
-                  </Pressable>
+                    <Button
+                      disabled={busy}
+                      onPress={() => void startAssignedTrip()}
+                    >
+                      {busy
+                        ? "Starting…"
+                        : (active.boarding_pending ?? 0) > 0
+                          ? "Mark no-show & start"
+                          : "Start trip"}
+                    </Button>
+                    <Button quiet onPress={() => setStartOpen(false)}>
+                      Cancel
+                    </Button>
+                  </View>
+                ) : (
+                  <Button quiet onPress={() => setStartOpen(true)}>
+                    Start trip
+                  </Button>
+                )
+              ) : (
+                <Text style={styles.muted}>
+                  Trip started
+                  {active.trip_run_state
+                    ? ` · ${active.trip_run_state.replace(/_/g, " ")}`
+                    : ""}
+                </Text>
+              )}
+            </View>
+            {active.pickup_stops?.length || active.pickup_exceptions?.length ? (
+              <View style={styles.card}>
+                <Text style={styles.section}>PICKUPS</Text>
+                {(active.pickup_stops ?? []).map((stop) => (
+                  <View key={`${stop.booking_id}-${stop.sequence}`}>
+                    <Text style={styles.personName}>
+                      {stop.sequence}. {stop.location_name}
+                    </Text>
+                    <Text style={styles.muted}>
+                      {new Date(stop.pickup_at).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}{" "}
+                      · {stop.lead_name} · {stop.party_size} guests
+                      {stop.notes ? ` · ${stop.notes}` : ""}
+                    </Text>
+                  </View>
+                ))}
+                {(active.pickup_exceptions ?? []).map((item) => (
+                  <Text key={item.booking_id} style={styles.warn}>
+                    {item.lead_name}: {pickupLabel(item.pickup_kind)}
+                  </Text>
                 ))}
               </View>
-            ))}
+            ) : null}
+            <Text style={styles.section}>GUESTS</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Search guests, stay, or pickup"
+              value={rosterQuery}
+              onChangeText={setRosterQuery}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {!visibleGuests.length ? (
+              <Text style={styles.muted}>
+                {rosterQuery.trim()
+                  ? "No guests match that search."
+                  : "No confirmed guests on this trip."}
+              </Text>
+            ) : (
+              visibleGuests.map((guest) => {
+                const aboard = allAboardLabel(guest.stay);
+                return (
+                  <View style={styles.card} key={guest.booking_id}>
+                    <Text style={styles.cardTitle}>{guest.lead_name}</Text>
+                    <Text
+                      style={
+                        guest.boarding_clearance === "due"
+                          ? styles.warn
+                          : styles.muted
+                      }
+                    >
+                      {clearanceLabel(guest)}
+                    </Text>
+                    <Text style={styles.muted}>
+                      {guest.party_size} guests ·{" "}
+                      {pickupLabel(guest.pickup?.kind)}
+                      {guest.pickup?.location
+                        ? ` · ${guest.pickup.location}`
+                        : ""}
+                    </Text>
+                    <Text style={styles.muted}>
+                      {stayLabel(guest.stay)}
+                      {aboard ? ` · all aboard ${aboard}` : ""}
+                    </Text>
+                    {guest.passengers.map((passenger) => (
+                      <Pressable
+                        style={styles.person}
+                        key={passenger.id}
+                        onPress={() => openWaiver(guest, passenger)}
+                      >
+                        <View style={styles.grow}>
+                          <Text style={styles.personName}>
+                            {passenger.identity_pending
+                              ? "Guest name required"
+                              : passenger.name}
+                          </Text>
+                          <Text style={styles.muted}>
+                            {passenger.category}
+                            {passenger.is_minor ? " · minor" : ""} ·{" "}
+                            {passenger.checkin_state ?? "not arrived"} ·{" "}
+                            {passenger.waiver_signed
+                              ? "waiver signed"
+                              : "waiver required"}
+                          </Text>
+                        </View>
+                        {!["boarded", "no_show"].includes(
+                          passenger.checkin_state ?? "",
+                        ) ? (
+                          <View style={styles.rowActions}>
+                            <Button
+                              disabled={busy}
+                              onPress={() =>
+                                void mutate(
+                                  `/staff/v1/passengers/${passenger.id}/checkin`,
+                                  {
+                                    state:
+                                      passenger.checkin_state === "arrived"
+                                        ? "cleared_to_board"
+                                        : passenger.checkin_state ===
+                                            "cleared_to_board"
+                                          ? "boarded"
+                                          : "arrived",
+                                  },
+                                )
+                              }
+                            >
+                              {passenger.checkin_state === "arrived"
+                                ? "Clear"
+                                : passenger.checkin_state === "cleared_to_board"
+                                  ? "Board"
+                                  : "Arrived"}
+                            </Button>
+                            <Button
+                              quiet
+                              disabled={busy}
+                              onPress={() => confirmNoShow(passenger)}
+                            >
+                              No-show
+                            </Button>
+                          </View>
+                        ) : null}
+                      </Pressable>
+                    ))}
+                  </View>
+                );
+              })
+            )}
           </>
         ) : (
           <>
@@ -953,29 +1149,42 @@ export default function App() {
                 </Text>
               </View>
             ) : (
-              trips.map((trip) => (
-                <Pressable
-                  style={styles.card}
-                  key={trip.id}
-                  onPress={() => setActive(trip)}
-                >
-                  <Text style={styles.cardTitle}>{trip.product_name}</Text>
-                  <Text style={styles.muted}>
-                    {new Date(trip.starts_at).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}{" "}
-                    · {trip.assignment_roles.join(" · ")}
-                  </Text>
-                  <Text style={styles.link}>
-                    {trip.guests.reduce(
-                      (sum, item) => sum + item.party_size,
-                      0,
-                    )}{" "}
-                    guests →
-                  </Text>
-                </Pressable>
-              ))
+              trips.map((trip) => {
+                const due = trip.guests.filter(
+                  (guest) => guest.boarding_clearance === "due",
+                ).length;
+                return (
+                  <Pressable
+                    style={styles.card}
+                    key={trip.id}
+                    onPress={() => setActive(trip)}
+                  >
+                    <Text style={styles.cardTitle}>{trip.product_name}</Text>
+                    <Text style={styles.muted}>
+                      {new Date(trip.starts_at).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}{" "}
+                      · {trip.assignment_roles.join(" · ")}
+                      {trip.trip_run_state
+                        ? ` · ${trip.trip_run_state.replace(/_/g, " ")}`
+                        : ""}
+                    </Text>
+                    <Text style={styles.muted}>
+                      {trip.guests.reduce(
+                        (sum, item) => sum + item.party_size,
+                        0,
+                      )}{" "}
+                      guests
+                      {due ? ` · ${due} balance due` : ""}
+                      {(trip.pickup_exceptions?.length ?? 0) > 0
+                        ? ` · ${trip.pickup_exceptions?.length} pickup gaps`
+                        : ""}
+                    </Text>
+                    <Text style={styles.link}>Open trip →</Text>
+                  </Pressable>
+                );
+              })
             )}
             <Button quiet disabled={busy} onPress={() => void load()}>
               Refresh
@@ -1096,6 +1305,9 @@ const styles = StyleSheet.create({
   },
   personName: { color: "#17353a", fontWeight: "700" },
   grow: { flex: 1 },
+  rowActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  startSheet: { gap: 10, marginTop: 8 },
+  warn: { color: "#b42318", fontWeight: "700", lineHeight: 20 },
   empty: { alignItems: "center", gap: 6, paddingVertical: 64 },
   success: { color: "#087b72", lineHeight: 20 },
   legalRow: {

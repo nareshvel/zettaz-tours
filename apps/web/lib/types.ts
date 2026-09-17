@@ -51,6 +51,7 @@ export type Product = {
   product_kind?: string;
   availability_mode?: string;
   status?: string;
+  cover_path?: string | null;
   option_count?: number;
   price_from_minor?: number | null;
   next_departure_at?: string | null;

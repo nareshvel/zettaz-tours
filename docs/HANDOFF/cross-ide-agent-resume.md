@@ -1,6 +1,6 @@
 # Cross-IDE agent resume guide
 
-**Updated:** 14 September 2026  
+**Updated:** 17 September 2026  
 **Audience:** ChatGPT Codex, Cursor, Claude, Devin, or another IDE agent continuing this project
 
 This file is the portable resume packet for Zettaz Tours & Charters. Use it when work moves between tools, then update it when a session changes the implementation state, task order, or a standing decision.
@@ -12,7 +12,8 @@ This file is the portable resume packet for Zettaz Tours & Charters. Use it when
 3. [../STRATEGY/launch-contract.md](../STRATEGY/launch-contract.md) — Track A vs B
 4. [../STRATEGY/implementation-backlog.md](../STRATEGY/implementation-backlog.md) — epic order
 5. [../STRATEGY/ui-waiver-launch-task-list.md](../STRATEGY/ui-waiver-launch-task-list.md) — page polish status
-6. [deploy.md](deploy.md) — VPS pull/build (do not invent ad-hoc `psql -f` migration steps)
+6. [../STRATEGY/crew-app-delivery.md](../STRATEGY/crew-app-delivery.md) — Zettaz Crew phases (do not start Phase 1 until owner-accepted)
+7. [deploy.md](deploy.md) — VPS pull/build (do not invent ad-hoc `psql -f` migration steps)
 
 Also: root `AGENTS.md`, [../README.md](../README.md), [../AI_CONTEXT/README.md](../AI_CONTEXT/README.md), [local-development.md](local-development.md).
 
@@ -31,17 +32,17 @@ Stack is locked: NestJS modular monolith, Next.js workspace, Expo crew app, Post
 - **`main` tracks `origin/main`** as of 14 September 2026 tip `a18e083` (pickup location improvement). Do not claim auth/trial migration `060` is “unpushed.”
 - Production demo (`tours.zettaz.com`): tenant `f6e566ce-…`; deploy notes in [deploy.md](deploy.md) and [demo-tenant-export.md](demo-tenant-export.md).
 - **Ops pickups (14 September 2026) closed:** Plan pickups Phase 1, Print list polish, Settings → Pickup locations (Esri map, tenant city/country default), demo multi-stop seed. See [../FEATURES/operations/pickup-disposition-and-plans.md](../FEATURES/operations/pickup-disposition-and-plans.md) and [../TESTING/pickup-location-modal-and-print-evidence.md](../TESTING/pickup-location-modal-and-print-evidence.md).
-- Connected crew waiver capture exists. Encrypted offline sync, retained waiver PDFs, drive-copy adapters, crew-mobile Pay remain open.
+- Connected crew 1.0 exists (Today, scan, check-in, waiver, events). **Phase 1** adds roster search, pickup sequence, start/no-show, and balance-due badges — [../STRATEGY/crew-app-delivery.md](../STRATEGY/crew-app-delivery.md). Encrypted offline, crew-mobile Pay, tablet Day Board/walk-up remain later phases.
 - Boarding money pending: [../FEATURES/operations/boarding-balance-collection.md](../FEATURES/operations/boarding-balance-collection.md).
 
 ## Current task sequence
 
-See [agent-current-sprint.md](agent-current-sprint.md). Short form (owner priority 14 Sep evening):
+See [agent-current-sprint.md](agent-current-sprint.md). Short form (17 Sep):
 
-1. **Operations menu group closed** pending further testing — do not expand Ops features.
-2. **Hold** Subscription messaging polish.
-3. **Next:** verify/improve non-Operations groups (Workspace → Insights → Administration → Profile).
-4. VPS already at `a18e083`; only redeploy after new pushes.
+1. **Crew plan accepted; Phase 1 in working tree** — [../STRATEGY/crew-app-delivery.md](../STRATEGY/crew-app-delivery.md). Next: commit/push, VPS deploy, assign a same-day guide, new EAS preview.
+2. **Operations menu group closed** pending further testing — do not expand Ops features.
+3. **Hold** Subscription messaging polish.
+4. Administration / non-Ops web pass resumes after the Crew Phase 1 device pass unless the owner redirects.
 
 Pasteable Claude brief: [claude-handoff-2026-09-14.md](claude-handoff-2026-09-14.md).
 

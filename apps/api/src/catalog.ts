@@ -3,6 +3,7 @@ import {
   Body,
   ConflictException,
   Controller,
+  Delete,
   Get,
   Headers,
   Injectable,
@@ -11,9 +12,14 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
+  UseInterceptors,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { DateTime } from "luxon";
 import { randomUUID } from "node:crypto";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { z } from "zod";
 import {
   Actor,
@@ -29,6 +35,13 @@ import { LimitsService } from "./limits";
 import { Access, CurrentActor, keySchema, parse } from "./http";
 import { tenant } from "./tenant";
 
+type UploadedCover = {
+  mimetype: string;
+  size: number;
+  buffer: Buffer;
+  originalname: string;
+};
+
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const rateWindowUsageQuerySchema = z
   .object({
@@ -39,7 +52,7 @@ const rateWindowUsageQuerySchema = z
 
 const productSelect = `
 SELECT p.id,p.name,p.definition,p.version,p.internal_name,p.customer_title,
-       p.description,p.product_kind,p.availability_mode,p.status,
+       p.description,p.product_kind,p.availability_mode,p.status,p.cover_path,
        count(DISTINCT o.id)::int option_count,
        min(r.amount_minor) FILTER (WHERE r.amount_minor > 0)::bigint price_from_minor,
        min(d.starts_at) FILTER (WHERE d.starts_at >= clock_timestamp() AND d.status='scheduled') next_departure_at,
@@ -474,6 +487,105 @@ export class CatalogService {
       return row;
     });
   }
+  uploadCover(
+    actor: Actor,
+    productId: string,
+    key: string,
+    file?: UploadedCover,
+  ) {
+    if (!file) throw new BadRequestException("Cover file is required");
+    const types: Record<string, string> = {
+      "image/jpeg": "jpg",
+      "image/png": "png",
+      "image/webp": "webp",
+    };
+    const ext = types[file.mimetype];
+    if (!ext || file.size > 2 * 1024 * 1024)
+      throw new BadRequestException(
+        "Use a JPG, PNG, or WebP image under 2 MB",
+      );
+    return this.db.command(
+      actor,
+      "product.cover.upload",
+      key,
+      { name: file.originalname, size: file.size, type: file.mimetype },
+      async (tx) => {
+        await tenant(tx, actor, true);
+        const {
+          rows: [before],
+        } = await tx.query(
+          `SELECT id,cover_path,version FROM products
+           WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
+          [actor.tenantId, productId],
+        );
+        if (!before) throw new NotFoundException();
+        const tenantId = actor.tenantId!;
+        const dir = path.resolve(
+          "uploads",
+          "product-covers",
+          tenantId,
+          productId,
+        );
+        await mkdir(dir, { recursive: true });
+        const filename = `${randomUUID()}.${ext}`,
+          relative = `/uploads/product-covers/${tenantId}/${productId}/${filename}`;
+        await writeFile(path.join(dir, filename), file.buffer);
+        await tx.query(
+          `UPDATE products
+              SET cover_path=$3,version=version+1,updated_at=clock_timestamp()
+            WHERE tenant_id=$1 AND id=$2`,
+          [tenantId, productId, relative],
+        );
+        if (before.cover_path)
+          await rm(path.resolve("." + before.cover_path), { force: true });
+        await record(
+          tx,
+          actor,
+          "product.cover_updated",
+          productId,
+          { coverPath: before.cover_path },
+          { coverPath: relative },
+        );
+        return { coverPath: relative, version: before.version + 1 };
+      },
+    );
+  }
+  clearCover(actor: Actor, productId: string, key: string) {
+    return this.db.command(
+      actor,
+      "product.cover.clear",
+      key,
+      {},
+      async (tx) => {
+        await tenant(tx, actor, true);
+        const {
+          rows: [before],
+        } = await tx.query(
+          `SELECT id,cover_path,version FROM products
+           WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
+          [actor.tenantId, productId],
+        );
+        if (!before) throw new NotFoundException();
+        await tx.query(
+          `UPDATE products
+              SET cover_path=NULL,version=version+1,updated_at=clock_timestamp()
+            WHERE tenant_id=$1 AND id=$2`,
+          [actor.tenantId, productId],
+        );
+        if (before.cover_path)
+          await rm(path.resolve("." + before.cover_path), { force: true });
+        await record(
+          tx,
+          actor,
+          "product.cover_cleared",
+          productId,
+          { coverPath: before.cover_path },
+          { coverPath: null },
+        );
+        return { coverPath: null, version: before.version + 1 };
+      },
+    );
+  }
   updateRule(actor: Actor, ruleId: string, key: string, input: unknown) {
     const data = parse(availabilityRuleUpdateSchema, input);
     const regenerating = Boolean(
@@ -903,6 +1015,37 @@ export class CatalogController {
       parse(id, value),
       parse(keySchema, key),
       body,
+    );
+  }
+  @Post("products/:id/cover")
+  @Access("catalog.write")
+  @UseInterceptors(
+    FileInterceptor("file", { limits: { fileSize: 2 * 1024 * 1024 } }),
+  )
+  uploadCover(
+    @CurrentActor() a: Actor,
+    @Param("id") value: string,
+    @Headers("idempotency-key") key: string,
+    @UploadedFile() file?: UploadedCover,
+  ) {
+    return this.service.uploadCover(
+      a,
+      parse(id, value),
+      parse(keySchema, key),
+      file,
+    );
+  }
+  @Delete("products/:id/cover")
+  @Access("catalog.write")
+  clearCover(
+    @CurrentActor() a: Actor,
+    @Param("id") value: string,
+    @Headers("idempotency-key") key: string,
+  ) {
+    return this.service.clearCover(
+      a,
+      parse(id, value),
+      parse(keySchema, key),
     );
   }
   @Get("availability-rules")

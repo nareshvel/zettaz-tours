@@ -33,7 +33,14 @@ import {
   MailPlus,
   Ban,
   RotateCcw,
+  Bus,
+  Compass,
+  KeyRound,
+  Sparkles,
+  Ticket,
+  Zap,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type {
   Session,
   Product,
@@ -223,6 +230,24 @@ function durationHint(minutes: string) {
   const rest = value % 60;
   if (!rest) return `${hours} ${hours === 1 ? "hour" : "hours"}`;
   return `${hours}h ${rest}m`;
+}
+function productKindIcon(kind: string): LucideIcon {
+  switch (kind) {
+    case "activity":
+      return Zap;
+    case "experience":
+      return Sparkles;
+    case "charter":
+      return Ship;
+    case "transport":
+      return Bus;
+    case "rental":
+      return KeyRound;
+    case "ticket":
+      return Ticket;
+    default:
+      return Compass;
+  }
 }
 function localWhen(
   value: string,
@@ -421,77 +446,91 @@ export function Catalog({ session }: { session: Session }) {
       ) : view === "products" ? (
         <>
           {items.length ? (
-            <section className="panel product-list">
+            <section className="product-card-grid" aria-label="Products">
               {items.map((p) => {
                 const scheduledProduct =
                   (p.availability_mode ?? "fixed_departure") ===
                   "fixed_departure";
+                const kind = p.product_kind ?? "tour";
+                const CoverIcon = productKindIcon(kind);
                 return (
-                  <article
-                    className={
-                      "product-row" +
-                      (canWrite && scheduledProduct ? " has-action" : "")
-                    }
-                    key={p.id}
-                  >
+                  <article className="product-card" key={p.id}>
                     <Link
                       href={`/catalog/${p.id}`}
-                      className="product-row-main"
+                      className="product-card-main"
                     >
-                      <div className="product-row-copy">
-                        <div className="product-row-meta">
-                          <span className="kind-chip">
-                            {label(p.product_kind ?? "tour")}
-                          </span>
+                      <div
+                        className={
+                          "product-card-cover" +
+                          (p.cover_path ? " has-photo" : "")
+                        }
+                        data-kind={kind}
+                        aria-hidden
+                      >
+                        {p.cover_path ? (
+                          <img
+                            className="product-card-cover-photo"
+                            src={p.cover_path}
+                            alt=""
+                          />
+                        ) : (
+                          <CoverIcon size={40} strokeWidth={1.4} />
+                        )}
+                        <div className="product-card-cover-meta">
+                          <span className="kind-chip">{label(kind)}</span>
                           <Status state={p.status ?? "active"} />
                         </div>
+                      </div>
+                      <div className="product-card-body">
                         <h2>{p.customer_title ?? p.name}</h2>
-                        <p>
+                        <p className="product-card-sub">
                           {p.definition.optionName} ·{" "}
                           {durationHint(String(p.definition.durationMinutes))} ·{" "}
                           {modeLabel(p.availability_mode)}
                         </p>
-                      </div>
-                      <div className="product-row-when">
-                        <span>
-                          {scheduledProduct
-                            ? "Next departure"
-                            : "Selling model"}
-                        </span>
-                        <strong>
-                          {p.next_departure_at
-                            ? localWhen(
-                                p.next_departure_at,
-                                session.tenant.config.locale,
-                                session.tenant.timezone,
-                              )
-                            : scheduledProduct
-                              ? "None scheduled"
-                              : modeLabel(p.availability_mode)}
-                        </strong>
-                        <small>
-                          {p.availability_rule_count ?? 0}{" "}
-                          {(p.availability_rule_count ?? 0) === 1
-                            ? "schedule"
-                            : "schedules"}
-                        </small>
-                      </div>
-                      <div className="product-row-price">
-                        <span>From</span>
-                        <strong>
-                          {priceFromMinor(p) != null
-                            ? money(
-                                priceFromMinor(p)!,
-                                session.tenant.config.bookingCurrency,
-                                session.tenant.config.locale,
-                              )
-                            : "No rate"}
-                        </strong>
+                        <div className="product-card-stats">
+                          <div className="product-card-when">
+                            <span>
+                              {scheduledProduct
+                                ? "Next departure"
+                                : "Selling model"}
+                            </span>
+                            <strong>
+                              {p.next_departure_at
+                                ? localWhen(
+                                    p.next_departure_at,
+                                    session.tenant.config.locale,
+                                    session.tenant.timezone,
+                                  )
+                                : scheduledProduct
+                                  ? "None scheduled"
+                                  : modeLabel(p.availability_mode)}
+                            </strong>
+                            <small>
+                              {p.availability_rule_count ?? 0}{" "}
+                              {(p.availability_rule_count ?? 0) === 1
+                                ? "schedule"
+                                : "schedules"}
+                            </small>
+                          </div>
+                          <div className="product-card-price">
+                            <span>From</span>
+                            <strong>
+                              {priceFromMinor(p) != null
+                                ? money(
+                                    priceFromMinor(p)!,
+                                    session.tenant.config.bookingCurrency,
+                                    session.tenant.config.locale,
+                                  )
+                                : "No rate"}
+                            </strong>
+                          </div>
+                        </div>
                       </div>
                     </Link>
                     {canWrite && scheduledProduct && (
                       <Link
-                        className="product-row-action"
+                        className="product-card-action"
                         href={"/catalog?tab=schedules&product=" + p.id}
                       >
                         Schedule
@@ -1578,6 +1617,12 @@ export function ProductDetail({
   const [saved, setSaved] = useState("");
   const [error, setError] = useState("");
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [coverBusy, setCoverBusy] = useState(false);
+  const [coverError, setCoverError] = useState("");
+  const [coverUnavailable, setCoverUnavailable] = useState(false);
+  useEffect(() => {
+    setCoverUnavailable(false);
+  }, [product.data?.cover_path]);
   useEffect(() => {
     if (!product.data) return;
     const definition = product.data.definition;
@@ -1654,6 +1699,60 @@ export function ProductDetail({
       }
     } catch (err) {
       setError((err as Error).message);
+    }
+  }
+  async function uploadCover(file?: File) {
+    if (!file) return;
+    setCoverBusy(true);
+    setCoverError("");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetch(
+        `/api/gateway/admin/v1/products/${productId}/cover`,
+        {
+          method: "POST",
+          headers: {
+            "X-Tenant-Id": session.tenant.id,
+            "Idempotency-Key": crypto.randomUUID(),
+          },
+          body: form,
+        },
+      );
+      if (!response.ok)
+        throw new Error(
+          (await response.json()).message ?? "Cover upload failed",
+        );
+      await product.reload();
+    } catch (e) {
+      setCoverError((e as Error).message);
+    } finally {
+      setCoverBusy(false);
+    }
+  }
+  async function clearCover() {
+    setCoverBusy(true);
+    setCoverError("");
+    try {
+      const response = await fetch(
+        `/api/gateway/admin/v1/products/${productId}/cover`,
+        {
+          method: "DELETE",
+          headers: {
+            "X-Tenant-Id": session.tenant.id,
+            "Idempotency-Key": crypto.randomUUID(),
+          },
+        },
+      );
+      if (!response.ok)
+        throw new Error(
+          (await response.json()).message ?? "Could not remove cover",
+        );
+      await product.reload();
+    } catch (e) {
+      setCoverError((e as Error).message);
+    } finally {
+      setCoverBusy(false);
     }
   }
   let fromAmount: number | null = null;
@@ -1762,6 +1861,72 @@ export function ProductDetail({
               )}
             </div>
           </div>
+          <section className="product-cover-panel panel">
+            <div className="product-cover-copy">
+              <h2>Cover photo</h2>
+              <p>
+                Shown on the catalog cards. JPG, PNG, or WebP up to 2&nbsp;MB.
+              </p>
+              {canWrite && item.cover_path && !coverUnavailable && (
+                <button
+                  type="button"
+                  className="button secondary"
+                  disabled={coverBusy}
+                  onClick={() => void clearCover()}
+                >
+                  Remove photo
+                </button>
+              )}
+              {coverError && <Notice error>{coverError}</Notice>}
+            </div>
+            <div className="product-cover-control">
+              {canWrite ? (
+                <>
+                  <label
+                    className="product-cover-dropzone"
+                    htmlFor="product-cover"
+                  >
+                    {item.cover_path && !coverUnavailable ? (
+                      <img
+                        className="uploaded-product-cover"
+                        src={item.cover_path}
+                        alt="Product cover"
+                        onError={() => setCoverUnavailable(true)}
+                      />
+                    ) : (
+                      <span>
+                        {coverBusy ? "Uploading…" : "Click to upload cover"}
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    id="product-cover"
+                    className="visually-hidden"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    disabled={coverBusy}
+                    onChange={(e) => {
+                      void uploadCover(e.target.files?.[0]);
+                      e.target.value = "";
+                    }}
+                  />
+                </>
+              ) : item.cover_path && !coverUnavailable ? (
+                <div className="product-cover-dropzone is-readonly">
+                  <img
+                    className="uploaded-product-cover"
+                    src={item.cover_path}
+                    alt="Product cover"
+                    onError={() => setCoverUnavailable(true)}
+                  />
+                </div>
+              ) : (
+                <div className="product-cover-dropzone is-readonly">
+                  <span>No cover photo</span>
+                </div>
+              )}
+            </div>
+          </section>
           {!scheduled && (
             <Notice>
               {modeLabel(item.availability_mode)} products are not sold from

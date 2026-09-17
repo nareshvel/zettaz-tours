@@ -11,3 +11,4 @@ Product direction and delivery. Do not put implementation specs here.
 | [delivery.md](delivery.md) | Epic order, first slice, agent prompt |
 | [implementation-backlog.md](implementation-backlog.md) | Current ordered execution plan and completion boundaries |
 | [ui-waiver-launch-task-list.md](ui-waiver-launch-task-list.md) | Page-by-page responsive review and departure waiver/offline delivery plan |
+| [crew-app-delivery.md](crew-app-delivery.md) | One Zettaz Crew binary: Track A/B leftovers, phases 0–5, start gate |

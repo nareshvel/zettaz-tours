@@ -107,7 +107,7 @@ const routes: [string, string, z.ZodType | null, string][] = [
     "/crew/v1/today",
     "get",
     null,
-    "Read only the current crew member's assigned trips",
+    "Read only the current crew member's assigned trips, pickup sequence, and boarding clearance",
   ],
   [
     "/crew/v1/departures/{id}/events",

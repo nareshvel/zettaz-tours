@@ -722,6 +722,7 @@ before(async () => {
   local = await localDatabase();
   admin = new Pool({ connectionString: local.adminUrl });
   process.env.APP_MODE = "test";
+  process.env.SUBSCRIPTION_JOBS_DISABLED = "true";
   process.env.WEBHOOK_SECRET_ENCRYPTION_KEY =
     "test-webhook-secret-encryption-key";
   process.env.DATABASE_URL = local.runtimeUrl;
@@ -3001,16 +3002,6 @@ test("crew mobile façade exposes only assigned trips and restricts crew check-i
   const dep = await departure(t.token);
   assert.equal(
     (
-      await post("/ops/v1/crew", t.token, {
-        actorId: member.body.actorId,
-        operationalName: "Mock Guide",
-        notes: "Synthetic test crew",
-      })
-    ).status,
-    201,
-  );
-  assert.equal(
-    (
       await post("/ops/v1/assignments", t.token, {
         departureId: dep.departureId,
         crewActorId: member.body.actorId,
@@ -3064,6 +3055,13 @@ test("crew mobile façade exposes only assigned trips and restricts crew check-i
   assert.equal(today.body.trips.length, 1);
   assert.equal(today.body.trips[0].guests.length, 1);
   assert.equal(today.body.trips[0].guests[0].lead_email, undefined);
+  assert.equal(today.body.trips[0].guests[0].paid_minor, undefined);
+  assert.equal(today.body.trips[0].guests[0].collection_mode, undefined);
+  assert.equal(today.body.trips[0].guests[0].boarding_clearance, "settled");
+  assert.equal(today.body.trips[0].guests[0].guest_balance_minor, 0);
+  assert.equal(today.body.trips[0].trip_run_state, null);
+  assert.deepEqual(today.body.trips[0].pickup_stops, []);
+  assert.deepEqual(today.body.trips[0].pickup_exceptions, []);
   assert.equal(today.body.trips[0].guests[0].passengers.length, 1);
   assert.equal(today.body.waiverTemplate.id, crewWaiverTemplate.body.id);
   const crewPassenger = today.body.trips[0].guests[0].passengers[0];
@@ -3159,7 +3157,7 @@ test("crew mobile façade exposes only assigned trips and restricts crew check-i
         token: replacementToken.body.token,
       })
     ).status,
-    403,
+    404,
   );
   assert.equal(
     (
@@ -3274,6 +3272,161 @@ test("crew mobile façade exposes only assigned trips and restricts crew check-i
   );
   assert.equal(otherTenant.status, 200);
   assert.equal(otherTenant.body.trips.length, 0);
+});
+
+test("crew today includes pickup sequence, balance-due facts, and assigned start", async () => {
+  const t = await setupTenant(`crew-field-${randomUUID().slice(0, 8)}`, {
+    ...mockConfig,
+    minimumPaidPercent: 0,
+  });
+  const member = await post("/admin/v1/members", t.token, {
+    name: "Mock Field Guide",
+    email: `guide-${randomUUID()}@example.invalid`,
+    role: "guide",
+  });
+  assert.equal(member.status, 201, JSON.stringify(member.body));
+  const guide = await issueSession(admin, member.body.actorId, t.tenantId);
+  const dep = await departure(t.token);
+  assert.equal(
+    (
+      await post("/ops/v1/assignments", t.token, {
+        departureId: dep.departureId,
+        crewActorId: member.body.actorId,
+        assignmentRole: "guide",
+      })
+    ).status,
+    201,
+  );
+  const dueBooking = await heldBooking(
+    dep.departureId,
+    t.token,
+    { adult: 1 },
+    {
+      kind: "selected",
+      location: "Mock hotel",
+      instructions: "Lobby",
+    },
+  );
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${dueBooking.bookingId}/passengers`,
+        t.token,
+        {
+          passengers: [
+            { name: "Due Traveler", category: "adult", isMinor: false },
+          ],
+        },
+      )
+    ).status,
+    201,
+  );
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${dueBooking.bookingId}/confirm`,
+        t.token,
+        {
+          version: 1,
+        },
+      )
+    ).status,
+    201,
+  );
+  const other = await departure(t.token);
+  const otherBooking = await heldBooking(other.departureId, t.token);
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${otherBooking.bookingId}/passengers`,
+        t.token,
+        {
+          passengers: [
+            { name: "Other traveller", category: "adult", isMinor: false },
+          ],
+        },
+      )
+    ).status,
+    201,
+  );
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${otherBooking.bookingId}/confirm`,
+        t.token,
+        { version: 1 },
+      )
+    ).status,
+    201,
+  );
+  const location = await post("/ops/v1/pickup-locations", t.token, {
+    slug: `lobby_${randomUUID().slice(0, 8)}`,
+    name: "Mock Lobby",
+    kind: "hotel",
+    notes: "Front desk",
+  });
+  assert.equal(location.status, 201, JSON.stringify(location.body));
+  const {
+    rows: [dayRow],
+  } = await admin.query(
+    "SELECT local_date::text AS day,starts_at FROM departures WHERE id=$1",
+    [dep.departureId],
+  );
+  const saved = await post(
+    `/ops/v1/departures/${dep.departureId}/pickups`,
+    t.token,
+    {
+      notes: "Mock field order",
+      stops: [
+        {
+          bookingId: dueBooking.bookingId,
+          locationId: location.body.id,
+          pickupAt: new Date(
+            new Date(dayRow.starts_at).getTime() - 30 * 60_000,
+          ).toISOString(),
+          notes: "Lobby",
+        },
+      ],
+    },
+  );
+  assert.equal(saved.status, 201, JSON.stringify(saved.body));
+  const today = await get(`/crew/v1/today?date=${dayRow.day}`, guide);
+  assert.equal(today.status, 200, JSON.stringify(today.body));
+  assert.equal(today.body.trips.length, 1);
+  const trip = today.body.trips[0];
+  assert.equal(trip.guests[0].boarding_clearance, "due");
+  assert.ok(trip.guests[0].guest_balance_minor > 0);
+  assert.equal(trip.pickup_stops.length, 1);
+  assert.equal(trip.pickup_stops[0].location_name, "Mock Lobby");
+  assert.equal(trip.pickup_stops[0].lead_name, "Mock Traveler");
+  assert.equal(trip.boarding_pending, 1);
+  assert.equal(
+    (await get(`/ops/v1/departures/${dep.departureId}/pickups`, guide)).status,
+    403,
+  );
+  assert.equal(
+    (
+      await post(`/ops/v1/departures/${other.departureId}/start`, guide, {
+        markRemainingNoShow: true,
+        reason: "Must reject unassigned start",
+      })
+    ).status,
+    400,
+  );
+  const started = await post(
+    `/ops/v1/departures/${dep.departureId}/start`,
+    guide,
+    {
+      markRemainingNoShow: true,
+      reason: "Guests did not arrive before departure",
+    },
+  );
+  assert.equal(started.status, 201, JSON.stringify(started.body));
+  assert.equal(started.body.state, "departed");
+  const afterStart = await get(`/crew/v1/today?date=${dayRow.day}`, guide);
+  assert.equal(afterStart.body.trips[0].trip_run_state, "departed");
+  assert.equal(afterStart.body.trips[0].no_show_guests, 1);
+  assert.equal(afterStart.body.trips[0].boarding_pending, 0);
 });
 
 test("partner organizations are tenant-scoped and require partner management permission", async () => {

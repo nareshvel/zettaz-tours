@@ -19,18 +19,41 @@ type Passenger = {
   checkin_state: string | null;
   waiver_signed: boolean;
 };
+type Stay = {
+  kind?: string;
+  vesselName?: string;
+  hotelName?: string;
+  propertyName?: string;
+};
 type Guest = {
   booking_id: string;
   lead_name: string;
   party_size: number;
-  pickup: { kind?: string };
+  pickup: { kind?: string; location?: string };
+  stay?: Stay;
+  boarding_clearance?: "due" | "settled" | "partner";
+  guest_balance_minor?: number;
   passengers: Passenger[];
+};
+type PickupStop = {
+  booking_id: string;
+  sequence: number;
+  pickup_at: string;
+  location_name: string;
+  lead_name: string;
+  party_size: number;
 };
 type Trip = {
   id: string;
   starts_at: string;
   product_name: string;
   assignment_roles: string[];
+  trip_run_state?: string | null;
+  boarded_guests?: number;
+  boarding_pending?: number;
+  no_show_guests?: number;
+  pickup_stops?: PickupStop[];
+  pickup_exceptions?: { lead_name: string; pickup_kind: string }[];
   guests: Guest[];
 };
 type CrewDay = {
@@ -90,9 +113,19 @@ export function CrewWorkspace({ session }: { session: Session }) {
                   <div>
                     <p className="eyebrow">
                       {trip.assignment_roles.map(label).join(" · ")}
+                      {trip.trip_run_state
+                        ? ` · ${label(trip.trip_run_state)}`
+                        : ""}
                     </p>
                     <h2>{trip.product_name}</h2>
                     <p>{dateTime(trip.starts_at, session.tenant.timezone)}</p>
+                    {typeof trip.boarding_pending === "number" ? (
+                      <p>
+                        {trip.boarded_guests ?? 0} boarded ·{" "}
+                        {trip.boarding_pending} pending ·{" "}
+                        {trip.no_show_guests ?? 0} no-show
+                      </p>
+                    ) : null}
                   </div>
                 </div>
                 <div
@@ -112,6 +145,21 @@ export function CrewWorkspace({ session }: { session: Session }) {
                   ))}
                 </div>
               </div>
+              {trip.pickup_stops?.length || trip.pickup_exceptions?.length ? (
+                <div className="crew-guests">
+                  {(trip.pickup_stops ?? []).map((stop) => (
+                    <p key={`${stop.booking_id}-${stop.sequence}`}>
+                      Pickup {stop.sequence}: {stop.location_name} ·{" "}
+                      {stop.lead_name}
+                    </p>
+                  ))}
+                  {(trip.pickup_exceptions ?? []).map((item) => (
+                    <p key={item.lead_name + item.pickup_kind}>
+                      Pickup gap: {item.lead_name} · {label(item.pickup_kind)}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
               <div className="crew-guest-heading">
                 <UsersRound size={18} />
                 <strong>
@@ -131,6 +179,22 @@ export function CrewWorkspace({ session }: { session: Session }) {
                           {guest.party_size} guest
                           {guest.party_size === 1 ? "" : "s"} · Pickup{" "}
                           {label(guest.pickup?.kind ?? "none")}
+                          {guest.stay?.kind && guest.stay.kind !== "none"
+                            ? ` · ${label(guest.stay.kind)}${
+                                guest.stay.vesselName ||
+                                guest.stay.hotelName ||
+                                guest.stay.propertyName
+                                  ? ` ${guest.stay.vesselName || guest.stay.hotelName || guest.stay.propertyName}`
+                                  : ""
+                              }`
+                            : ""}
+                          {guest.boarding_clearance === "due"
+                            ? " · Balance due"
+                            : guest.boarding_clearance === "partner"
+                              ? " · Partner settled"
+                              : guest.boarding_clearance
+                                ? " · Settled"
+                                : ""}
                         </small>
                       </div>
                       <div className="crew-passengers">

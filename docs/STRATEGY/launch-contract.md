@@ -25,7 +25,7 @@ Do not wait for Viator or GetYourGuide certification to replace the spreadsheet.
 - WP Travel Engine webhook/API inbox so website bookings are not retyped
 - Operations board, assignments, pickup routes, readiness, print/PDF day manifest
 - Check-in: balance due, allowed collection, digital waiver, cleared-to-board gate
-- Crew mobile: assigned trips, check-in, trip events; offline after the first connected week if needed
+- Crew mobile: assigned trips, check-in, trip events; offline after the first connected week if needed. One Expo binary (phone, tablet, Pay sheet) — [crew-app-delivery.md](crew-app-delivery.md)
 - Payments: deposits, balances, cash/link/manual states, booking/collection/reporting currencies
 - Partner organization + agent attribution + “invoice this partner” flag and statement lines
 - Assignment blocked when a required license or insurance document is expired, with override + audit

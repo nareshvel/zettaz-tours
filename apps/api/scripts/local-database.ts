@@ -73,6 +73,9 @@ export async function localDatabase() {
     await admin.query(
       `CREATE ROLE "${role}" LOGIN PASSWORD '${password}' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE`,
     );
+    await admin.query(
+      `DO $$ BEGIN CREATE ROLE zettaz_runtime NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+    );
     await migrate(adminUrl!, role);
     const runtime = new URL(adminUrl!);
     runtime.username = role;

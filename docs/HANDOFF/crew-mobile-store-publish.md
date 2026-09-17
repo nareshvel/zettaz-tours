@@ -5,7 +5,7 @@
 
 Zettaz Crew is a **staff-only** connected check-in app. Do not list it as a consumer booking app. Preferred production shape: Apple **Unlisted** (or Custom App) + Google Play **Internal / Closed** testing.
 
-Connected 1.0 is in scope. Encrypted offline, crew-mobile Pay, GPS, and retained waiver PDFs stay deferred per the launch contract.
+Connected 1.0 is in scope for the store listing. Remaining Crew increments (field pickups, Pay, tablet, then offline) are sequenced in [crew-app-delivery.md](../STRATEGY/crew-app-delivery.md). Encrypted offline, crew-mobile Pay, GPS, and retained waiver PDFs stay deferred until that plan’s later phases.
 
 ## What engineering already did
 

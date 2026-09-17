@@ -15,7 +15,7 @@ Implement in this order. Do not start Track B epics to “save a later refactor�
 | 3 | E03 Availability | Seat pools, holds, concurrency, one exclusive resource type | Required |
 | 4 | E04 Reservations | Customer/passenger, manual booking, changes, cancellation, timeline | Required — replaces the daily sheet |
 | 5 | E06 Operations | Board, manifest, assignments, pickup route, readiness, **print/PDF** | Required |
-| 6 | E08 / E07 Waivers and crew check-in | Templates, signatures, QR, check-in gate; mobile connected first | Required for day-of; offline store may follow the first connected week |
+| 6 | E08 / E07 Waivers and crew check-in | Templates, signatures, QR, check-in gate; mobile connected first. Phased Crew plan: [crew-app-delivery.md](crew-app-delivery.md) | Required for day-of; Track A offline after the first connected week |
 | 7 | E10 Finance (slim) | Ledger, balances, cash/link collection, partner invoice flag | Enough to stop reconstructing notes |
 | 8 | E12 Integration hub + E13 WP bridge | Webhooks, mappings, assisted import, WP inbox | Stops retyping website and voucher bookings |
 

@@ -551,12 +551,9 @@ export class CrewService {
       pickup: { kind: "none" },
       stay: { kind: "none" },
     });
-    await this.passengers.replace(
-      actor,
-      booking.bookingId,
-      `${key}:roster`,
-      { passengers: pendingRoster(input.party, input.leadName) },
-    );
+    await this.passengers.replace(actor, booking.bookingId, `${key}:roster`, {
+      passengers: pendingRoster(input.party, input.leadName),
+    });
     if (input.payment) {
       await this.reservations.payment(
         actor,

@@ -6,7 +6,7 @@ Current cross-epic specification: [first-slice/requirements.md](first-slice/requ
 
 Current operations specification: [operations/resources-and-assignments.md](operations/resources-and-assignments.md), defining the Track A minimum for crew/resource records, expiry controls and departure assignment.
 
-Crew connected-mobile boundary: [operations/crew-mobile-facade.md](operations/crew-mobile-facade.md). Phased Track A/B delivery: [../STRATEGY/crew-app-delivery.md](../STRATEGY/crew-app-delivery.md). Phase 1 evidence: [../TESTING/crew-app-phase-1-evidence.md](../TESTING/crew-app-phase-1-evidence.md). Phase 2 evidence: [../TESTING/crew-app-phase-2-evidence.md](../TESTING/crew-app-phase-2-evidence.md). Phase 3 evidence: [../TESTING/crew-app-phase-3-evidence.md](../TESTING/crew-app-phase-3-evidence.md).
+Crew connected-mobile boundary: [operations/crew-mobile-facade.md](operations/crew-mobile-facade.md). Phased Track A/B delivery: [../STRATEGY/crew-app-delivery.md](../STRATEGY/crew-app-delivery.md). Phase 1 evidence: [../TESTING/crew-app-phase-1-evidence.md](../TESTING/crew-app-phase-1-evidence.md). Phase 2 evidence: [../TESTING/crew-app-phase-2-evidence.md](../TESTING/crew-app-phase-2-evidence.md). Phase 3 evidence: [../TESTING/crew-app-phase-3-evidence.md](../TESTING/crew-app-phase-3-evidence.md). Phase 4 evidence: [../TESTING/crew-app-phase-4-evidence.md](../TESTING/crew-app-phase-4-evidence.md).
 
 Short-lived document hot store and archive sync-out: [operations/document-storage.md](operations/document-storage.md).
 
@@ -18,7 +18,7 @@ Waiver template versioning and deletion rules: [tenant-settings/waiver-template-
 
 Customer communication boundary: [customer-notifications.md](customer-notifications.md).
 
-Customer identity, booking snapshots and history: [reservations/customer-records.md](reservations/customer-records.md). Insights list/detail polish: [../TESTING/customers-polish-evidence.md](../TESTING/customers-polish-evidence.md).
+Customer identity, booking snapshots and history: [reservations/customer-records.md](reservations/customer-records.md). Insights list/detail polish: [../TESTING/customers-polish-evidence.md](../TESTING/customers-polish-evidence.md). Audit trail polish: [../TESTING/audit-polish-evidence.md](../TESTING/audit-polish-evidence.md). Document library polish: [../TESTING/document-library-polish-evidence.md](../TESTING/document-library-polish-evidence.md).
 
 Mode-aware New reservation discovery: [reservations/mode-aware-discovery.md](reservations/mode-aware-discovery.md).
 

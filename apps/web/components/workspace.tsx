@@ -38,11 +38,7 @@ import {
 } from "@/lib/client";
 import { Loading, Notice } from "./common";
 import { LegalPage } from "./legal";
-import {
-  Entry,
-  Signup,
-  VerifyEmail,
-} from "./auth";
+import { Entry, Signup, VerifyEmail } from "./auth";
 import {
   Overview,
   Reservations,
@@ -589,10 +585,15 @@ export function Workspace({
         : "overview"
     ) as FinanceSection;
     // /finance/partners/:id → pass partnerId to Finance
-    const financePartnerId = segments[1] === "partners" && segments[2]
-      ? segments[2]
-      : undefined;
-    content = <Finance session={session} section={financeSection} partnerId={financePartnerId} />;
+    const financePartnerId =
+      segments[1] === "partners" && segments[2] ? segments[2] : undefined;
+    content = (
+      <Finance
+        session={session}
+        section={financeSection}
+        partnerId={financePartnerId}
+      />
+    );
   } else if (area === "integrations") {
     permission = "integration.manage";
     content = <Integrations />;

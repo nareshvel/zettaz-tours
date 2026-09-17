@@ -21,6 +21,8 @@ async function handle(
         { status: 413 },
       );
     const idempotency = request.headers.get("idempotency-key");
+    const deviceId = request.headers.get("x-crew-device-id") ?? "";
+    const deviceSecret = request.headers.get("x-crew-device-secret") ?? "";
     const res = await upstream(
       "/" + path + new URL(request.url).search,
       {
@@ -28,6 +30,12 @@ async function handle(
         body,
         headers: {
           ...(idempotency ? { "Idempotency-Key": idempotency } : {}),
+          ...(deviceId.match(/^[a-f0-9-]{36}$/i)
+            ? { "x-crew-device-id": deviceId }
+            : {}),
+          ...(deviceSecret.match(/^[a-f0-9]{64}$/i)
+            ? { "x-crew-device-secret": deviceSecret }
+            : {}),
         },
       },
       token ?? "",

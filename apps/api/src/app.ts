@@ -28,6 +28,7 @@ import { PrintController, PrintService } from "./printing";
 import { DocumentStorageService } from "./document-storage";
 import { DocumentLibraryService } from "./document-library";
 import { CrewController, CrewService } from "./crew";
+import { CrewOfflineController, CrewOfflineService } from "./crew-offline";
 import { PartnerController, PartnerService } from "./partners";
 import { ExpenseController, ExpenseService } from "./expenses";
 import { IntegrationController, IntegrationService } from "./integrations";
@@ -118,6 +119,7 @@ class SystemController {
     WaiverController,
     PrintController,
     CrewController,
+    CrewOfflineController,
     PartnerController,
     ExpenseController,
     IntegrationController,
@@ -138,6 +140,7 @@ class SystemController {
     DocumentStorageService,
     DocumentLibraryService,
     CrewService,
+    CrewOfflineService,
     PartnerService,
     ExpenseService,
     IntegrationService,

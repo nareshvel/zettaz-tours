@@ -311,8 +311,7 @@ export class AuthController {
       role: "platform",
       permissions: ["tenant.provision"] as string[],
     };
-    const planId =
-      input.planId ?? "3e595412-81e5-4c76-8216-25321d7ba56a";
+    const planId = input.planId ?? "3e595412-81e5-4c76-8216-25321d7ba56a";
     // tenantSvc.create() runs in a platform-mode transaction that:
     //   1. Checks email uniqueness (visible under platform RLS)
     //   2. Creates tenant, roles, owner user, memberships

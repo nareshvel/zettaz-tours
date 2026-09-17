@@ -467,6 +467,16 @@ async function main() {
                 role: "driver",
               },
               {
+                name: "Rock Crew",
+                email: "rockcrew@zettaz.com",
+                role: "crew",
+              },
+              {
+                name: "Rock Captain",
+                email: "rockcaptain@zettaz.com",
+                role: "captain",
+              },
+              {
                 name: "Rock Resource Manager",
                 email: "rockresources@zettaz.com",
                 role: "resource_manager",

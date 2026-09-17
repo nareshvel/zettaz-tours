@@ -363,7 +363,7 @@ export function Entry({
               </div>
               <strong>Role-based staff access</strong>
               <span>
-                11 built-in roles — from owner to guide — with permission-level
+                13 built-in roles — from owner to crew — with permission-level
                 controls for every action.
               </span>
             </div>
@@ -743,6 +743,7 @@ export function Signup() {
   );
   const [currency, setCurrency] = useState(() => currencyForCountry("US"));
   const [planId, setPlanId] = useState("3e595412-81e5-4c76-8216-25321d7ba56a");
+  const [showPlanPicker, setShowPlanPicker] = useState(false);
   const [ownerName, setOwnerName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -755,6 +756,9 @@ export function Signup() {
     setTimezone(defaultTimezoneForCountry(country));
     setCurrency(currencyForCountry(country));
   }, [country]);
+
+  const selectedPlan =
+    TRIAL_PLANS.find((p) => p.id === planId) ?? TRIAL_PLANS[2];
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -857,15 +861,12 @@ export function Signup() {
           alt="Zettaz Tours and Charters"
         />
       </div>
-      <section
-        className="login-card"
-        style={{ maxWidth: step === 1 ? "800px" : "560px" }}
-      >
+      <section className="login-card" style={{ maxWidth: "560px" }}>
         <p className="eyebrow">FREE 14-DAY TRIAL · NO CARD REQUIRED</p>
         <h1>{step === 1 ? "Set up your workspace" : "Create your account"}</h1>
         <p className="subtitle">
           {step === 1
-            ? "Tell us about your operation and choose your trial plan."
+            ? "Tell us about your operation. Your trial starts on Growth — change if you need a different plan."
             : "You’ll use these credentials to sign in."}
         </p>
         <div style={{ display: "flex", gap: "8px", marginBottom: "24px" }}>
@@ -953,7 +954,7 @@ export function Signup() {
               </select>
             </label>
 
-            {/* Plan selector */}
+            {/* Plan selector — default Growth, expand to change */}
             <div style={{ margin: "20px 0 8px" }}>
               <p
                 style={{
@@ -966,103 +967,221 @@ export function Signup() {
               >
                 TRIAL PLAN&nbsp;
                 <span
-                  style={{ fontWeight: 400, color: "#65777b", fontSize: 12 }}
+                  style={{
+                    fontWeight: 400,
+                    color: "#65777b",
+                    fontSize: 12,
+                  }}
                 >
-                  — try any plan free for 14 days, upgrade anytime
+                  — 14 days free, change anytime
                 </span>
               </p>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(2,1fr)",
-                  gap: 10,
-                }}
-              >
-                {TRIAL_PLANS.map((plan) => {
-                  const sel = planId === plan.id;
-                  return (
-                    <button
-                      key={plan.id}
-                      type="button"
-                      onClick={() => setPlanId(plan.id)}
-                      style={{
-                        position: "relative",
-                        textAlign: "left",
-                        border: `2px solid ${sel ? "#176c63" : "#dde3e4"}`,
-                        borderRadius: 10,
-                        padding: "14px 16px",
-                        background: sel ? "#edfaf8" : "#fff",
-                        cursor: "pointer",
-                        transition: "border-color .15s,background .15s",
-                      }}
-                    >
-                      {plan.recommended && (
-                        <span
-                          style={{
-                            position: "absolute",
-                            top: -11,
-                            right: 12,
-                            background: "#176c63",
-                            color: "#fff",
-                            fontSize: 10,
-                            fontWeight: 700,
-                            padding: "2px 9px",
-                            borderRadius: 20,
-                            letterSpacing: ".05em",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          DEFAULT TRIAL
-                        </span>
-                      )}
+
+              {!showPlanPicker ? (
+                <div
+                  style={{
+                    border: "2px solid #176c63",
+                    borderRadius: 10,
+                    padding: "14px 16px",
+                    background: "#edfaf8",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      justifyContent: "space-between",
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
                       <div
                         style={{
-                          fontWeight: 700,
-                          fontSize: 14,
-                          color: "#142f36",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
                           marginBottom: 3,
+                          flexWrap: "wrap",
                         }}
                       >
-                        {plan.name}
+                        <strong
+                          style={{
+                            fontSize: 15,
+                            color: "#142f36",
+                            letterSpacing: "-0.02em",
+                          }}
+                        >
+                          {selectedPlan.name}
+                        </strong>
+                        {selectedPlan.recommended && (
+                          <span
+                            style={{
+                              background: "#176c63",
+                              color: "#fff",
+                              fontSize: 10,
+                              fontWeight: 700,
+                              padding: "2px 8px",
+                              borderRadius: 20,
+                              letterSpacing: ".05em",
+                            }}
+                          >
+                            DEFAULT
+                          </span>
+                        )}
                       </div>
-                      <div
+                      <p
                         style={{
-                          fontSize: 11,
-                          color: sel ? "#176c63" : "#65777b",
-                          marginBottom: 8,
+                          margin: "0 0 10px",
+                          fontSize: 12,
+                          color: "#176c63",
                           fontStyle: "italic",
                         }}
                       >
-                        {plan.tagline}
-                      </div>
+                        {selectedPlan.tagline}
+                      </p>
                       <ul
                         style={{
                           margin: 0,
                           padding: 0,
                           listStyle: "none",
-                          fontSize: 11,
+                          fontSize: 12,
                           color: "#45676b",
                           lineHeight: 1.5,
                         }}
                       >
-                        {plan.features.map((f) => (
-                          <li key={f} style={{ display: "flex", gap: 5, alignItems: "flex-start" }}>
-                            <span style={{ color: "#176c63", flexShrink: 0, marginTop: 1 }}>✓</span>
+                        {selectedPlan.features.slice(0, 4).map((f) => (
+                          <li
+                            key={f}
+                            style={{
+                              display: "flex",
+                              gap: 5,
+                              alignItems: "flex-start",
+                            }}
+                          >
+                            <span
+                              style={{
+                                color: "#176c63",
+                                flexShrink: 0,
+                                marginTop: 1,
+                              }}
+                            >
+                              ✓
+                            </span>
                             {f}
                           </li>
                         ))}
                       </ul>
-                      {sel && (
-                        <CheckCircle2
-                          size={15}
-                          color="#176c63"
-                          style={{ position: "absolute", top: 12, right: 12 }}
-                        />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+                    </div>
+                    <CheckCircle2
+                      size={18}
+                      color="#176c63"
+                      style={{ flexShrink: 0, marginTop: 2 }}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="text-link"
+                    onClick={() => setShowPlanPicker(true)}
+                    style={{
+                      marginTop: 12,
+                      padding: 0,
+                      border: 0,
+                      background: "none",
+                      fontSize: 13,
+                      fontWeight: 650,
+                      color: "#176c63",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Change plan
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 8 }}>
+                  {TRIAL_PLANS.map((plan) => {
+                    const sel = planId === plan.id;
+                    return (
+                      <button
+                        key={plan.id}
+                        type="button"
+                        onClick={() => {
+                          setPlanId(plan.id);
+                          setShowPlanPicker(false);
+                        }}
+                        style={{
+                          position: "relative",
+                          textAlign: "left",
+                          border: `2px solid ${sel ? "#176c63" : "#dde3e4"}`,
+                          borderRadius: 10,
+                          padding: "12px 14px",
+                          background: sel ? "#edfaf8" : "#fff",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 10,
+                          }}
+                        >
+                          <div>
+                            <div
+                              style={{
+                                fontWeight: 700,
+                                fontSize: 14,
+                                color: "#142f36",
+                              }}
+                            >
+                              {plan.name}
+                              {plan.recommended ? (
+                                <span
+                                  style={{
+                                    marginLeft: 8,
+                                    fontSize: 10,
+                                    fontWeight: 700,
+                                    color: "#176c63",
+                                    letterSpacing: ".04em",
+                                  }}
+                                >
+                                  DEFAULT
+                                </span>
+                              ) : null}
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 12,
+                                color: sel ? "#176c63" : "#65777b",
+                                marginTop: 2,
+                              }}
+                            >
+                              {plan.tagline}
+                            </div>
+                          </div>
+                          {sel && <CheckCircle2 size={16} color="#176c63" />}
+                        </div>
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    className="text-link"
+                    onClick={() => setShowPlanPicker(false)}
+                    style={{
+                      justifySelf: "start",
+                      padding: 0,
+                      border: 0,
+                      background: "none",
+                      fontSize: 13,
+                      color: "#65777b",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Keep {selectedPlan.name}
+                  </button>
+                </div>
+              )}
             </div>
 
             <button

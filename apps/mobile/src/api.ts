@@ -92,7 +92,10 @@ export async function call<T>(
       response.status,
     );
   if (!data || typeof data !== "object")
-    throw new ApiError("Crew service returned an empty response.", response.status);
+    throw new ApiError(
+      "Crew service returned an empty response.",
+      response.status,
+    );
   return data as T;
 }
 

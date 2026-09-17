@@ -129,7 +129,7 @@ const SETTINGS_TABS = new Set([
   "printers",
   "stays",
   "pickups",
-    "payments",
+  "payments",
   "waivers",
   "integrations",
   "security",
@@ -3063,7 +3063,6 @@ export function Settings({
           <div className="panel form-panel settings-tab-content">
             <StaysSettings session={session} />
           </div>
-
         ) : (
           <form className="panel form-panel" onSubmit={submit}>
             {tab === "general" && (
@@ -3542,23 +3541,26 @@ export function Settings({
                   Currency &amp; tax context
                   <InfoTip label="currency and tax context">
                     Three separate currency roles: Booking (what guests pay in),
-                    Expense / Collection (your local operating currency — used as
-                    the default when recording expenses), and Reporting (the
+                    Expense / Collection (your local operating currency — used
+                    as the default when recording expenses), and Reporting (the
                     currency shown on financial summaries). Enter any ISO 4217
                     three-letter code. Tax rate editing lives under Taxes &amp;
                     commercial.
                   </InfoTip>
                 </h2>
                 <p className="policy-copy">
-                  Each currency role can be set independently.
-                  Reporting currency also serves as the base currency
-                  for expense FX calculations and system-wide fallbacks.
+                  Each currency role can be set independently. Reporting
+                  currency also serves as the base currency for expense FX
+                  calculations and system-wide fallbacks.
                 </p>
                 {(() => {
                   const CURRENCIES: { code: string; label: string }[] = [
                     { code: "USD", label: "USD – US Dollar" },
                     { code: "XCD", label: "XCD – East Caribbean Dollar" },
-                    { code: "ANG", label: "ANG – Netherlands Antillean Guilder" },
+                    {
+                      code: "ANG",
+                      label: "ANG – Netherlands Antillean Guilder",
+                    },
                     { code: "AWG", label: "AWG – Aruban Florin" },
                     { code: "BBD", label: "BBD – Barbadian Dollar" },
                     { code: "BSD", label: "BSD – Bahamian Dollar" },
@@ -3586,7 +3588,10 @@ export function Settings({
                     value: string;
                     onChange: (v: string) => void;
                   }) => (
-                    <select value={value} onChange={(e) => onChange(e.target.value)}>
+                    <select
+                      value={value}
+                      onChange={(e) => onChange(e.target.value)}
+                    >
                       {CURRENCIES.map((c) => (
                         <option key={c.code} value={c.code}>
                           {c.label}
@@ -3755,11 +3760,17 @@ export function Settings({
                     <div>
                       <h2>Security & support access</h2>
                       <p>
-                        Only a tenant owner can review or authorize Zettaz
-                        support access.
+                        Time-limited Zettaz support access is an owner decision.
                       </p>
                     </div>
                   </div>
+                  <Empty title="Visible to the tenant owner">
+                    <p>
+                      Only a tenant owner can review, approve, or revoke Zettaz
+                      support access. Ask an owner if a support session is
+                      needed.
+                    </p>
+                  </Empty>
                 </section>
               )
             ) : null}
@@ -3972,7 +3983,6 @@ function CodeListEditor({
     </div>
   );
 }
-
 
 function SupportAccessSettings() {
   const grants = useResource<{ items: SupportGrant[] }>(

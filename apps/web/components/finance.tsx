@@ -1,7 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, ChevronRight, Landmark, SlidersHorizontal, X } from "lucide-react";
+import {
+  Check,
+  ChevronRight,
+  Landmark,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import type { PartnerClaim, Session } from "@/lib/types";
 import { dateTime, label, money, useMutation, useResource } from "@/lib/client";
@@ -37,21 +43,32 @@ type StatementLine = {
 
 // ─── Period helpers ───────────────────────────────────────────────────────────
 
-export type PeriodKey = "this_week" | "this_month" | "last_month" | "this_year" | "last_year" | "custom";
+export type PeriodKey =
+  | "this_week"
+  | "this_month"
+  | "last_month"
+  | "this_year"
+  | "last_year"
+  | "custom";
 
 export const PERIOD_LABELS: Record<PeriodKey, string> = {
-  this_week:  "This Week",
+  this_week: "This Week",
   this_month: "This Month",
   last_month: "Last Month",
-  this_year:  "This Year",
-  last_year:  "Last Year",
-  custom:     "Custom Range",
+  this_year: "This Year",
+  last_year: "Last Year",
+  custom: "Custom Range",
 };
 
-export function periodDates(key: PeriodKey, customFrom: string, customTo: string): { from: string; to: string } {
+export function periodDates(
+  key: PeriodKey,
+  customFrom: string,
+  customTo: string,
+): { from: string; to: string } {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
-  const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const iso = (d: Date) =>
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
   if (key === "custom") return { from: customFrom, to: customTo };
 
@@ -60,8 +77,10 @@ export function periodDates(key: PeriodKey, customFrom: string, customTo: string
 
   if (key === "this_week") {
     const dow = now.getDay();
-    const mon = new Date(now); mon.setDate(now.getDate() - ((dow + 6) % 7));
-    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    const mon = new Date(now);
+    mon.setDate(now.getDate() - ((dow + 6) % 7));
+    const sun = new Date(mon);
+    sun.setDate(mon.getDate() + 6);
     return { from: iso(mon), to: iso(sun) };
   }
   if (key === "this_month") {
@@ -70,7 +89,10 @@ export function periodDates(key: PeriodKey, customFrom: string, customTo: string
   if (key === "last_month") {
     const lm = m === 0 ? 11 : m - 1;
     const ly = m === 0 ? y - 1 : y;
-    return { from: `${ly}-${pad(lm + 1)}-01`, to: iso(new Date(ly, lm + 1, 0)) };
+    return {
+      from: `${ly}-${pad(lm + 1)}-01`,
+      to: iso(new Date(ly, lm + 1, 0)),
+    };
   }
   if (key === "this_year") {
     return { from: `${y}-01-01`, to: `${y}-12-31` };
@@ -81,7 +103,14 @@ export function periodDates(key: PeriodKey, customFrom: string, customTo: string
 // ─── Period selector (right-side slot for Overview tab) ───────────────────────
 
 function PeriodSelector({
-  period, onPeriod, customFrom, customTo, onCustomFrom, onCustomTo, dateFormat, locale,
+  period,
+  onPeriod,
+  customFrom,
+  customTo,
+  onCustomFrom,
+  onCustomTo,
+  dateFormat,
+  locale,
 }: {
   period: PeriodKey;
   onPeriod: (k: PeriodKey) => void;
@@ -102,7 +131,9 @@ function PeriodSelector({
         className="finance-period-select"
       >
         {(Object.keys(PERIOD_LABELS) as PeriodKey[]).map((k) => (
-          <option key={k} value={k}>{PERIOD_LABELS[k]}</option>
+          <option key={k} value={k}>
+            {PERIOD_LABELS[k]}
+          </option>
         ))}
       </select>
       {period === "custom" && (
@@ -170,29 +201,31 @@ function FinanceNav({
           </Link>
         ))}
       </div>
-      {actions && (
-        <div className="catalog-view-actions">
-          {actions}
-        </div>
-      )}
+      {actions && <div className="catalog-view-actions">{actions}</div>}
     </div>
   );
 }
 
 // ─── Page shell ───────────────────────────────────────────────────────────────
 
-const SECTION_HEADINGS: Record<FinanceSection, { title: string; description: string }> = {
+const SECTION_HEADINGS: Record<
+  FinanceSection,
+  { title: string; description: string }
+> = {
   overview: {
     title: "Finance Overview",
-    description: "Work queue, net financial position, and recent activity across all partners.",
+    description:
+      "Work queue, net financial position, and recent activity across all partners.",
   },
   partners: {
     title: "Partner Accounts",
-    description: "Commission accruals, collections, and settlement history per partner.",
+    description:
+      "Commission accruals, collections, and settlement history per partner.",
   },
   expenses: {
     title: "Expenses",
-    description: "Operating costs — fuel, equipment, maintenance, licenses, and more.",
+    description:
+      "Operating costs — fuel, equipment, maintenance, licenses, and more.",
   },
   reports: {
     title: "Reports",
@@ -212,40 +245,67 @@ export function Finance({
   // Period state lives here so the selector can sit inline in the nav bar
   const [period, setPeriod] = useState<PeriodKey>("this_month");
   const [customFrom, setCustomFrom] = useState(() => {
-    const d = new Date(); d.setDate(1);
+    const d = new Date();
+    d.setDate(1);
     return d.toISOString().slice(0, 10);
   });
-  const [customTo, setCustomTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [customTo, setCustomTo] = useState(() =>
+    new Date().toISOString().slice(0, 10),
+  );
 
   const { from, to } = useMemo(
     () => periodDates(period, customFrom, customTo),
     [period, customFrom, customTo],
   );
-  const periodLabel = period === "custom" ? `${from} – ${to}` : PERIOD_LABELS[period];
+  const periodLabel =
+    period === "custom" ? `${from} – ${to}` : PERIOD_LABELS[period];
 
-  const heading = section === "partners" && partnerId
-    ? { title: "Partner Account", description: "Transaction register and settlement history for this partner." }
-    : SECTION_HEADINGS[section] ?? SECTION_HEADINGS.overview;
+  const heading =
+    section === "partners" && partnerId
+      ? {
+          title: "Partner Account",
+          description:
+            "Transaction register and settlement history for this partner.",
+        }
+      : (SECTION_HEADINGS[section] ?? SECTION_HEADINGS.overview);
 
   // Right-side slot differs per tab
-  const navActions = section === "overview" ? (
-    <PeriodSelector
-      period={period} onPeriod={setPeriod}
-      customFrom={customFrom} customTo={customTo}
-      onCustomFrom={setCustomFrom} onCustomTo={setCustomTo}
-      dateFormat={session.tenant.config.dateFormat as "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD"}
-      locale={session.tenant.config.locale}
-    />
-  ) : undefined;
+  const navActions =
+    section === "overview" ? (
+      <PeriodSelector
+        period={period}
+        onPeriod={setPeriod}
+        customFrom={customFrom}
+        customTo={customTo}
+        onCustomFrom={setCustomFrom}
+        onCustomTo={setCustomTo}
+        dateFormat={
+          session.tenant.config.dateFormat as
+            "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD"
+        }
+        locale={session.tenant.config.locale}
+      />
+    ) : undefined;
 
   return (
     <>
-      <Heading eyebrow="FINANCE" title={heading.title} description={heading.description} />
+      <Heading
+        eyebrow="FINANCE"
+        title={heading.title}
+        description={heading.description}
+      />
       <FinanceNav section={section} actions={navActions} />
       {section === "overview" && (
-        <FinanceOverview session={session} dateFrom={from} dateTo={to} periodLabel={periodLabel} />
+        <FinanceOverview
+          session={session}
+          dateFrom={from}
+          dateTo={to}
+          periodLabel={periodLabel}
+        />
       )}
-      {section === "partners" && <FinancePartners session={session} initialPartnerId={partnerId} />}
+      {section === "partners" && (
+        <FinancePartners session={session} initialPartnerId={partnerId} />
+      )}
       {section === "expenses" && <FinanceExpenses session={session} />}
       {section === "reports" && <FinanceReports session={session} />}
     </>

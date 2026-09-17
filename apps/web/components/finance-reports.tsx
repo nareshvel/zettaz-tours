@@ -37,9 +37,15 @@ type AgingResponse = {
 // ─── Severity helper ─────────────────────────────────────────────────────────
 
 function rowSeverity(buckets: AgingBucket[]): "green" | "amber" | "red" {
-  const overdue60 = buckets.reduce((s, b) => s + b.days_61_90_minor + b.days_90_plus_minor, 0);
+  const overdue60 = buckets.reduce(
+    (s, b) => s + b.days_61_90_minor + b.days_90_plus_minor,
+    0,
+  );
   if (overdue60 > 0) return "red";
-  const overdue30 = buckets.reduce((s, b) => s + b.days_1_30_minor + b.days_31_60_minor, 0);
+  const overdue30 = buckets.reduce(
+    (s, b) => s + b.days_1_30_minor + b.days_31_60_minor,
+    0,
+  );
   if (overdue30 > 0) return "amber";
   return "green";
 }
@@ -57,7 +63,9 @@ function AgingReport({ session }: { session: Session }) {
   const today = new Date().toISOString().slice(0, 10);
 
   const [asOf, setAsOf] = useState(today);
-  const [direction, setDirection] = useState<"both" | "payable" | "receivable">("both");
+  const [direction, setDirection] = useState<"both" | "payable" | "receivable">(
+    "both",
+  );
   const [partnerId, setPartnerId] = useState("");
 
   // Build query string — only append filters that differ from defaults
@@ -88,7 +96,10 @@ function AgingReport({ session }: { session: Session }) {
           value={asOf}
           onChange={(v) => setAsOf(v || today)}
           max={today}
-          dateFormat={session.tenant.config.dateFormat as "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD"}
+          dateFormat={
+            session.tenant.config.dateFormat as
+              "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD"
+          }
           locale={session.tenant.config.locale}
           compact
         />
@@ -116,7 +127,9 @@ function AgingReport({ session }: { session: Session }) {
             >
               <option value="">All partners</option>
               {partnerList.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
               ))}
             </select>
           </label>
@@ -138,7 +151,10 @@ function AgingReport({ session }: { session: Session }) {
 
       {!error && data && data.rows.length === 0 && (
         <div className="report-empty">
-          <p>No outstanding balances match this filter — all partners are settled.</p>
+          <p>
+            No outstanding balances match this filter — all partners are
+            settled.
+          </p>
         </div>
       )}
 
@@ -148,7 +164,15 @@ function AgingReport({ session }: { session: Session }) {
             <thead>
               <tr>
                 <th>Partner</th>
-                <th style={{ textAlign: "center", fontSize: "0.72rem", padding: "4px 8px" }}>Type</th>
+                <th
+                  style={{
+                    textAlign: "center",
+                    fontSize: "0.72rem",
+                    padding: "4px 8px",
+                  }}
+                >
+                  Type
+                </th>
                 <th className="num-col">Currency</th>
                 <th className="num-col">Current</th>
                 <th className="num-col">1–30 days</th>
@@ -163,11 +187,17 @@ function AgingReport({ session }: { session: Session }) {
                 const severity = rowSeverity(r.buckets);
                 const rowClass = `aging-row aging-${severity}`;
                 return r.buckets.map((b, bi) => (
-                  <tr key={`${r.partner_id}-${b.currency}`} className={rowClass}>
+                  <tr
+                    key={`${r.partner_id}-${b.currency}`}
+                    className={rowClass}
+                  >
                     {/* Partner cell spans all currency rows */}
                     {bi === 0 && (
                       <>
-                        <td rowSpan={r.buckets.length} className="aging-partner-cell">
+                        <td
+                          rowSpan={r.buckets.length}
+                          className="aging-partner-cell"
+                        >
                           <a
                             href={`/finance/partners/${r.partner_id}`}
                             className="aging-partner-link"
@@ -177,7 +207,11 @@ function AgingReport({ session }: { session: Session }) {
                           {severity !== "green" && (
                             <span
                               className={`aging-severity-dot aging-severity-${severity}`}
-                              title={severity === "red" ? "61+ days overdue" : "1–60 days overdue"}
+                              title={
+                                severity === "red"
+                                  ? "61+ days overdue"
+                                  : "1–60 days overdue"
+                              }
                             />
                           )}
                         </td>
@@ -185,25 +219,58 @@ function AgingReport({ session }: { session: Session }) {
                           rowSpan={r.buckets.length}
                           style={{ textAlign: "center" }}
                         >
-                          <span className={`aging-dir-badge aging-dir-${r.direction}`}>
-                            {r.direction === "payable" ? "Payable" : "Receivable"}
+                          <span
+                            className={`aging-dir-badge aging-dir-${r.direction}`}
+                          >
+                            {r.direction === "payable"
+                              ? "Payable"
+                              : "Receivable"}
                           </span>
                         </td>
                       </>
                     )}
-                    <td className="num-col aging-currency-cell">{b.currency}</td>
-                    <td className="num-col"><BucketAmt minor={b.current_minor} currency={b.currency} /></td>
-                    <td className="num-col"><BucketAmt minor={b.days_1_30_minor} currency={b.currency} /></td>
-                    <td className={`num-col ${b.days_31_60_minor > 0 ? "aging-amber-text" : ""}`}>
-                      <BucketAmt minor={b.days_31_60_minor} currency={b.currency} />
+                    <td className="num-col aging-currency-cell">
+                      {b.currency}
                     </td>
-                    <td className={`num-col ${b.days_61_90_minor > 0 ? "aging-red-text" : ""}`}>
-                      <BucketAmt minor={b.days_61_90_minor} currency={b.currency} />
+                    <td className="num-col">
+                      <BucketAmt
+                        minor={b.current_minor}
+                        currency={b.currency}
+                      />
                     </td>
-                    <td className={`num-col ${b.days_90_plus_minor > 0 ? "aging-red-text" : ""}`}>
-                      <BucketAmt minor={b.days_90_plus_minor} currency={b.currency} />
+                    <td className="num-col">
+                      <BucketAmt
+                        minor={b.days_1_30_minor}
+                        currency={b.currency}
+                      />
                     </td>
-                    <td className="num-col total-col">{money(b.total_minor, b.currency)}</td>
+                    <td
+                      className={`num-col ${b.days_31_60_minor > 0 ? "aging-amber-text" : ""}`}
+                    >
+                      <BucketAmt
+                        minor={b.days_31_60_minor}
+                        currency={b.currency}
+                      />
+                    </td>
+                    <td
+                      className={`num-col ${b.days_61_90_minor > 0 ? "aging-red-text" : ""}`}
+                    >
+                      <BucketAmt
+                        minor={b.days_61_90_minor}
+                        currency={b.currency}
+                      />
+                    </td>
+                    <td
+                      className={`num-col ${b.days_90_plus_minor > 0 ? "aging-red-text" : ""}`}
+                    >
+                      <BucketAmt
+                        minor={b.days_90_plus_minor}
+                        currency={b.currency}
+                      />
+                    </td>
+                    <td className="num-col total-col">
+                      {money(b.total_minor, b.currency)}
+                    </td>
                   </tr>
                 ));
               })}
@@ -214,14 +281,30 @@ function AgingReport({ session }: { session: Session }) {
               <tfoot>
                 {data.totals_by_currency.map((t) => (
                   <tr key={t.currency} className="aging-footer-row">
-                    <td colSpan={2} className="aging-footer-label">Total</td>
-                    <td className="num-col aging-currency-cell">{t.currency}</td>
-                    <td className="num-col">{money(t.current_minor, t.currency)}</td>
-                    <td className="num-col">{money(t.days_1_30_minor, t.currency)}</td>
-                    <td className="num-col">{money(t.days_31_60_minor, t.currency)}</td>
-                    <td className="num-col">{money(t.days_61_90_minor, t.currency)}</td>
-                    <td className="num-col">{money(t.days_90_plus_minor, t.currency)}</td>
-                    <td className="num-col total-col">{money(t.total_minor, t.currency)}</td>
+                    <td colSpan={2} className="aging-footer-label">
+                      Total
+                    </td>
+                    <td className="num-col aging-currency-cell">
+                      {t.currency}
+                    </td>
+                    <td className="num-col">
+                      {money(t.current_minor, t.currency)}
+                    </td>
+                    <td className="num-col">
+                      {money(t.days_1_30_minor, t.currency)}
+                    </td>
+                    <td className="num-col">
+                      {money(t.days_31_60_minor, t.currency)}
+                    </td>
+                    <td className="num-col">
+                      {money(t.days_61_90_minor, t.currency)}
+                    </td>
+                    <td className="num-col">
+                      {money(t.days_90_plus_minor, t.currency)}
+                    </td>
+                    <td className="num-col total-col">
+                      {money(t.total_minor, t.currency)}
+                    </td>
                   </tr>
                 ))}
               </tfoot>
@@ -233,13 +316,16 @@ function AgingReport({ session }: { session: Session }) {
       {/* Legend */}
       <div className="aging-legend">
         <span className="aging-legend-item">
-          <span className="aging-severity-dot aging-severity-green" /> Current only
+          <span className="aging-severity-dot aging-severity-green" /> Current
+          only
         </span>
         <span className="aging-legend-item">
-          <span className="aging-severity-dot aging-severity-amber" /> 1–60 days overdue
+          <span className="aging-severity-dot aging-severity-amber" /> 1–60 days
+          overdue
         </span>
         <span className="aging-legend-item">
-          <span className="aging-severity-dot aging-severity-red" /> 60+ days overdue
+          <span className="aging-severity-dot aging-severity-red" /> 60+ days
+          overdue
         </span>
       </div>
     </div>
@@ -277,8 +363,8 @@ export function FinanceReports({ session }: { session: Session }) {
       <section className="report-section">
         <h3 className="finance-section-heading">Partner Aging Report</h3>
         <p className="report-section-desc">
-          Outstanding balances by partner, grouped by how long they've been open.
-          Click a partner's name to open their full ledger.
+          Outstanding balances by partner, grouped by how long they've been
+          open. Click a partner's name to open their full ledger.
         </p>
         <AgingReport session={session} />
       </section>

@@ -468,9 +468,10 @@ export class WorkspaceController {
     return this.db.transaction(actor, async (tx) => {
       const {
         rows: [t],
-      } = await tx.query("SELECT timezone,base_currency FROM tenants WHERE id=$1", [
-        actor.tenantId,
-      ]);
+      } = await tx.query(
+        "SELECT timezone,base_currency FROM tenants WHERE id=$1",
+        [actor.tenantId],
+      );
       const timezone = t?.timezone ?? "UTC";
       const currency = t?.base_currency ?? "USD";
       const {

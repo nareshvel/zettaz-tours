@@ -331,7 +331,8 @@ export async function sendPasswordRecovery(
     `,
       {
         eyebrow: "Account security",
-        preheader: "Reset your Zettaz Tours password. This link expires in 1 hour.",
+        preheader:
+          "Reset your Zettaz Tours password. This link expires in 1 hour.",
       },
     ),
   });

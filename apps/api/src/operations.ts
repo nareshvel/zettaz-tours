@@ -198,7 +198,13 @@ export class OperationsController {
       async (tx) =>
         (
           await tx.query(
-            `SELECT id,actor_id,action,aggregate_id,reason,occurred_at FROM audit_events WHERE tenant_id=$1 ORDER BY occurred_at DESC,id LIMIT 100`,
+            `SELECT ae.id,ae.actor_id,ae.action,ae.aggregate_id,ae.reason,ae.occurred_at,
+                    m.role AS actor_role,s.name AS actor_name
+              FROM audit_events ae
+              LEFT JOIN memberships m ON m.tenant_id=ae.tenant_id AND m.actor_id=ae.actor_id
+              LEFT JOIN staff_users s ON s.id=ae.actor_id
+              WHERE ae.tenant_id=$1
+              ORDER BY ae.occurred_at DESC,ae.id LIMIT 100`,
             [actor.tenantId],
           )
         ).rows,

@@ -125,6 +125,8 @@ export class TenantService {
         auditor: "Auditor",
         guide: "Guide",
         driver: "Driver / skipper",
+        crew: "Crew",
+        captain: "Captain",
         resource_manager: "Resource manager",
         operations_manager: "Operations manager",
         partner_manager: "Partner manager",

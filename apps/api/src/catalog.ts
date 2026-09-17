@@ -501,9 +501,7 @@ export class CatalogService {
     };
     const ext = types[file.mimetype];
     if (!ext || file.size > 2 * 1024 * 1024)
-      throw new BadRequestException(
-        "Use a JPG, PNG, or WebP image under 2 MB",
-      );
+      throw new BadRequestException("Use a JPG, PNG, or WebP image under 2 MB");
     return this.db.command(
       actor,
       "product.cover.upload",
@@ -1042,11 +1040,7 @@ export class CatalogController {
     @Param("id") value: string,
     @Headers("idempotency-key") key: string,
   ) {
-    return this.service.clearCover(
-      a,
-      parse(id, value),
-      parse(keySchema, key),
-    );
+    return this.service.clearCover(a, parse(id, value), parse(keySchema, key));
   }
   @Get("availability-rules")
   @Access("catalog.read")

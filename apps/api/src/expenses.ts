@@ -92,7 +92,9 @@ export class ExpenseService {
   createVendor(actor: Actor, raw: unknown) {
     const input = parse(vendorSchema, raw);
     return this.db.transaction(actor, async (tx) => {
-      const { rows: [vendor] } = await tx.query(
+      const {
+        rows: [vendor],
+      } = await tx.query(
         `INSERT INTO vendors(tenant_id, name)
          VALUES($1,$2)
          ON CONFLICT (tenant_id, lower(name))
@@ -106,7 +108,9 @@ export class ExpenseService {
 
   archiveVendor(actor: Actor, vendorId: string) {
     return this.db.transaction(actor, async (tx) => {
-      const { rows: [vendor] } = await tx.query(
+      const {
+        rows: [vendor],
+      } = await tx.query(
         `UPDATE vendors SET is_active=false
          WHERE tenant_id=$1 AND id=$2
          RETURNING id, name, is_active`,
@@ -120,7 +124,9 @@ export class ExpenseService {
   renameVendor(actor: Actor, vendorId: string, raw: unknown) {
     const input = parse(vendorSchema, raw);
     return this.db.transaction(actor, async (tx) => {
-      const { rows: [vendor] } = await tx.query(
+      const {
+        rows: [vendor],
+      } = await tx.query(
         `UPDATE vendors SET name=$3
          WHERE tenant_id=$1 AND id=$2 AND is_active=true
          RETURNING id, name, is_active`,
@@ -149,7 +155,9 @@ export class ExpenseService {
   createCategory(actor: Actor, raw: unknown) {
     const input = parse(categorySchema, raw);
     return this.db.transaction(actor, async (tx) => {
-      const { rows: [cat] } = await tx.query(
+      const {
+        rows: [cat],
+      } = await tx.query(
         `INSERT INTO expense_categories(tenant_id, name, code, sort_order)
          VALUES($1,$2,$3,$4)
          RETURNING id, name, code, sort_order, is_active, created_at`,
@@ -162,17 +170,27 @@ export class ExpenseService {
   updateCategory(actor: Actor, categoryId: string, raw: unknown) {
     const input = parse(categorySchema.partial(), raw);
     return this.db.transaction(actor, async (tx) => {
-      const { rows: [existing] } = await tx.query(
+      const {
+        rows: [existing],
+      } = await tx.query(
         "SELECT id FROM expense_categories WHERE tenant_id=$1 AND id=$2",
         [actor.tenantId, categoryId],
       );
       if (!existing) throw new NotFoundException("Category not found");
-      const { rows: [cat] } = await tx.query(
+      const {
+        rows: [cat],
+      } = await tx.query(
         `UPDATE expense_categories
          SET name=COALESCE($3,name), code=COALESCE($4,code), sort_order=COALESCE($5,sort_order)
          WHERE tenant_id=$1 AND id=$2
          RETURNING id, name, code, sort_order, is_active, created_at`,
-        [actor.tenantId, categoryId, input.name ?? null, input.code ?? null, input.sort_order ?? null],
+        [
+          actor.tenantId,
+          categoryId,
+          input.name ?? null,
+          input.code ?? null,
+          input.sort_order ?? null,
+        ],
       );
       return cat;
     });
@@ -180,7 +198,9 @@ export class ExpenseService {
 
   archiveCategory(actor: Actor, categoryId: string) {
     return this.db.transaction(actor, async (tx) => {
-      const { rows: [cat] } = await tx.query(
+      const {
+        rows: [cat],
+      } = await tx.query(
         `UPDATE expense_categories SET is_active=false
          WHERE tenant_id=$1 AND id=$2
          RETURNING id, name, is_active`,
@@ -195,7 +215,12 @@ export class ExpenseService {
 
   listExpenses(
     actor: Actor,
-    opts: { categoryId?: string; dateFrom?: string; dateTo?: string; page?: number },
+    opts: {
+      categoryId?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      page?: number;
+    },
   ) {
     return this.db.transaction(actor, async (tx) => {
       const page = Math.max(1, opts.page ?? 1);
@@ -218,7 +243,14 @@ export class ExpenseService {
            AND ($4::date IS NULL OR e.expense_date <= $4::date)
          ORDER BY e.expense_date DESC, e.created_at DESC
          LIMIT $5 OFFSET $6`,
-        [actor.tenantId, opts.categoryId ?? null, opts.dateFrom ?? null, opts.dateTo ?? null, limit, offset],
+        [
+          actor.tenantId,
+          opts.categoryId ?? null,
+          opts.dateFrom ?? null,
+          opts.dateTo ?? null,
+          limit,
+          offset,
+        ],
       );
 
       const { rows: totals } = await tx.query(
@@ -236,16 +268,25 @@ export class ExpenseService {
         [actor.tenantId, opts.dateFrom ?? null, opts.dateTo ?? null],
       );
 
-      const currency = (
-        await tx.query("SELECT base_currency FROM tenants WHERE id=$1", [actor.tenantId])
-      ).rows[0]?.base_currency ?? "XCD";
+      const currency =
+        (
+          await tx.query("SELECT base_currency FROM tenants WHERE id=$1", [
+            actor.tenantId,
+          ])
+        ).rows[0]?.base_currency ?? "XCD";
 
       return {
-        expenses: expenses.map((e: any) => ({ ...e, amount_minor: Number(e.amount_minor) })),
+        expenses: expenses.map((e: any) => ({
+          ...e,
+          amount_minor: Number(e.amount_minor),
+        })),
         category_totals: totals.map((t: any) => ({
           category_name: t.category_name,
           total_minor: Number(t.total_minor),
-          total_reporting_minor: t.total_reporting_minor != null ? Number(t.total_reporting_minor) : null,
+          total_reporting_minor:
+            t.total_reporting_minor != null
+              ? Number(t.total_reporting_minor)
+              : null,
           currency: t.currency ?? currency,
         })),
         currency,
@@ -258,25 +299,41 @@ export class ExpenseService {
   createExpense(actor: Actor, raw: unknown) {
     const input = parse(expenseSchema, raw);
     return this.db.transaction(actor, async (tx) => {
-      const { rows: [cat] } = await tx.query(
+      const {
+        rows: [cat],
+      } = await tx.query(
         "SELECT id FROM expense_categories WHERE tenant_id=$1 AND id=$2 AND is_active=true",
         [actor.tenantId, input.category_id],
       );
-      if (!cat) throw new NotFoundException("Expense category not found or inactive");
+      if (!cat)
+        throw new NotFoundException("Expense category not found or inactive");
 
-      const currency = (
-        await tx.query("SELECT base_currency FROM tenants WHERE id=$1", [actor.tenantId])
-      ).rows[0]?.base_currency ?? "XCD";
+      const currency =
+        (
+          await tx.query("SELECT base_currency FROM tenants WHERE id=$1", [
+            actor.tenantId,
+          ])
+        ).rows[0]?.base_currency ?? "XCD";
 
-      const { rows: [expense] } = await tx.query(
+      const {
+        rows: [expense],
+      } = await tx.query(
         `INSERT INTO expenses(tenant_id, category_id, amount_minor, currency,
           expense_date, vendor, description, reference, recorded_by)
          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
          RETURNING id, category_id, amount_minor::bigint, currency,
                    expense_date, vendor, description, reference, created_at`,
-        [actor.tenantId, input.category_id, input.amount_minor, currency,
-         input.expense_date, input.vendor ?? null, input.description ?? null,
-         input.reference ?? null, actor.actorId],
+        [
+          actor.tenantId,
+          input.category_id,
+          input.amount_minor,
+          currency,
+          input.expense_date,
+          input.vendor ?? null,
+          input.description ?? null,
+          input.reference ?? null,
+          actor.actorId,
+        ],
       );
       await record(tx, actor, "expense.created", expense.id, null, expense);
       return { ...expense, amount_minor: Number(expense.amount_minor) };
@@ -304,24 +361,32 @@ export class ExpenseService {
       // fx_rate is the bank rate that was actually applied at transaction time.
       // Only used when the expense currency differs from the reporting currency.
       const fxRate =
-        currency !== reportingCurrency
-          ? (input.fx_rate ?? null)
-          : null;
+        currency !== reportingCurrency ? (input.fx_rate ?? null) : null;
 
       const created: any[] = [];
       for (const line of input.lines) {
-        const { rows: [cat] } = await tx.query(
+        const {
+          rows: [cat],
+        } = await tx.query(
           "SELECT id FROM expense_categories WHERE tenant_id=$1 AND id=$2 AND is_active=true",
           [actor.tenantId, line.category_id],
         );
-        if (!cat) throw new NotFoundException(`Category ${line.category_id} not found or inactive`);
+        if (!cat)
+          throw new NotFoundException(
+            `Category ${line.category_id} not found or inactive`,
+          );
 
         // Same-currency: reporting minor = original minor (1:1, no conversion).
         // Foreign currency: apply the stored fx_rate (reporting units per 1 expense unit).
-        const reportingMinor = currency === reportingCurrency
-          ? line.amount_minor
-          : fxRate ? Math.round(line.amount_minor * fxRate) : null;
-        const { rows: [expense] } = await tx.query(
+        const reportingMinor =
+          currency === reportingCurrency
+            ? line.amount_minor
+            : fxRate
+              ? Math.round(line.amount_minor * fxRate)
+              : null;
+        const {
+          rows: [expense],
+        } = await tx.query(
           `INSERT INTO expenses(tenant_id, category_id, amount_minor, currency,
             expense_date, vendor, description, reference, recorded_by,
             fx_rate, amount_reporting_minor)
@@ -329,13 +394,25 @@ export class ExpenseService {
            RETURNING id, category_id, amount_minor::bigint, currency,
                      expense_date, vendor, description, reference, created_at,
                      fx_rate, amount_reporting_minor::bigint`,
-          [actor.tenantId, line.category_id, line.amount_minor, currency,
-           input.expense_date, input.vendor ?? null, line.description ?? null,
-           input.reference ?? null, actor.actorId,
-           fxRate, reportingMinor],
+          [
+            actor.tenantId,
+            line.category_id,
+            line.amount_minor,
+            currency,
+            input.expense_date,
+            input.vendor ?? null,
+            line.description ?? null,
+            input.reference ?? null,
+            actor.actorId,
+            fxRate,
+            reportingMinor,
+          ],
         );
         await record(tx, actor, "expense.created", expense.id, null, expense);
-        created.push({ ...expense, amount_minor: Number(expense.amount_minor) });
+        created.push({
+          ...expense,
+          amount_minor: Number(expense.amount_minor),
+        });
       }
       return { expenses: created, count: created.length };
     });
@@ -343,7 +420,9 @@ export class ExpenseService {
 
   getExpense(actor: Actor, expenseId: string) {
     return this.db.transaction(actor, async (tx) => {
-      const { rows: [expense] } = await tx.query(
+      const {
+        rows: [expense],
+      } = await tx.query(
         `SELECT e.id, e.category_id, ec.name AS category_name,
                 e.amount_minor::bigint, e.currency, e.expense_date,
                 e.vendor, e.description, e.reference, e.voided_at, e.void_reason, e.created_at
@@ -360,30 +439,43 @@ export class ExpenseService {
   updateExpense(actor: Actor, expenseId: string, raw: unknown) {
     const input = parse(expenseSchema.partial(), raw);
     return this.db.transaction(actor, async (tx) => {
-      const { rows: [before] } = await tx.query(
+      const {
+        rows: [before],
+      } = await tx.query(
         "SELECT * FROM expenses WHERE tenant_id=$1 AND id=$2 AND voided_at IS NULL FOR UPDATE",
         [actor.tenantId, expenseId],
       );
-      if (!before) throw new NotFoundException("Expense not found or already voided");
+      if (!before)
+        throw new NotFoundException("Expense not found or already voided");
       // Resolve currency and reporting amount on update
-      const tenantRow2 = (await tx.query(
-        "SELECT expense_currency, reporting_currency, base_currency FROM tenants WHERE id=$1",
-        [actor.tenantId],
-      )).rows[0];
+      const tenantRow2 = (
+        await tx.query(
+          "SELECT expense_currency, reporting_currency, base_currency FROM tenants WHERE id=$1",
+          [actor.tenantId],
+        )
+      ).rows[0];
       const newCurrency = input.currency?.trim().toUpperCase() ?? null;
-      const reportingCurrency2 = tenantRow2?.reporting_currency ?? tenantRow2?.base_currency ?? null;
-      const newFxRate = newCurrency && reportingCurrency2 && newCurrency !== reportingCurrency2
-        ? (input.fx_rate ?? null) : null;
+      const reportingCurrency2 =
+        tenantRow2?.reporting_currency ?? tenantRow2?.base_currency ?? null;
+      const newFxRate =
+        newCurrency && reportingCurrency2 && newCurrency !== reportingCurrency2
+          ? (input.fx_rate ?? null)
+          : null;
       const newAmtMinor = input.amount_minor ?? null;
       // Same-currency: reporting minor equals original minor (1:1).
       // Foreign currency: apply fx_rate. If fx_rate missing, null (flagged in UI).
-      const newReportingMinor = newAmtMinor != null
-        ? (newCurrency === reportingCurrency2
+      const newReportingMinor =
+        newAmtMinor != null
+          ? newCurrency === reportingCurrency2
             ? newAmtMinor
-            : newFxRate ? Math.round(newAmtMinor * newFxRate) : null)
-        : null;
+            : newFxRate
+              ? Math.round(newAmtMinor * newFxRate)
+              : null
+          : null;
 
-      const { rows: [expense] } = await tx.query(
+      const {
+        rows: [expense],
+      } = await tx.query(
         `UPDATE expenses
          SET expense_date=COALESCE($3, expense_date),
              category_id=COALESCE($4, category_id),
@@ -397,12 +489,19 @@ export class ExpenseService {
          WHERE tenant_id=$1 AND id=$2
          RETURNING id, category_id, amount_minor::bigint, currency, fx_rate,
                    expense_date, vendor, description, reference, created_at`,
-        [actor.tenantId, expenseId,
-         input.expense_date ?? null, input.category_id ?? null,
-         newAmtMinor, newCurrency,
-         newFxRate, newReportingMinor,
-         input.vendor ?? null, input.description ?? null,
-         input.reference ?? null],
+        [
+          actor.tenantId,
+          expenseId,
+          input.expense_date ?? null,
+          input.category_id ?? null,
+          newAmtMinor,
+          newCurrency,
+          newFxRate,
+          newReportingMinor,
+          input.vendor ?? null,
+          input.description ?? null,
+          input.reference ?? null,
+        ],
       );
       await record(tx, actor, "expense.updated", expenseId, before, expense);
       return { ...expense, amount_minor: Number(expense.amount_minor) };
@@ -412,12 +511,17 @@ export class ExpenseService {
   voidExpense(actor: Actor, expenseId: string, raw: unknown) {
     const input = parse(voidSchema, raw);
     return this.db.transaction(actor, async (tx) => {
-      const { rows: [before] } = await tx.query(
+      const {
+        rows: [before],
+      } = await tx.query(
         "SELECT * FROM expenses WHERE tenant_id=$1 AND id=$2 AND voided_at IS NULL FOR UPDATE",
         [actor.tenantId, expenseId],
       );
-      if (!before) throw new NotFoundException("Expense not found or already voided");
-      const { rows: [expense] } = await tx.query(
+      if (!before)
+        throw new NotFoundException("Expense not found or already voided");
+      const {
+        rows: [expense],
+      } = await tx.query(
         `UPDATE expenses SET voided_at=now(), void_reason=$3
          WHERE tenant_id=$1 AND id=$2
          RETURNING id, voided_at, void_reason`,
@@ -457,7 +561,11 @@ export class ExpenseController {
 
   @Patch("vendors/:id")
   @Access("partner.statement.read")
-  renameVendor(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown) {
+  renameVendor(
+    @CurrentActor() actor: Actor,
+    @Param("id") id: string,
+    @Body() body: unknown,
+  ) {
     return this.service.renameVendor(actor, parse(z.string().uuid(), id), body);
   }
 
@@ -482,7 +590,11 @@ export class ExpenseController {
     @Param("id") id: string,
     @Body() body: unknown,
   ) {
-    return this.service.updateCategory(actor, parse(z.string().uuid(), id), body);
+    return this.service.updateCategory(
+      actor,
+      parse(z.string().uuid(), id),
+      body,
+    );
   }
 
   @Delete("expense-categories/:id")
@@ -535,7 +647,11 @@ export class ExpenseController {
     @Param("id") id: string,
     @Body() body: unknown,
   ) {
-    return this.service.updateExpense(actor, parse(z.string().uuid(), id), body);
+    return this.service.updateExpense(
+      actor,
+      parse(z.string().uuid(), id),
+      body,
+    );
   }
 
   @Delete("expenses/:id")

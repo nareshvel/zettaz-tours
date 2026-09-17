@@ -29,7 +29,10 @@ import {
   Heading,
   Loading,
   Notice,
+  SearchBox,
+  Status,
   TenantDateInput,
+  ConfirmDialog,
 } from "./common";
 
 export type ComplianceDocument = {
@@ -67,6 +70,10 @@ export function formatBytes(bytes: number) {
   if (bytes < 1024 * 1024 * 1024)
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function documentExpired(expiresOn: string) {
+  return expiresOn < new Date().toISOString().slice(0, 10);
 }
 
 export function StorageMeter({ usage }: { usage: LibraryUsage | null }) {
@@ -165,6 +172,10 @@ export function DocumentLibrary({ session }: { session: Session }) {
     file: null as File | null,
   });
 
+  const [pendingRemove, setPendingRemove] = useState<ComplianceDocument | null>(
+    null,
+  );
+
   const items = useMemo(() => {
     const list = documents.data ?? [];
     const q = filter.trim().toLowerCase();
@@ -234,10 +245,16 @@ export function DocumentLibrary({ session }: { session: Session }) {
       "DELETE",
     );
     if (result !== undefined) {
+      setPendingRemove(null);
       documents.reload();
       usage.reload();
     }
   }
+
+  const expiredCount = items.filter((doc) =>
+    documentExpired(doc.expires_on),
+  ).length;
+  const withFile = items.filter((doc) => doc.has_file).length;
 
   return (
     <>
@@ -253,168 +270,228 @@ export function DocumentLibrary({ session }: { session: Session }) {
         </Notice>
       )}
 
-      <StorageMeter usage={usage.data} />
-
-      <div className="view-action-bar">
-        <div className="library-filters">
-          <input
-            type="search"
-            placeholder="Search type, subject, or file"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-          />
-          <select
-            value={subjectFilter}
-            onChange={(e) => setSubjectFilter(e.target.value)}
-            aria-label="Filter by subject"
-          >
-            <option value="all">All subjects</option>
-            <option value="crew">Staff</option>
-            <option value="resource">Fleet</option>
-          </select>
+      <div
+        className="catalog-metrics reservation-insights"
+        aria-label="Document library summary"
+      >
+        <div>
+          <strong>{items.length}</strong>
+          <span>Documents in view</span>
         </div>
-        <button
-          type="button"
-          className="button"
-          onClick={() => {
-            setError("");
-            setAdding(true);
-          }}
-        >
-          <Plus size={16} aria-hidden="true" />
-          <span className="button-label">Add document</span>
-        </button>
+        <div>
+          <strong>{expiredCount}</strong>
+          <span>Expired</span>
+        </div>
+        <div>
+          <strong>{withFile}</strong>
+          <span>With a file</span>
+        </div>
       </div>
 
-      {!documents.data ? (
-        <Loading />
-      ) : items.length === 0 ? (
-        <Empty title="No compliance documents yet">
-          <p>
-            Upload licenses, insurance, and other expiry documents for staff or
-            fleet assets.
-          </p>
-        </Empty>
-      ) : (
-        <>
-          <div className="table-scroll">
-            <table className="resource-table">
-              <thead>
-                <tr>
-                  <th>Subject</th>
-                  <th>Document</th>
-                  <th>Expires</th>
-                  <th>File</th>
-                  <th>Size</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((doc) => (
-                  <tr key={doc.id}>
-                    <td>
-                      <strong>{doc.subject_name || "—"}</strong>
-                      <small>
-                        {doc.subject_kind === "resource" ? "Fleet" : "Staff"}
-                      </small>
-                    </td>
-                    <td>
-                      <strong>{doc.document_type}</strong>
-                      {doc.notes ? <small>{doc.notes}</small> : null}
-                    </td>
-                    <td>
-                      <small>{formatMediumDate(doc.expires_on)}</small>
-                    </td>
-                    <td>
-                      <small>
-                        {doc.has_file
-                          ? doc.file_name || "Attached file"
-                          : "No file"}
-                      </small>
-                    </td>
-                    <td>
-                      <small>
-                        {doc.has_file ? formatBytes(doc.byte_size ?? 0) : "—"}
-                      </small>
-                    </td>
-                    <td className="staff-actions-cell">
-                      <div className="row-actions">
-                        {doc.has_file && (
+      <StorageMeter usage={usage.data} />
+
+      <section className="panel">
+        <div className="list-action-bar">
+          <div className="list-action-search">
+            <SearchBox
+              value={filter}
+              onChange={setFilter}
+              placeholder="Search type, subject, or file"
+            />
+          </div>
+          <div className="departure-view-actions">
+            <select
+              value={subjectFilter}
+              onChange={(e) => setSubjectFilter(e.target.value)}
+              aria-label="Filter by subject"
+            >
+              <option value="all">All subjects</option>
+              <option value="crew">Staff</option>
+              <option value="resource">Fleet</option>
+            </select>
+            <button
+              type="button"
+              className="button catalog-add-btn"
+              aria-label="Add document"
+              onClick={() => {
+                setError("");
+                setAdding(true);
+              }}
+            >
+              <Plus size={16} aria-hidden="true" />
+              <span className="button-label">Add document</span>
+            </button>
+          </div>
+        </div>
+
+        {!documents.data ? (
+          <Loading />
+        ) : items.length === 0 ? (
+          <Empty
+            title={
+              filter || subjectFilter !== "all"
+                ? "No matching documents"
+                : "No compliance documents yet"
+            }
+          >
+            <p>
+              {filter || subjectFilter !== "all"
+                ? "Try another search or subject filter."
+                : "Upload licenses, insurance, and other expiry documents for staff or fleet assets."}
+            </p>
+          </Empty>
+        ) : (
+          <>
+            <div className="table-scroll">
+              <table className="resource-table">
+                <thead>
+                  <tr>
+                    <th>Subject</th>
+                    <th>Document</th>
+                    <th>Expires</th>
+                    <th>File</th>
+                    <th>Size</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((doc) => (
+                    <tr key={doc.id}>
+                      <td>
+                        <strong>{doc.subject_name || "—"}</strong>
+                        <small>
+                          {doc.subject_kind === "resource" ? "Fleet" : "Staff"}
+                        </small>
+                      </td>
+                      <td>
+                        <strong>{doc.document_type}</strong>
+                        {doc.notes ? <small>{doc.notes}</small> : null}
+                      </td>
+                      <td>
+                        {documentExpired(doc.expires_on) ? (
+                          <Status state="expired" />
+                        ) : (
+                          <small>{formatMediumDate(doc.expires_on)}</small>
+                        )}
+                        {documentExpired(doc.expires_on) ? (
+                          <small>{formatMediumDate(doc.expires_on)}</small>
+                        ) : null}
+                      </td>
+                      <td>
+                        <small>
+                          {doc.has_file
+                            ? doc.file_name || "Attached file"
+                            : "No file"}
+                        </small>
+                      </td>
+                      <td>
+                        <small>
+                          {doc.has_file ? formatBytes(doc.byte_size ?? 0) : "—"}
+                        </small>
+                      </td>
+                      <td className="staff-actions-cell">
+                        <div className="row-actions">
+                          {doc.has_file && (
+                            <button
+                              type="button"
+                              className="icon-button"
+                              aria-label={`Download ${doc.file_name || doc.document_type}`}
+                              onClick={() =>
+                                void downloadApiFile(
+                                  `ops/v1/compliance-documents/${doc.id}/file`,
+                                  doc.file_name || "document",
+                                )
+                              }
+                            >
+                              <Download size={16} />
+                            </button>
+                          )}
                           <button
                             type="button"
-                            className="icon-button"
-                            aria-label={`Download ${doc.file_name || doc.document_type}`}
-                            onClick={() =>
-                              void downloadApiFile(
-                                `ops/v1/compliance-documents/${doc.id}/file`,
-                                doc.file_name || "document",
-                              )
-                            }
+                            className="icon-button danger"
+                            aria-label={`Remove ${doc.document_type}`}
+                            onClick={() => setPendingRemove(doc)}
                           >
-                            <Download size={16} />
+                            <Trash2 size={16} />
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          className="icon-button danger"
-                          aria-label={`Remove ${doc.document_type}`}
-                          onClick={() => void remove(doc.id)}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="resource-cards">
-            {items.map((doc) => (
-              <article key={doc.id} className="resource-card">
-                <div className="resource-card-head">
-                  <strong>{doc.document_type}</strong>
-                  <small>{formatMediumDate(doc.expires_on)}</small>
-                </div>
-                <p>
-                  {doc.subject_name} ·{" "}
-                  {doc.subject_kind === "resource" ? "Fleet" : "Staff"}
-                </p>
-                <small>
-                  {doc.has_file
-                    ? `${doc.file_name || "File"} · ${formatBytes(doc.byte_size ?? 0)}`
-                    : "No file attached"}
-                </small>
-                <div className="row-actions">
-                  {doc.has_file && (
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="resource-cards">
+              {items.map((doc) => (
+                <article key={doc.id} className="resource-card">
+                  <div className="resource-card-head">
+                    <strong>{doc.document_type}</strong>
+                    {documentExpired(doc.expires_on) ? (
+                      <Status state="expired" />
+                    ) : (
+                      <small>{formatMediumDate(doc.expires_on)}</small>
+                    )}
+                  </div>
+                  <p>
+                    {doc.subject_name} ·{" "}
+                    {doc.subject_kind === "resource" ? "Fleet" : "Staff"}
+                  </p>
+                  <small>
+                    {doc.has_file
+                      ? `${doc.file_name || "File"} · ${formatBytes(doc.byte_size ?? 0)}`
+                      : "No file attached"}
+                  </small>
+                  <div className="row-actions">
+                    {doc.has_file && (
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label={`Download ${doc.file_name || doc.document_type}`}
+                        onClick={() =>
+                          void downloadApiFile(
+                            `ops/v1/compliance-documents/${doc.id}/file`,
+                            doc.file_name || "document",
+                          )
+                        }
+                      >
+                        <Download size={16} />
+                      </button>
+                    )}
                     <button
                       type="button"
-                      className="icon-button"
-                      aria-label={`Download ${doc.file_name || doc.document_type}`}
-                      onClick={() =>
-                        void downloadApiFile(
-                          `ops/v1/compliance-documents/${doc.id}/file`,
-                          doc.file_name || "document",
-                        )
-                      }
+                      className="icon-button danger"
+                      aria-label={`Remove ${doc.document_type}`}
+                      onClick={() => setPendingRemove(doc)}
                     >
-                      <Download size={16} />
+                      <Trash2 size={16} />
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    className="icon-button danger"
-                    aria-label={`Remove ${doc.document_type}`}
-                    onClick={() => void remove(doc.id)}
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        </>
-      )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+
+      <ConfirmDialog
+        open={Boolean(pendingRemove)}
+        title="Remove document?"
+        description={
+          pendingRemove
+            ? `${pendingRemove.document_type} for ${pendingRemove.subject_name || "this subject"} will be removed from the library. This cannot be undone.`
+            : undefined
+        }
+        confirmLabel="Remove"
+        danger
+        busy={mutation.busy}
+        error={mutation.error}
+        onConfirm={() => {
+          if (pendingRemove) void remove(pendingRemove.id);
+        }}
+        onClose={() => {
+          if (!mutation.busy) setPendingRemove(null);
+        }}
+      />
 
       <FormDialog
         open={adding}

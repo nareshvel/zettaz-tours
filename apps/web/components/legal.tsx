@@ -69,7 +69,9 @@ export function TermsContent() {
           <li>Day board, pickup planning, manifests, and boarding workflows</li>
           <li>Staff access, roles, and crew-facing tools</li>
           <li>Waivers, check-in, and guest communication features</li>
-          <li>Payments, partner attribution, reports, and related admin tools</li>
+          <li>
+            Payments, partner attribution, reports, and related admin tools
+          </li>
           <li>Integrations and import workflows where enabled for your plan</li>
         </ul>
         <p>
@@ -101,22 +103,29 @@ export function TermsContent() {
         </p>
       </Section>
 
-      <Section
-        icon={<AlertTriangle size={22} />}
-        title="4. Acceptable use"
-      >
-        <p>You may use the service only for lawful operator purposes. You may not:</p>
+      <Section icon={<AlertTriangle size={22} />} title="4. Acceptable use">
+        <p>
+          You may use the service only for lawful operator purposes. You may
+          not:
+        </p>
         <ul>
           <li>Violate applicable law or third-party rights</li>
           <li>Attempt unauthorized access, probing, or interference</li>
           <li>Upload malware or abuse the platform</li>
           <li>Reverse engineer the software except where law allows</li>
-          <li>Resell or white-label the service without our written permission</li>
-          <li>Use the service to build a competing product from our materials</li>
+          <li>
+            Resell or white-label the service without our written permission
+          </li>
+          <li>
+            Use the service to build a competing product from our materials
+          </li>
         </ul>
       </Section>
 
-      <Section icon={<CreditCard size={22} />} title="5. Trials, plans, and billing">
+      <Section
+        icon={<CreditCard size={22} />}
+        title="5. Trials, plans, and billing"
+      >
         <h3>5.1 Free trial</h3>
         <p>
           Trial access is provided for evaluation. Trial length, limits, and
@@ -144,9 +153,10 @@ export function TermsContent() {
 
       <Section icon={<Shield size={22} />} title="6. Your operator data">
         <p>
-          You retain ownership of your business data (bookings, guests, manifests,
-          payments records, and configuration). You grant us a limited license to
-          host and process that data solely to provide and secure the service.
+          You retain ownership of your business data (bookings, guests,
+          manifests, payments records, and configuration). You grant us a
+          limited license to host and process that data solely to provide and
+          secure the service.
         </p>
         <p>
           You are responsible for the legality of guest, passenger, and partner
@@ -163,7 +173,10 @@ export function TermsContent() {
         </p>
       </Section>
 
-      <Section icon={<FileText size={22} />} title="8. Disclaimers and liability">
+      <Section
+        icon={<FileText size={22} />}
+        title="8. Disclaimers and liability"
+      >
         <p>
           The service is provided “as is” to the extent permitted by law. We do
           not warrant uninterrupted or error-free operation. To the maximum
@@ -216,7 +229,9 @@ export function PrivacyContent() {
         <h3>2.2 Operator content</h3>
         <p>As you use the workspace, you may store:</p>
         <ul>
-          <li>Reservations, guest and passenger details, and stay information</li>
+          <li>
+            Reservations, guest and passenger details, and stay information
+          </li>
           <li>Pickup, manifest, waiver, and boarding records</li>
           <li>Payment, partner, and operational notes</li>
           <li>Documents and files you upload</li>
@@ -225,7 +240,9 @@ export function PrivacyContent() {
         <ul>
           <li>IP address, device, and browser data</li>
           <li>Authentication and session logs</li>
-          <li>Usage and diagnostic events needed to run and secure the service</li>
+          <li>
+            Usage and diagnostic events needed to run and secure the service
+          </li>
         </ul>
       </Section>
 
@@ -256,10 +273,7 @@ export function PrivacyContent() {
         </ul>
       </Section>
 
-      <Section
-        icon={<Lock size={22} />}
-        title="4. Sharing and disclosure"
-      >
+      <Section icon={<Lock size={22} />} title="4. Sharing and disclosure">
         <p>
           We do not sell your personal information. We may share information
           with:
@@ -270,9 +284,7 @@ export function PrivacyContent() {
           providers) who process data on our instructions.
         </p>
         <h3>4.2 Legal requirements</h3>
-        <p>
-          When required by law or to protect rights, safety, or security.
-        </p>
+        <p>When required by law or to protect rights, safety, or security.</p>
         <h3>4.3 Business transfers</h3>
         <p>
           In a merger or acquisition, subject to continued privacy protections.
@@ -319,8 +331,8 @@ export function PrivacyContent() {
       <Section icon={<Globe size={22} />} title="9. International processing">
         <p>
           We may process information in countries where we or our providers
-          operate. Where required, we use appropriate safeguards for cross-border
-          transfers.
+          operate. Where required, we use appropriate safeguards for
+          cross-border transfers.
         </p>
       </Section>
 
@@ -347,10 +359,7 @@ export function LegalPage({ doc }: { doc: LegalDoc }) {
     <main className="legal-page">
       <nav className="legal-nav">
         <Link href="/" className="legal-brand" aria-label={PRODUCT}>
-          <img
-            src="/brand/zettaz-logo-dark.svg"
-            alt={PRODUCT}
-          />
+          <img src="/brand/zettaz-logo-dark.svg" alt={PRODUCT} />
         </Link>
         <Link href="/signup" className="legal-back">
           <ArrowLeft size={16} />

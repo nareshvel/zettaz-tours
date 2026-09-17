@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -2846,46 +2846,218 @@ export function ManifestView({
 
 export function AuditView({ session }: { session: Session }) {
   const { data, error } = useResource<Audit[]>("ops/v1/audit");
+  const [search, setSearch] = useState("");
+  const [family, setFamily] = useState("");
+  const [openId, setOpenId] = useState<string | null>(null);
+  const families = useMemo(() => {
+    const values = new Set(
+      (data ?? []).map((event) => auditFamily(event.action)),
+    );
+    return [...values].sort();
+  }, [data]);
+  const events = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return (data ?? []).filter((event) => {
+      if (family && auditFamily(event.action) !== family) return false;
+      if (!query) return true;
+      return [
+        event.action,
+        event.reason,
+        event.actor_name,
+        event.actor_role,
+        event.aggregate_id,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query));
+    });
+  }, [data, family, search]);
+  const withReason = events.filter((event) => event.reason).length;
+  const actors = new Set(events.map((event) => event.actor_id).filter(Boolean))
+    .size;
   return (
     <>
       <Heading
+        eyebrow="ADMINISTRATION"
         title="Audit trail"
-        description="The latest 100 recorded changes in this tenant."
+        description="The latest 100 recorded changes in this tenant. Event payloads stay off this page — open the related record when you need guest or money detail."
       />
-      {error ? (
-        <Notice error>{error}</Notice>
-      ) : !data ? (
-        <Loading />
-      ) : (
-        <section className="panel">
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Event</th>
-                  <th>Record</th>
-                  <th>Actor</th>
-                  <th>Recorded at</th>
-                  <th>Reason</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.map((e) => (
-                  <tr key={e.id}>
-                    <td>
-                      <strong>{label(e.action.replaceAll(".", " "))}</strong>
-                    </td>
-                    <td className="mono">{e.aggregate_id.slice(0, 8)}</td>
-                    <td className="mono">{e.actor_id.slice(0, 8)}</td>
-                    <td>{dateTime(e.occurred_at, session.tenant.timezone)}</td>
-                    <td>{e.reason ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <div
+        className="catalog-metrics reservation-insights"
+        aria-label="Loaded audit summary"
+      >
+        <div>
+          <strong>{events.length}</strong>
+          <span>Events in view</span>
+        </div>
+        <div>
+          <strong>{actors}</strong>
+          <span>Actors in view</span>
+        </div>
+        <div>
+          <strong>{withReason}</strong>
+          <span>With a reason</span>
+        </div>
+        <div>
+          <strong>{data?.length ?? 0}</strong>
+          <span>Latest loaded</span>
+        </div>
+      </div>
+      {error ? <Notice error>{error}</Notice> : null}
+      <section className="panel">
+        <div className="list-action-bar">
+          <div className="list-action-search">
+            <SearchBox
+              value={search}
+              onChange={setSearch}
+              placeholder="Search action, actor, or reason"
+            />
           </div>
-        </section>
-      )}
+          <label className="compact-control">
+            Area
+            <select
+              aria-label="Filter by area"
+              value={family}
+              onChange={(event) => setFamily(event.target.value)}
+            >
+              <option value="">All areas</option>
+              {families.map((item) => (
+                <option key={item} value={item}>
+                  {label(item)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {!data ? (
+          <Loading />
+        ) : !events.length ? (
+          <Empty
+            title={search || family ? "No matching events" : "No audit events"}
+          >
+            <p>
+              {search || family
+                ? "Try another search or area filter. This page only loads the latest 100 events."
+                : "Mutations in this tenant will appear here after they are recorded."}
+            </p>
+          </Empty>
+        ) : (
+          <>
+            <div className="table-scroll audit-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Event</th>
+                    <th>Actor</th>
+                    <th>Recorded</th>
+                    <th>Reason</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {events.map((event) => (
+                    <tr key={event.id}>
+                      <td>
+                        <strong>
+                          {label(event.action.replaceAll(".", " "))}
+                        </strong>
+                        <small>{label(auditFamily(event.action))}</small>
+                      </td>
+                      <td>{auditActor(event)}</td>
+                      <td>
+                        {dateTime(event.occurred_at, session.tenant.timezone)}
+                      </td>
+                      <td>{event.reason ?? "—"}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="text-button"
+                          aria-expanded={openId === event.id}
+                          onClick={() =>
+                            setOpenId((current) =>
+                              current === event.id ? null : event.id,
+                            )
+                          }
+                        >
+                          {openId === event.id ? "Hide" : "Details"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {openId ? (
+              <AuditDetail
+                event={events.find((item) => item.id === openId)}
+                timezone={session.tenant.timezone}
+              />
+            ) : null}
+            <div className="audit-cards">
+              {events.map((event) => (
+                <article key={event.id} className="resource-card">
+                  <div className="resource-card-head">
+                    <strong>{label(event.action.replaceAll(".", " "))}</strong>
+                    <small>
+                      {dateTime(event.occurred_at, session.tenant.timezone)}
+                    </small>
+                  </div>
+                  <p>
+                    {auditActor(event)}
+                    {event.reason ? ` · ${event.reason}` : ""}
+                  </p>
+                  <details>
+                    <summary>Record reference</summary>
+                    <p className="mono">{event.aggregate_id}</p>
+                    <p>
+                      Actor role{" "}
+                      {event.actor_role ? label(event.actor_role) : "—"}
+                    </p>
+                  </details>
+                </article>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
     </>
+  );
+}
+
+function auditFamily(action: string) {
+  const index = action.indexOf(".");
+  return index === -1 ? action : action.slice(0, index);
+}
+
+function auditActor(event: Audit) {
+  if (event.actor_name) return event.actor_name;
+  if (event.actor_role) return label(event.actor_role);
+  return "Staff";
+}
+
+function AuditDetail({
+  event,
+  timezone,
+}: {
+  event: Audit | undefined;
+  timezone: string;
+}) {
+  if (!event) return null;
+  return (
+    <div className="audit-detail" role="region" aria-label="Audit event detail">
+      <p>
+        <strong>{label(event.action.replaceAll(".", " "))}</strong>
+        <small>
+          {dateTime(event.occurred_at, timezone)} · {auditActor(event)}
+        </small>
+      </p>
+      {event.reason ? (
+        <p>{event.reason}</p>
+      ) : (
+        <p className="muted">No reason recorded.</p>
+      )}
+      <p className="muted">
+        Record reference <span className="mono">{event.aggregate_id}</span>
+      </p>
+    </div>
   );
 }

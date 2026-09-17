@@ -20,6 +20,26 @@ import {
 import { call, crewLoadMessage, isUnauthorized, requestKey } from "./src/api";
 import { APP_VERSION, SESSION_KEY, SUPPORT_EMAIL, WEB } from "./src/config";
 import {
+  biometricAvailable,
+  discardQuarantined,
+  downloadSnapshot,
+  enqueue,
+  hasPin,
+  isOfflineError,
+  isRevoked,
+  listCommands,
+  prepareOffline,
+  queuedCount,
+  readSnapshot,
+  syncQueue,
+  unlockWithBiometrics,
+  verifyPin,
+  wipeOffline,
+  deviceCredentials,
+  type OfflineCommandKind,
+  type QueuedCommand,
+} from "./src/offline";
+import {
   allAboardLabel,
   attributionPassenger,
   clearanceLabel,
@@ -162,10 +182,23 @@ export default function App() {
     bookingId: string;
     quote: WalkUpQuote;
   } | null>(null);
+  const [locked, setLocked] = useState(false);
+  const [offlineMode, setOfflineMode] = useState(false);
+  const [queueSize, setQueueSize] = useState(0);
+  const [pinValue, setPinValue] = useState("");
+  const [pinConfirm, setPinConfirm] = useState("");
+  const [offlineSetup, setOfflineSetup] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
+  const [queueItems, setQueueItems] = useState<QueuedCommand[]>([]);
+  const [canBiometric, setCanBiometric] = useState(false);
 
   useEffect(() => {
     SecureStore.getItemAsync(SESSION_KEY)
-      .then(setToken)
+      .then(async (session) => {
+        setToken(session);
+        if (session && (await hasPin())) setLocked(true);
+        setCanBiometric(await biometricAvailable());
+      })
       .finally(() => setReady(true));
   }, []);
   async function clearSession() {
@@ -183,6 +216,9 @@ export default function App() {
     setWeatherItem(null);
     setWalkUpItem(null);
     setWalkUpHeld(null);
+    setLocked(false);
+    setOfflineMode(false);
+    setQueueSize(0);
   }
   async function loadProfile(session: string) {
     try {
@@ -193,6 +229,37 @@ export default function App() {
       return null;
     }
   }
+  async function refreshQueue() {
+    setQueueSize(await queuedCount());
+  }
+  async function applyCachedSnapshot() {
+    const snapshot = await readSnapshot();
+    if (!snapshot) throw new Error("No offline lease on this device yet.");
+    setTrips(snapshot.trips);
+    setWaiverTemplate(
+      (snapshot.waiverTemplate as WaiverTemplate | null) ?? null,
+    );
+    if (snapshot.paymentMethods?.length)
+      setPaymentMethods(snapshot.paymentMethods);
+    setCollectionCurrency(snapshot.collectionCurrency ?? null);
+    if (active)
+      setActive(snapshot.trips.find((trip) => trip.id === active.id) ?? null);
+    setOfflineMode(true);
+    await refreshQueue();
+  }
+  async function handleDeviceFailure(reason: unknown) {
+    if (isRevoked(reason)) {
+      await wipeOffline();
+      await clearSession();
+      setError("This device was revoked. Local tenant data was wiped.");
+      return true;
+    }
+    if (isUnauthorized(reason)) {
+      await clearSession();
+      return true;
+    }
+    return false;
+  }
   async function load(session = token) {
     if (!session) return;
     setBusy(true);
@@ -200,6 +267,22 @@ export default function App() {
     try {
       const me = await loadProfile(session);
       const canBoard = me?.permissions?.includes("manifest.read");
+      try {
+        if (await deviceCredentials()) {
+          const pending = await queuedCount();
+          if (pending) {
+            const result = await syncQueue(session);
+            await refreshQueue();
+            if (result.failed)
+              setError(
+                `${result.synced} synced, ${result.failed} need review in Profile.`,
+              );
+          }
+        }
+      } catch (reason) {
+        if (await handleDeviceFailure(reason)) return;
+        if (!isOfflineError(reason)) throw reason;
+      }
       try {
         const result = await call<{
           trips: Trip[];
@@ -236,16 +319,34 @@ export default function App() {
           setCollectionCurrency(result.collectionCurrency ?? null);
         if (result.waiverTemplate) setWaiverTemplate(result.waiverTemplate);
         if (fromBoard && active) {
-          const trip = await call<Trip>(
-            `/crew/v1/board/${active.id}`,
-            session,
-          );
+          const trip = await call<Trip>(`/crew/v1/board/${active.id}`, session);
           setActive(trip);
         }
       }
+      setOfflineMode(false);
+      await refreshQueue();
+      try {
+        if ((await deviceCredentials()) && (await queuedCount()) === 0) {
+          await downloadSnapshot(session);
+        }
+      } catch (reason) {
+        if (await handleDeviceFailure(reason)) return;
+      }
     } catch (reason) {
-      if (isUnauthorized(reason)) await clearSession();
-      else setError(crewLoadMessage(reason));
+      if (await handleDeviceFailure(reason)) return;
+      if (isOfflineError(reason)) {
+        try {
+          await applyCachedSnapshot();
+          setError(
+            "Working from the offline lease on this device. Queued work syncs when you reconnect.",
+          );
+          return;
+        } catch (offlineReason) {
+          setError((offlineReason as Error).message);
+          return;
+        }
+      }
+      setError(crewLoadMessage(reason));
     } finally {
       setBusy(false);
     }
@@ -287,6 +388,31 @@ export default function App() {
       setBusy(false);
     }
   }
+  function queueFor(path: string, body: unknown) {
+    const checkin = path.match(
+      /\/staff\/v1\/passengers\/([0-9a-f-]{36})\/checkin$/i,
+    );
+    if (checkin)
+      return {
+        kind: "checkin" as OfflineCommandKind,
+        payload: {
+          passengerId: checkin[1],
+          state: (body as { state?: string }).state,
+        },
+      };
+    const event = path.match(
+      /\/crew\/v1\/departures\/([0-9a-f-]{36})\/events$/i,
+    );
+    if (event)
+      return {
+        kind: "trip_event" as OfflineCommandKind,
+        payload: {
+          departureId: event[1],
+          ...(body as Record<string, unknown>),
+        },
+      };
+    return null;
+  }
   async function mutate(path: string, body: unknown) {
     if (!token) return;
     setBusy(true);
@@ -297,10 +423,34 @@ export default function App() {
         headers: { "Idempotency-Key": requestKey() },
         body: JSON.stringify(body),
       });
+      setOfflineMode(false);
+      try {
+        await syncQueue(token);
+      } catch {
+        /* connected mutation succeeded even if leftover queue wait */
+      }
       await load(token);
+      await refreshQueue();
     } catch (reason) {
-      if (isUnauthorized(reason)) await clearSession();
-      else setError((reason as Error).message);
+      if (await handleDeviceFailure(reason)) {
+        setBusy(false);
+        return;
+      }
+      if (isOfflineError(reason)) {
+        const queued = queueFor(path, body);
+        if (!queued) {
+          setError("This action needs a connection.");
+          setBusy(false);
+          return;
+        }
+        await enqueue(queued.kind, queued.payload);
+        setOfflineMode(true);
+        await refreshQueue();
+        setError("Saved on this device. It will sync when you reconnect.");
+        setBusy(false);
+        return;
+      }
+      setError((reason as Error).message);
       setBusy(false);
     }
   }
@@ -432,7 +582,8 @@ export default function App() {
             `${stop.sequence}. ${stop.location_name} · ${new Date(stop.pickup_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${stop.lead_name} (${stop.party_size})${stop.notes ? ` · ${stop.notes}` : ""}`,
         ),
         ...list.exceptions.map(
-          (row) => `Gap · ${row.lead_name} · ${row.pickup_kind} · ${row.party_size}`,
+          (row) =>
+            `Gap · ${row.lead_name} · ${row.pickup_kind} · ${row.party_size}`,
         ),
       ];
       if (board?.capabilities.print) {
@@ -445,7 +596,10 @@ export default function App() {
           }),
         });
       }
-      await sharePickupText(item.product_name, lines.filter(Boolean).join("\n"));
+      await sharePickupText(
+        item.product_name,
+        lines.filter(Boolean).join("\n"),
+      );
     } catch (reason) {
       if (isUnauthorized(reason)) await clearSession();
       else setError((reason as Error).message);
@@ -522,10 +676,39 @@ export default function App() {
         }),
       });
       setSigning(null);
+      setOfflineMode(false);
       await load(token);
     } catch (reason) {
-      if (isUnauthorized(reason)) await clearSession();
-      else setError((reason as Error).message);
+      if (await handleDeviceFailure(reason)) {
+        setBusy(false);
+        return;
+      }
+      if (isOfflineError(reason)) {
+        await enqueue("waiver", {
+          passengerId: signing.passenger.id,
+          body: {
+            passengerName: signing.passenger.identity_pending
+              ? passengerName
+              : undefined,
+            signerName,
+            guardianPassengerId: guardianId || undefined,
+            consentAccepted: true,
+            signatureStrokes: signaturePoints,
+            capturedAt: new Date().toISOString(),
+            deviceCommandId: requestKey(),
+            stay,
+          },
+        });
+        setSigning(null);
+        setOfflineMode(true);
+        await refreshQueue();
+        setError(
+          "Waiver saved on this device. It will sync when you reconnect.",
+        );
+        setBusy(false);
+        return;
+      }
+      setError((reason as Error).message);
       setBusy(false);
     }
   }
@@ -654,10 +837,41 @@ export default function App() {
         },
       );
       setPaying(null);
+      setOfflineMode(false);
       await load(token);
     } catch (reason) {
-      if (isUnauthorized(reason)) await clearSession();
-      else setError((reason as Error).message);
+      if (await handleDeviceFailure(reason)) {
+        setBusy(false);
+        return;
+      }
+      if (isOfflineError(reason)) {
+        await enqueue("payment", {
+          bookingId: paying.guest.booking_id,
+          body: {
+            amountMinor,
+            currency: paying.guest.currency ?? "USD",
+            method: payMethod,
+            status: "settled",
+            reference: payReference.trim(),
+            reason:
+              payNote.trim() ||
+              (attributed
+                ? `Collected at boarding · ${attributed.name}`
+                : "Collected at boarding"),
+            occurredAt: new Date().toISOString(),
+            ...(attributed ? { passengerId: attributed.id } : {}),
+          },
+        });
+        setPaying(null);
+        setOfflineMode(true);
+        await refreshQueue();
+        setError(
+          "Payment saved on this device. The server balance updates after sync — do not collect twice.",
+        );
+        setBusy(false);
+        return;
+      }
+      setError((reason as Error).message);
       setBusy(false);
     }
   }
@@ -683,7 +897,9 @@ export default function App() {
   const header = (
     <View style={styles.header}>
       <View style={styles.grow}>
-        <Text style={styles.eyebrow}>CONNECTED CREW</Text>
+        <Text style={styles.eyebrow}>
+          {offlineMode ? "OFFLINE CREW" : "CONNECTED CREW"}
+        </Text>
         <Text style={styles.title} numberOfLines={1}>
           {showProfile
             ? "My profile"
@@ -855,6 +1071,59 @@ export default function App() {
             </Pressable>
           </View>
           <Text style={styles.version}>Version {APP_VERSION}</Text>
+        </View>
+      </SafeAreaView>
+    );
+  if (locked)
+    return (
+      <SafeAreaView style={styles.screen}>
+        <StatusBar style="dark" />
+        <View style={styles.login}>
+          <Text style={styles.brand}>ZETTAZ</Text>
+          <Text style={styles.title}>Unlock this device</Text>
+          <Text style={styles.muted}>
+            Offline field data is encrypted on this phone. Unlock with your crew
+            PIN{canBiometric ? " or biometrics" : ""}.
+          </Text>
+          <TextInput
+            style={styles.input}
+            keyboardType="number-pad"
+            maxLength={8}
+            placeholder="Device PIN"
+            secureTextEntry
+            value={pinValue}
+            onChangeText={setPinValue}
+          />
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <Button
+            disabled={busy || pinValue.length < 4}
+            onPress={() => {
+              void (async () => {
+                if (await verifyPin(pinValue)) {
+                  setPinValue("");
+                  setLocked(false);
+                  setError("");
+                } else setError("That PIN does not match.");
+              })();
+            }}
+          >
+            Unlock
+          </Button>
+          {canBiometric ? (
+            <Button
+              quiet
+              onPress={() => {
+                void (async () => {
+                  if (await unlockWithBiometrics()) {
+                    setLocked(false);
+                    setError("");
+                  }
+                })();
+              }}
+            >
+              Use biometrics
+            </Button>
+          ) : null}
         </View>
       </SafeAreaView>
     );
@@ -1240,6 +1509,145 @@ export default function App() {
             <Text style={styles.muted}>Workspace</Text>
             <Text style={styles.personName}>{profile?.tenant.name ?? "—"}</Text>
           </View>
+          <View style={styles.card}>
+            <Text style={styles.eyebrow}>OFFLINE</Text>
+            <Text style={styles.muted}>
+              Download assigned trips for a 24-hour lease. Check-in, waiver,
+              trip events, and cash stay on this device until sync. Never
+              collect the same cash twice.
+            </Text>
+            {offlineSetup ? (
+              <>
+                <TextInput
+                  style={styles.input}
+                  keyboardType="number-pad"
+                  maxLength={8}
+                  placeholder="Choose a 4–8 digit PIN"
+                  secureTextEntry
+                  value={pinValue}
+                  onChangeText={setPinValue}
+                />
+                <TextInput
+                  style={styles.input}
+                  keyboardType="number-pad"
+                  maxLength={8}
+                  placeholder="Confirm PIN"
+                  secureTextEntry
+                  value={pinConfirm}
+                  onChangeText={setPinConfirm}
+                />
+                <Button
+                  disabled={
+                    busy || pinValue.length < 4 || pinValue !== pinConfirm
+                  }
+                  onPress={() => {
+                    void (async () => {
+                      if (!token) return;
+                      setBusy(true);
+                      setError("");
+                      try {
+                        await prepareOffline(token, pinValue);
+                        setOfflineSetup(false);
+                        setPinValue("");
+                        setPinConfirm("");
+                        await refreshQueue();
+                        await load(token);
+                      } catch (reason) {
+                        setError((reason as Error).message);
+                      } finally {
+                        setBusy(false);
+                      }
+                    })();
+                  }}
+                >
+                  {busy ? "Preparing…" : "Enroll this device"}
+                </Button>
+              </>
+            ) : (
+              <Button quiet onPress={() => setOfflineSetup(true)}>
+                Prepare offline
+              </Button>
+            )}
+            {queueSize > 0 ? (
+              <Button
+                quiet
+                onPress={() => {
+                  void (async () => {
+                    setQueueItems(await listCommands());
+                    setQueueOpen(true);
+                  })();
+                }}
+              >
+                {`Review queued work (${queueSize})`}
+              </Button>
+            ) : null}
+            <Button
+              quiet
+              disabled={busy || !token}
+              onPress={() => {
+                void (async () => {
+                  if (!token) return;
+                  setBusy(true);
+                  setError("");
+                  try {
+                    await downloadSnapshot(token);
+                    const result = await syncQueue(token);
+                    await load(token);
+                    await refreshQueue();
+                    setOfflineMode(false);
+                    setError(
+                      result.failed
+                        ? `${result.synced} synced, ${result.failed} need review.`
+                        : "Offline lease refreshed.",
+                    );
+                  } catch (reason) {
+                    if (await handleDeviceFailure(reason)) return;
+                    setError((reason as Error).message);
+                  } finally {
+                    setBusy(false);
+                  }
+                })();
+              }}
+            >
+              Sync now
+            </Button>
+          </View>
+          {queueOpen ? (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Queued commands</Text>
+              {queueItems
+                .filter((item) => item.status !== "synced")
+                .map((item) => (
+                  <View key={item.id} style={styles.person}>
+                    <View style={styles.grow}>
+                      <Text style={styles.personName}>
+                        {item.kind.replace("_", " ")} · {item.status}
+                      </Text>
+                      {item.lastError ? (
+                        <Text style={styles.muted}>{item.lastError}</Text>
+                      ) : null}
+                    </View>
+                    {item.status === "quarantine" ? (
+                      <Button
+                        quiet
+                        onPress={() => {
+                          void (async () => {
+                            await discardQuarantined(item.id);
+                            setQueueItems(await listCommands());
+                            await refreshQueue();
+                          })();
+                        }}
+                      >
+                        Discard
+                      </Button>
+                    ) : null}
+                  </View>
+                ))}
+              <Button quiet onPress={() => setQueueOpen(false)}>
+                Hide queue
+              </Button>
+            </View>
+          ) : null}
           <Button quiet onPress={() => setShowProfile(false)}>
             Back to today
           </Button>
@@ -1261,6 +1669,11 @@ export default function App() {
       <StatusBar style="dark" />
       {header}
       {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
+      {queueSize > 0 ? (
+        <Text style={styles.queueBanner}>
+          {queueSize} command{queueSize === 1 ? "" : "s"} waiting to sync
+        </Text>
+      ) : null}
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={
@@ -1361,53 +1774,53 @@ export default function App() {
               </View>
               {!tripStarted(active) ? (
                 canCheckin ? (
-                startOpen ? (
-                  <View style={styles.startSheet}>
-                    <Text style={styles.cardTitle}>
-                      {(active.boarding_pending ?? 0) > 0
-                        ? "Start trip with no-shows?"
-                        : "Start this trip?"}
-                    </Text>
-                    {(active.boarding_pending ?? 0) > 0 ? (
-                      <Text style={styles.muted}>
-                        {active.boarding_pending} guest
-                        {active.boarding_pending === 1 ? "" : "s"} still not
-                        boarded will be marked no-show. Add a reason to
-                        continue.
+                  startOpen ? (
+                    <View style={styles.startSheet}>
+                      <Text style={styles.cardTitle}>
+                        {(active.boarding_pending ?? 0) > 0
+                          ? "Start trip with no-shows?"
+                          : "Start this trip?"}
                       </Text>
-                    ) : (
-                      <Text style={styles.muted}>
-                        Records that this run has left. Boarding for remaining
-                        guests closes.
-                      </Text>
-                    )}
-                    {(active.boarding_pending ?? 0) > 0 ? (
-                      <TextInput
-                        style={styles.input}
-                        placeholder="Reason (required)"
-                        value={startReason}
-                        onChangeText={setStartReason}
-                      />
-                    ) : null}
-                    <Button
-                      disabled={busy}
-                      onPress={() => void startAssignedTrip()}
-                    >
-                      {busy
-                        ? "Starting…"
-                        : (active.boarding_pending ?? 0) > 0
-                          ? "Mark no-show & start"
-                          : "Start trip"}
+                      {(active.boarding_pending ?? 0) > 0 ? (
+                        <Text style={styles.muted}>
+                          {active.boarding_pending} guest
+                          {active.boarding_pending === 1 ? "" : "s"} still not
+                          boarded will be marked no-show. Add a reason to
+                          continue.
+                        </Text>
+                      ) : (
+                        <Text style={styles.muted}>
+                          Records that this run has left. Boarding for remaining
+                          guests closes.
+                        </Text>
+                      )}
+                      {(active.boarding_pending ?? 0) > 0 ? (
+                        <TextInput
+                          style={styles.input}
+                          placeholder="Reason (required)"
+                          value={startReason}
+                          onChangeText={setStartReason}
+                        />
+                      ) : null}
+                      <Button
+                        disabled={busy}
+                        onPress={() => void startAssignedTrip()}
+                      >
+                        {busy
+                          ? "Starting…"
+                          : (active.boarding_pending ?? 0) > 0
+                            ? "Mark no-show & start"
+                            : "Start trip"}
+                      </Button>
+                      <Button quiet onPress={() => setStartOpen(false)}>
+                        Cancel
+                      </Button>
+                    </View>
+                  ) : (
+                    <Button quiet onPress={() => setStartOpen(true)}>
+                      Start trip
                     </Button>
-                    <Button quiet onPress={() => setStartOpen(false)}>
-                      Cancel
-                    </Button>
-                  </View>
-                ) : (
-                  <Button quiet onPress={() => setStartOpen(true)}>
-                    Start trip
-                  </Button>
-                )
+                  )
                 ) : null
               ) : (
                 <Text style={styles.muted}>
@@ -1494,9 +1907,7 @@ export default function App() {
                         style={styles.person}
                         key={passenger.id}
                         onPress={() =>
-                          canCheckin
-                            ? openWaiver(guest, passenger)
-                            : undefined
+                          canCheckin ? openWaiver(guest, passenger) : undefined
                         }
                       >
                         <View style={styles.grow}>
@@ -1813,6 +2224,7 @@ const styles = StyleSheet.create({
   quietText: { color: "#075f59" },
   error: { color: "#b42318" },
   errorBanner: { backgroundColor: "#fee4e2", color: "#b42318", padding: 12 },
+  queueBanner: { backgroundColor: "#fff3d8", color: "#836322", padding: 12 },
   card: {
     backgroundColor: "white",
     borderColor: "#dce7e4",

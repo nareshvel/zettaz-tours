@@ -32,7 +32,11 @@ function Action({
     <Pressable
       disabled={disabled}
       onPress={onPress}
-      style={[styles.button, quiet && styles.quiet, disabled && styles.disabled]}
+      style={[
+        styles.button,
+        quiet && styles.quiet,
+        disabled && styles.disabled,
+      ]}
     >
       <Text style={[styles.buttonText, quiet && styles.quietText]}>
         {children}
@@ -163,8 +167,8 @@ export function WeatherSheet({
     <View style={styles.stack}>
       <Text style={styles.cardTitle}>{item.product_name}</Text>
       <Text style={styles.muted}>
-        {operationalLabel(item.operational_status)}. Give a reason for the
-        audit trail.
+        {operationalLabel(item.operational_status)}. Give a reason for the audit
+        trail.
       </Text>
       <TextInput
         style={styles.input}
@@ -235,7 +239,9 @@ export function WalkUpSheet({
             >
               <Text
                 style={
-                  method === value ? styles.choiceTextSelected : styles.choiceText
+                  method === value
+                    ? styles.choiceTextSelected
+                    : styles.choiceText
                 }
               >
                 {paymentMethodLabel(value)}
@@ -245,9 +251,7 @@ export function WalkUpSheet({
         </View>
         <Action
           disabled={busy}
-          onPress={() =>
-            onPay({ method, amountMinor: held.quote.totalMinor })
-          }
+          onPress={() => onPay({ method, amountMinor: held.quote.totalMinor })}
         >
           {busy ? "Recording…" : "Record cash / manual"}
         </Action>

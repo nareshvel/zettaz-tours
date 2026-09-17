@@ -130,6 +130,8 @@ export const roles = [
   "auditor",
   "guide",
   "driver",
+  "crew",
+  "captain",
   "resource_manager",
   "operations_manager",
   "partner_manager",
@@ -236,6 +238,8 @@ export const grants: Record<Role, readonly string[]> = {
   ],
   guide: ["crew.trip.read", "checkin.write"],
   driver: ["crew.trip.read", "checkin.write"],
+  crew: ["crew.trip.read", "checkin.write"],
+  captain: ["crew.trip.read", "checkin.write"],
   resource_manager: [
     "catalog.read",
     "manifest.read",

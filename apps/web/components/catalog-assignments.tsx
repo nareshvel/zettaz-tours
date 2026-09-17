@@ -145,8 +145,13 @@ function rangeBounds(
   customTo: string,
 ): [string, string] {
   if (preset === "today") return [today, today];
-  if (preset === "week") return [mondayOf(today), sundayOf(today)];
-  if (preset === "month") return monthBounds(today);
+  // Remaining calendar week / month from today — past days are not assignable
+  // work and should not clutter the default Assignments board.
+  if (preset === "week") return [today, sundayOf(today)];
+  if (preset === "month") {
+    const [, end] = monthBounds(today);
+    return [today, end];
+  }
   return [customFrom || today, customTo || today];
 }
 
@@ -195,8 +200,11 @@ export function AssignmentsFilterButton({
   useEffect(() => {
     if (!open) return;
     function onPointer(event: MouseEvent) {
-      if (!ref.current?.contains(event.target as Node) &&
-        !document.getElementById("tdp-popup")?.contains(event.target as Node)) setOpen(false);
+      if (
+        !ref.current?.contains(event.target as Node) &&
+        !document.getElementById("tdp-popup")?.contains(event.target as Node)
+      )
+        setOpen(false);
     }
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") setOpen(false);

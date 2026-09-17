@@ -69,7 +69,13 @@ function priorityIcon(priority: WorkQueueItem["priority"]) {
   return <Clock size={14} className="finance-priority-icon pending" />;
 }
 
-function WorkQueueCard({ item, currency }: { item: WorkQueueItem; currency: string }) {
+function WorkQueueCard({
+  item,
+  currency,
+}: {
+  item: WorkQueueItem;
+  currency: string;
+}) {
   return (
     <Link href={item.link} className={`finance-queue-card ${item.priority}`}>
       <div className="finance-queue-left">
@@ -100,7 +106,13 @@ function WorkQueueCard({ item, currency }: { item: WorkQueueItem; currency: stri
 
 // ─── Net position strip ───────────────────────────────────────────────────────
 
-function NetPositionStrip({ pos, expenseReportingTotal, expenseHasUnconverted, expenseReportingCurrency, periodLabel }: {
+function NetPositionStrip({
+  pos,
+  expenseReportingTotal,
+  expenseHasUnconverted,
+  expenseReportingCurrency,
+  periodLabel,
+}: {
   pos: NetPosition;
   expenseReportingTotal: number;
   expenseHasUnconverted: boolean;
@@ -111,19 +123,31 @@ function NetPositionStrip({ pos, expenseReportingTotal, expenseHasUnconverted, e
     <div className="finance-net-position">
       <div className="finance-net-tile receivable">
         <span className="finance-net-label">Partners owe you</span>
-        <span className="finance-net-amount">{money(pos.receivable_minor, pos.currency)}</span>
-        <span className="finance-net-sub">{pos.receivable_count} partner{pos.receivable_count !== 1 ? "s" : ""}</span>
+        <span className="finance-net-amount">
+          {money(pos.receivable_minor, pos.currency)}
+        </span>
+        <span className="finance-net-sub">
+          {pos.receivable_count} partner{pos.receivable_count !== 1 ? "s" : ""}
+        </span>
       </div>
       <div className="finance-net-tile payable">
         <span className="finance-net-label">You owe partners</span>
-        <span className="finance-net-amount">{money(pos.payable_minor, pos.currency)}</span>
-        <span className="finance-net-sub">{pos.payable_count} partner{pos.payable_count !== 1 ? "s" : ""}</span>
+        <span className="finance-net-amount">
+          {money(pos.payable_minor, pos.currency)}
+        </span>
+        <span className="finance-net-sub">
+          {pos.payable_count} partner{pos.payable_count !== 1 ? "s" : ""}
+        </span>
       </div>
       {pos.overdue_minor > 0 && (
         <div className="finance-net-tile overdue">
           <span className="finance-net-label">Overdue</span>
-          <span className="finance-net-amount overdue-text">{money(pos.overdue_minor, pos.currency)}</span>
-          <span className="finance-net-sub">{pos.overdue_count} settlement{pos.overdue_count !== 1 ? "s" : ""}</span>
+          <span className="finance-net-amount overdue-text">
+            {money(pos.overdue_minor, pos.currency)}
+          </span>
+          <span className="finance-net-sub">
+            {pos.overdue_count} settlement{pos.overdue_count !== 1 ? "s" : ""}
+          </span>
         </div>
       )}
       <div className="finance-net-tile expenses">
@@ -131,11 +155,13 @@ function NetPositionStrip({ pos, expenseReportingTotal, expenseHasUnconverted, e
         <span className="finance-net-amount">
           {expenseReportingTotal === 0 && !expenseHasUnconverted
             ? "—"
-            : money(expenseReportingTotal, expenseReportingCurrency)
-          }
+            : money(expenseReportingTotal, expenseReportingCurrency)}
         </span>
         {expenseHasUnconverted && (
-          <span className="finance-net-sub" style={{ color: "var(--warning, #c97700)", fontSize: "0.75rem" }}>
+          <span
+            className="finance-net-sub"
+            style={{ color: "var(--warning, #c97700)", fontSize: "0.75rem" }}
+          >
             ⚠ some expenses missing rate
           </span>
         )}
@@ -150,7 +176,12 @@ function SkeletonStrip() {
       {["receivable", "payable", "overdue", "expenses"].map((cls) => (
         <div key={cls} className={`finance-net-tile ${cls}`}>
           <span className="finance-net-label">&nbsp;</span>
-          <span className="finance-net-amount" style={{ color: "var(--muted)" }}>—</span>
+          <span
+            className="finance-net-amount"
+            style={{ color: "var(--muted)" }}
+          >
+            —
+          </span>
         </div>
       ))}
     </div>
@@ -170,12 +201,21 @@ function ActivityFeed({ items }: { items: ActivityItem[] }) {
           {items.map((item) => (
             <div key={item.id} className="finance-activity-row">
               <span className="finance-activity-date">
-                {new Date(item.event_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                {new Date(item.event_at).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                })}
               </span>
-              <span className="finance-activity-partner">{item.partner_name}</span>
+              <span className="finance-activity-partner">
+                {item.partner_name}
+              </span>
               <span className="finance-activity-desc">{item.description}</span>
               <span className={`finance-activity-amount ${item.direction}`}>
-                {item.direction === "in" ? "+" : item.direction === "out" ? "−" : ""}
+                {item.direction === "in"
+                  ? "+"
+                  : item.direction === "out"
+                    ? "−"
+                    : ""}
                 {money(item.amount_minor, item.currency)}
               </span>
             </div>
@@ -199,22 +239,30 @@ export function FinanceOverview({
   dateTo: string;
   periodLabel: string;
 }) {
-  const { data, error } = useResource<OverviewData>("finance/v1/finance-overview");
+  const { data, error } = useResource<OverviewData>(
+    "finance/v1/finance-overview",
+  );
   const { data: expenseData } = useResource<ExpenseListResponse>(
     `finance/v1/expenses?dateFrom=${dateFrom}&dateTo=${dateTo}`,
   );
 
-  const reportingCurrency = session.tenant.config.reportingCurrency
-    ?? session.tenant.config.collectionCurrency ?? "XCD";
+  const reportingCurrency =
+    session.tenant.config.reportingCurrency ??
+    session.tenant.config.collectionCurrency ??
+    "XCD";
 
   // Sum amount_reporting_minor — all converted to reporting currency at time of entry
-  const expenseReportingTotal = expenseData?.category_totals.reduce(
-    (sum, ct) => sum + (ct.total_reporting_minor ?? 0), 0
-  ) ?? 0;
+  const expenseReportingTotal =
+    expenseData?.category_totals.reduce(
+      (sum, ct) => sum + (ct.total_reporting_minor ?? 0),
+      0,
+    ) ?? 0;
   // Flag any foreign-currency expense that was entered without a bank rate
-  const expenseHasUnconverted = expenseData?.category_totals.some(
-    (ct) => ct.currency !== reportingCurrency && ct.total_reporting_minor == null
-  ) ?? false;
+  const expenseHasUnconverted =
+    expenseData?.category_totals.some(
+      (ct) =>
+        ct.currency !== reportingCurrency && ct.total_reporting_minor == null,
+    ) ?? false;
 
   const loading = data === null && !error;
 
@@ -260,7 +308,11 @@ export function FinanceOverview({
         ) : (
           <div className="finance-queue-list">
             {work_queue.map((item) => (
-              <WorkQueueCard key={item.id} item={item} currency={net_position.currency} />
+              <WorkQueueCard
+                key={item.id}
+                item={item}
+                currency={net_position.currency}
+              />
             ))}
           </div>
         )}

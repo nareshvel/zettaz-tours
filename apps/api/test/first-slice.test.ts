@@ -3661,11 +3661,7 @@ test("crew tablet board, walk-up, and weather stay hidden from guides", async ()
     role: "reservations",
   });
   assert.equal(desk.status, 201, JSON.stringify(desk.body));
-  const reservations = await issueSession(
-    admin,
-    desk.body.actorId,
-    t.tenantId,
-  );
+  const reservations = await issueSession(admin, desk.body.actorId, t.tenantId);
   const dep = await departure(t.token);
   assert.equal(
     (
@@ -3814,6 +3810,129 @@ test("crew tablet walk-up collects then confirms when a deposit is required", as
   });
   assert.equal(paid.status, 201, JSON.stringify(paid.body));
   assert.equal(paid.body.state, "confirmed");
+});
+
+test("crew offline enrolls a device, leases assigned trips, and deduplicates queued commands", async () => {
+  const t = await setupTenant(`crew-off-${randomUUID().slice(0, 8)}`);
+  const member = await post("/admin/v1/members", t.token, {
+    name: "Mock Offline Guide",
+    email: `off-guide-${randomUUID()}@example.invalid`,
+    role: "guide",
+  });
+  assert.equal(member.status, 201, JSON.stringify(member.body));
+  const guide = await issueSession(admin, member.body.actorId, t.tenantId);
+  const dep = await departure(t.token);
+  assert.equal(
+    (
+      await post("/ops/v1/assignments", t.token, {
+        departureId: dep.departureId,
+        crewActorId: member.body.actorId,
+        assignmentRole: "guide",
+      })
+    ).status,
+    201,
+  );
+  const booking = await heldBooking(dep.departureId, t.token);
+  const { rows: quoteRows } = await admin.query(
+    "SELECT (quote->>'totalMinor')::int AS total_minor FROM holds WHERE tenant_id=$1 AND id=$2",
+    [t.tenantId, booking.holdId],
+  );
+  await pay(booking.bookingId, quoteRows[0].total_minor, t.token);
+  await post(`/staff/v1/bookings/${booking.bookingId}/confirm`, t.token, {
+    version: 1,
+  });
+  const finance = await post("/admin/v1/members", t.token, {
+    name: "Mock Offline Finance",
+    email: `off-fin-${randomUUID()}@example.invalid`,
+    role: "finance",
+  });
+  const financeToken = await issueSession(
+    admin,
+    finance.body.actorId,
+    t.tenantId,
+  );
+  assert.equal(
+    (
+      await post("/crew/v1/devices", financeToken, {
+        clientDeviceId: randomUUID(),
+        name: "Finance phone",
+        platform: "ios",
+      })
+    ).status,
+    403,
+  );
+  const clientDeviceId = randomUUID();
+  const enrolled = await post("/crew/v1/devices", guide, {
+    clientDeviceId,
+    name: "Guide phone",
+    platform: "ios",
+  });
+  assert.equal(enrolled.status, 201, JSON.stringify(enrolled.body));
+  assert.equal(enrolled.body.leaseHours, 24);
+  assert.ok(enrolled.body.secret);
+  const {
+    rows: [dayRow],
+  } = await admin.query(
+    "SELECT local_date::text AS day FROM departures WHERE id=$1",
+    [dep.departureId],
+  );
+  const snapshot = await request(app.getHttpServer())
+    .get(`/crew/v1/offline/snapshot?date=${dayRow.day}`)
+    .auth(guide, { type: "bearer" })
+    .set("x-crew-device-id", enrolled.body.deviceId)
+    .set("x-crew-device-secret", enrolled.body.secret);
+  assert.equal(snapshot.status, 200, JSON.stringify(snapshot.body));
+  assert.equal(snapshot.body.trips.length, 1);
+  assert.equal(snapshot.body.leaseHours, 24);
+  const commandId = randomUUID();
+  const queued = await request(app.getHttpServer())
+    .post("/crew/v1/offline/commands")
+    .auth(guide, { type: "bearer" })
+    .set("Idempotency-Key", commandId)
+    .set("x-crew-device-id", enrolled.body.deviceId)
+    .set("x-crew-device-secret", enrolled.body.secret)
+    .send({
+      commands: [
+        {
+          clientCommandId: commandId,
+          kind: "trip_event",
+          occurredAt: new Date().toISOString(),
+          payload: { departureId: dep.departureId, state: "boarding" },
+        },
+      ],
+    });
+  assert.equal(queued.status, 201, JSON.stringify(queued.body));
+  assert.equal(queued.body.results[0].status, "accepted");
+  const replay = await request(app.getHttpServer())
+    .post("/crew/v1/offline/commands")
+    .auth(guide, { type: "bearer" })
+    .set("Idempotency-Key", randomUUID())
+    .set("x-crew-device-id", enrolled.body.deviceId)
+    .set("x-crew-device-secret", enrolled.body.secret)
+    .send({
+      commands: [
+        {
+          clientCommandId: commandId,
+          kind: "trip_event",
+          occurredAt: new Date().toISOString(),
+          payload: { departureId: dep.departureId, state: "boarding" },
+        },
+      ],
+    });
+  assert.equal(replay.status, 201, JSON.stringify(replay.body));
+  assert.equal(replay.body.results[0].status, "duplicate");
+  const revoked = await post(
+    `/crew/v1/devices/${enrolled.body.deviceId}/revoke`,
+    t.token,
+    { reason: "lost device drill" },
+  );
+  assert.equal(revoked.status, 201, JSON.stringify(revoked.body));
+  const gone = await request(app.getHttpServer())
+    .get(`/crew/v1/offline/snapshot?date=${dayRow.day}`)
+    .auth(guide, { type: "bearer" })
+    .set("x-crew-device-id", enrolled.body.deviceId)
+    .set("x-crew-device-secret", enrolled.body.secret);
+  assert.equal(gone.status, 410);
 });
 
 test("partner organizations are tenant-scoped and require partner management permission", async () => {

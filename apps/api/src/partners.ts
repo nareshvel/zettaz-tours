@@ -151,17 +151,16 @@ const settlementGenerateSchema = z
     message: "period_start must be <= period_end",
   });
 
-const settlementAdvanceSchema = z
-  .object({
-    status: z.enum(["invoiced", "sent", "paid", "overdue", "void"]),
-    payment_ref: z.string().trim().max(400).optional().nullable(),
-    payment_date: z.string().trim().optional().nullable(),
-    confirmed_amount_minor: z.number().int().optional().nullable(),
-    invoice_number: z.string().trim().max(100).optional().nullable(),
-    invoice_pdf_path: z.string().trim().max(1000).optional().nullable(),
-    void_reason: z.string().trim().max(1000).optional().nullable(),
-    notes: z.string().trim().max(2000).optional().nullable(),
-  });
+const settlementAdvanceSchema = z.object({
+  status: z.enum(["invoiced", "sent", "paid", "overdue", "void"]),
+  payment_ref: z.string().trim().max(400).optional().nullable(),
+  payment_date: z.string().trim().optional().nullable(),
+  confirmed_amount_minor: z.number().int().optional().nullable(),
+  invoice_number: z.string().trim().max(100).optional().nullable(),
+  invoice_pdf_path: z.string().trim().max(1000).optional().nullable(),
+  void_reason: z.string().trim().max(1000).optional().nullable(),
+  notes: z.string().trim().max(2000).optional().nullable(),
+});
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
 
@@ -788,12 +787,16 @@ export class PartnerService {
 
   unsettledSummary(actor: Actor, partnerId: string, from: string, to: string) {
     return this.db.transaction(actor, async (tx) => {
-      const { rows: [exists] } = await tx.query(
+      const {
+        rows: [exists],
+      } = await tx.query(
         "SELECT id FROM partner_organizations WHERE tenant_id=$1 AND id=$2",
         [actor.tenantId, partnerId],
       );
       if (!exists) throw new NotFoundException("Partner not found");
-      const { rows: [row] } = await tx.query(
+      const {
+        rows: [row],
+      } = await tx.query(
         `SELECT COUNT(*)::int AS count,
                 COALESCE(SUM(pbl.gross_amount_minor), 0)::bigint AS gross_minor,
                 COALESCE(SUM(pbl.commission_amount_minor), 0)::bigint AS commission_minor,
@@ -811,9 +814,10 @@ export class PartnerService {
         [actor.tenantId, partnerId, from, to],
       );
       if (!row) return { count: 0, total_minor: 0, currency: "USD" };
-      const total = row.commission_direction === 'partner_owes_tenant'
-        ? Number(row.gross_minor)
-        : Number(row.commission_minor);
+      const total =
+        row.commission_direction === "partner_owes_tenant"
+          ? Number(row.gross_minor)
+          : Number(row.commission_minor);
       return { count: row.count, total_minor: total, currency: row.currency };
     });
   }
@@ -923,20 +927,27 @@ export class PartnerService {
     });
   }
 
-  deleteSettlement(actor: Actor, partnerId: string, settlementId: string, key: string) {
+  deleteSettlement(
+    actor: Actor,
+    partnerId: string,
+    settlementId: string,
+    key: string,
+  ) {
     return this.db.command(
       actor,
       `partner.settlement.delete:${settlementId}`,
       key,
       {},
       async (tx) => {
-        const { rows: [settlement] } = await tx.query(
+        const {
+          rows: [settlement],
+        } = await tx.query(
           `SELECT * FROM partner_settlements WHERE id=$1 AND partner_id=$2 AND tenant_id=$3 FOR UPDATE`,
           [settlementId, partnerId, actor.tenantId],
         );
-        if (!settlement) throw new NotFoundException('Settlement not found');
-        if (settlement.status !== 'draft')
-          throw new ConflictException('Only draft settlements can be deleted');
+        if (!settlement) throw new NotFoundException("Settlement not found");
+        if (settlement.status !== "draft")
+          throw new ConflictException("Only draft settlements can be deleted");
         // Unlink bookings back to unsettled
         await tx.query(
           `UPDATE partner_booking_links SET settlement_id = NULL WHERE settlement_id=$1 AND tenant_id=$2`,
@@ -946,7 +957,14 @@ export class PartnerService {
           `DELETE FROM partner_settlements WHERE id=$1 AND tenant_id=$2`,
           [settlementId, actor.tenantId],
         );
-        await record(tx, actor, 'partner.settlement.deleted', partnerId, settlement, null);
+        await record(
+          tx,
+          actor,
+          "partner.settlement.deleted",
+          partnerId,
+          settlement,
+          null,
+        );
         return { deleted: true };
       },
     );
@@ -1067,15 +1085,17 @@ export class PartnerService {
 
   financeOverview(actor: Actor) {
     return this.db.transaction(actor, async (tx) => {
-      const currency = (
-        await tx.query(
-          "SELECT base_currency FROM tenants WHERE id=$1",
-          [actor.tenantId],
-        )
-      ).rows[0]?.base_currency ?? "XCD";
+      const currency =
+        (
+          await tx.query("SELECT base_currency FROM tenants WHERE id=$1", [
+            actor.tenantId,
+          ])
+        ).rows[0]?.base_currency ?? "XCD";
 
       // Net position (reuse existing logic)
-      const { rows: [receivable] } = await tx.query(
+      const {
+        rows: [receivable],
+      } = await tx.query(
         `SELECT COALESCE(SUM(pbl.commission_amount_minor),0)::bigint AS total_minor,
                 COUNT(DISTINCT pbl.partner_id)::int AS cnt
          FROM partner_booking_links pbl
@@ -1084,7 +1104,9 @@ export class PartnerService {
            AND po.commission_direction='partner_owes_tenant'`,
         [actor.tenantId],
       );
-      const { rows: [payable] } = await tx.query(
+      const {
+        rows: [payable],
+      } = await tx.query(
         `SELECT COALESCE(SUM(pbl.commission_amount_minor),0)::bigint AS total_minor,
                 COUNT(DISTINCT pbl.partner_id)::int AS cnt
          FROM partner_booking_links pbl
@@ -1093,7 +1115,9 @@ export class PartnerService {
            AND po.commission_direction='tenant_owes_partner'`,
         [actor.tenantId],
       );
-      const { rows: [overdue] } = await tx.query(
+      const {
+        rows: [overdue],
+      } = await tx.query(
         `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(net_amount_minor),0)::bigint AS total_minor
          FROM partner_settlements
          WHERE tenant_id=$1 AND status NOT IN ('paid','void') AND due_date < CURRENT_DATE`,
@@ -1251,7 +1275,9 @@ export class PartnerService {
           id: a.id,
           event_at: a.event_at,
           partner_name: a.partner_name ?? "Unknown",
-          description: a.description.replace("partner.", "").replace(/\./g, " "),
+          description: a.description
+            .replace("partner.", "")
+            .replace(/\./g, " "),
           amount_minor: Number(a.amount_minor),
           currency: a.currency,
           direction: a.direction,
@@ -1268,7 +1294,9 @@ export class PartnerService {
   ) {
     return this.db.transaction(actor, async (tx) => {
       // Resolve reporting currency from tenant config
-      const { rows: [tenant] } = await tx.query(
+      const {
+        rows: [tenant],
+      } = await tx.query(
         `SELECT COALESCE(config->>'reportingCurrency', base_currency, 'XCD') AS reporting_currency
          FROM tenants WHERE id=$1`,
         [actor.tenantId],
@@ -1276,14 +1304,16 @@ export class PartnerService {
       const reportingCurrency: string = tenant?.reporting_currency ?? "XCD";
 
       // Reference date — default today; must be YYYY-MM-DD
-      const asOf = opts.asOf && /^\d{4}-\d{2}-\d{2}$/.test(opts.asOf)
-        ? opts.asOf
-        : new Date().toISOString().slice(0, 10);
+      const asOf =
+        opts.asOf && /^\d{4}-\d{2}-\d{2}$/.test(opts.asOf)
+          ? opts.asOf
+          : new Date().toISOString().slice(0, 10);
 
       // Direction filter: 'payable' | 'receivable' | 'both'
-      const direction = opts.direction === "payable" || opts.direction === "receivable"
-        ? opts.direction
-        : "both";
+      const direction =
+        opts.direction === "payable" || opts.direction === "receivable"
+          ? opts.direction
+          : "both";
 
       // Build dynamic WHERE clauses
       const params: any[] = [actor.tenantId, asOf];
@@ -1331,7 +1361,10 @@ export class PartnerService {
           partnerMap.set(pid, {
             partner_id: pid,
             partner_name: r.partner_name as string,
-            direction: (r.commission_direction as string) === "tenant_owes_partner" ? "payable" : "receivable",
+            direction:
+              (r.commission_direction as string) === "tenant_owes_partner"
+                ? "payable"
+                : "receivable",
             buckets: [],
           });
         }
@@ -1347,25 +1380,36 @@ export class PartnerService {
       }
 
       // Footer totals grouped by currency — never add across currencies
-      const footerMap = new Map<string, {
-        current_minor: number; days_1_30_minor: number; days_31_60_minor: number;
-        days_61_90_minor: number; days_90_plus_minor: number; total_minor: number;
-      }>();
+      const footerMap = new Map<
+        string,
+        {
+          current_minor: number;
+          days_1_30_minor: number;
+          days_31_60_minor: number;
+          days_61_90_minor: number;
+          days_90_plus_minor: number;
+          total_minor: number;
+        }
+      >();
       for (const r of rows) {
         const cur = r.currency as string;
         if (!footerMap.has(cur)) {
           footerMap.set(cur, {
-            current_minor: 0, days_1_30_minor: 0, days_31_60_minor: 0,
-            days_61_90_minor: 0, days_90_plus_minor: 0, total_minor: 0,
+            current_minor: 0,
+            days_1_30_minor: 0,
+            days_31_60_minor: 0,
+            days_61_90_minor: 0,
+            days_90_plus_minor: 0,
+            total_minor: 0,
           });
         }
         const ft = footerMap.get(cur)!;
-        ft.current_minor      += Number(r.current_minor);
-        ft.days_1_30_minor    += Number(r.days_1_30_minor);
-        ft.days_31_60_minor   += Number(r.days_31_60_minor);
-        ft.days_61_90_minor   += Number(r.days_61_90_minor);
+        ft.current_minor += Number(r.current_minor);
+        ft.days_1_30_minor += Number(r.days_1_30_minor);
+        ft.days_31_60_minor += Number(r.days_31_60_minor);
+        ft.days_61_90_minor += Number(r.days_61_90_minor);
         ft.days_90_plus_minor += Number(r.days_90_plus_minor);
-        ft.total_minor        += Number(r.total_minor);
+        ft.total_minor += Number(r.total_minor);
       }
 
       // Partner list for filter dropdown (active only)
@@ -1380,10 +1424,16 @@ export class PartnerService {
         as_of: asOf,
         direction,
         rows: Array.from(partnerMap.values()),
-        totals_by_currency: Array.from(footerMap.entries()).map(([currency, t]) => ({
-          currency, ...t,
+        totals_by_currency: Array.from(footerMap.entries()).map(
+          ([currency, t]) => ({
+            currency,
+            ...t,
+          }),
+        ),
+        partner_list: partnerList.map((p: any) => ({
+          id: p.id as string,
+          name: p.name as string,
         })),
-        partner_list: partnerList.map((p: any) => ({ id: p.id as string, name: p.name as string })),
       };
     });
   }
@@ -1393,11 +1443,18 @@ export class PartnerService {
   partnerLedger(
     actor: Actor,
     partnerId: string,
-    opts: { page?: number; status?: string; dateFrom?: string; dateTo?: string } = {},
+    opts: {
+      page?: number;
+      status?: string;
+      dateFrom?: string;
+      dateTo?: string;
+    } = {},
   ) {
     return this.db.transaction(actor, async (tx) => {
       // Verify partner belongs to tenant
-      const { rows: [partner] } = await tx.query(
+      const {
+        rows: [partner],
+      } = await tx.query(
         `SELECT id, name, partner_type, commission_type, commission_rate,
                 commission_amount_minor::bigint AS commission_amount_minor,
                 commission_direction, commission_currency AS currency,
@@ -1410,7 +1467,9 @@ export class PartnerService {
 
       // Compute true account balance independently of pagination
       // Balance = sum of unsettled booking commissions (net of settled amounts)
-      const { rows: [balRow] } = await tx.query(
+      const {
+        rows: [balRow],
+      } = await tx.query(
         `SELECT
            -- Balance = all booking DRs minus cleared settlement CRs.
            -- This mirrors the running balance in the transaction register.
@@ -1440,7 +1499,9 @@ export class PartnerService {
       const balance_minor = Number(balRow?.balance_minor ?? 0);
 
       // Unsettled booking count
-      const { rows: [cntRow] } = await tx.query(
+      const {
+        rows: [cntRow],
+      } = await tx.query(
         `SELECT COUNT(*)::int AS cnt FROM partner_booking_links
          WHERE tenant_id=$1 AND partner_id=$2 AND settlement_id IS NULL AND unlinked_at IS NULL`,
         [actor.tenantId, partnerId],
@@ -1452,22 +1513,36 @@ export class PartnerService {
       const offset = (page - 1) * limit;
 
       // Date range params
-      const dateFrom = opts.dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(opts.dateFrom) ? opts.dateFrom : null;
-      const dateTo   = opts.dateTo   && /^\d{4}-\d{2}-\d{2}$/.test(opts.dateTo)   ? opts.dateTo   : null;
-      const statusFilter = opts.status === "unsettled" || opts.status === "settled" ? opts.status : null;
+      const dateFrom =
+        opts.dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(opts.dateFrom)
+          ? opts.dateFrom
+          : null;
+      const dateTo =
+        opts.dateTo && /^\d{4}-\d{2}-\d{2}$/.test(opts.dateTo)
+          ? opts.dateTo
+          : null;
+      const statusFilter =
+        opts.status === "unsettled" || opts.status === "settled"
+          ? opts.status
+          : null;
 
       // Booking entries
       const bookingDateWhere = [
         dateFrom ? "pbl.created_at >= $5::date" : null,
-        dateTo   ? "pbl.created_at <  ($6::date + interval '1 day')" : null,
-      ].filter(Boolean).join(" AND ");
+        dateTo ? "pbl.created_at <  ($6::date + interval '1 day')" : null,
+      ]
+        .filter(Boolean)
+        .join(" AND ");
       const bookingStatusWhere =
-        statusFilter === "settled"   ? "AND pbl.settlement_id IS NOT NULL" :
-        statusFilter === "unsettled" ? "AND pbl.settlement_id IS NULL" : "";
+        statusFilter === "settled"
+          ? "AND pbl.settlement_id IS NOT NULL"
+          : statusFilter === "unsettled"
+            ? "AND pbl.settlement_id IS NULL"
+            : "";
 
       const bookingParams: any[] = [actor.tenantId, partnerId, limit, offset];
       if (dateFrom) bookingParams.push(dateFrom);
-      if (dateTo)   bookingParams.push(dateTo);
+      if (dateTo) bookingParams.push(dateTo);
 
       const { rows: bookingRows } = await tx.query(
         `SELECT 'booking' AS entry_type,
@@ -1499,14 +1574,26 @@ export class PartnerService {
       );
 
       // Settlement entries (not filtered by booking status — always show)
-      const settlementParams: any[] = [actor.tenantId, partnerId, limit, offset];
+      const settlementParams: any[] = [
+        actor.tenantId,
+        partnerId,
+        limit,
+        offset,
+      ];
       const settlementDateWhere = [
-        dateFrom ? `ps.created_at >= $${settlementParams.push(dateFrom)}::date` : null,
-        dateTo   ? `ps.created_at <  ($${settlementParams.push(dateTo)}::date + interval '1 day')` : null,
+        dateFrom
+          ? `ps.created_at >= $${settlementParams.push(dateFrom)}::date`
+          : null,
+        dateTo
+          ? `ps.created_at <  ($${settlementParams.push(dateTo)}::date + interval '1 day')`
+          : null,
       ].filter(Boolean);
 
-      const { rows: settlementRows } = statusFilter === "unsettled" ? { rows: [] } : await tx.query(
-        `SELECT 'settlement' AS entry_type,
+      const { rows: settlementRows } =
+        statusFilter === "unsettled"
+          ? { rows: [] }
+          : await tx.query(
+              `SELECT 'settlement' AS entry_type,
                 ps.id,
                 ps.created_at AS event_at,
                 'Settlement ' || TO_CHAR(ps.period_start,'Mon DD') || '–' || TO_CHAR(ps.period_end,'Mon DD, YYYY')
@@ -1526,8 +1613,8 @@ export class PartnerService {
            ${settlementDateWhere.length ? `AND ${settlementDateWhere.join(" AND ")}` : ""}
          ORDER BY ps.created_at DESC, ps.id DESC
          LIMIT $3 OFFSET $4`,
-        settlementParams,
-      );
+              settlementParams,
+            );
 
       const { rows: claimRows } = await tx.query(
         `SELECT 'claim' AS entry_type,
@@ -1549,7 +1636,10 @@ export class PartnerService {
 
       // Merge, sort, paginate
       const allEntries = [...bookingRows, ...settlementRows, ...claimRows]
-        .sort((a: any, b: any) => new Date(b.event_at).getTime() - new Date(a.event_at).getTime())
+        .sort(
+          (a: any, b: any) =>
+            new Date(b.event_at).getTime() - new Date(a.event_at).getTime(),
+        )
         .slice(0, limit);
 
       // Running balance: booking/claim entries build the debt; settlements clear it.
@@ -1557,16 +1647,18 @@ export class PartnerService {
       let runBalance = 0;
       const entriesWithBalance = allEntries.reverse().map((entry: any) => {
         const amount = Number(entry.amount_minor);
-        const isSettlement = entry.entry_type === 'settlement';
-        const isClearedSettlement = isSettlement && ['paid', 'void', 'voided'].includes(entry.status ?? '');
+        const isSettlement = entry.entry_type === "settlement";
+        const isClearedSettlement =
+          isSettlement &&
+          ["paid", "void", "voided"].includes(entry.status ?? "");
         const isPendingSettlement = isSettlement && !isClearedSettlement;
 
         if (isClearedSettlement) {
           runBalance = 0;
         } else if (!isPendingSettlement) {
-          if (entry.commission_direction === 'partner_owes_tenant') {
+          if (entry.commission_direction === "partner_owes_tenant") {
             runBalance += amount;
-          } else if (entry.commission_direction === 'tenant_owes_partner') {
+          } else if (entry.commission_direction === "tenant_owes_partner") {
             runBalance -= amount;
           }
         }
@@ -1575,16 +1667,21 @@ export class PartnerService {
         let dr_minor: number;
         let cr_minor: number;
         if (isSettlement) {
-          if (entry.commission_direction === 'partner_owes_tenant') {
-            dr_minor = 0; cr_minor = amount;
+          if (entry.commission_direction === "partner_owes_tenant") {
+            dr_minor = 0;
+            cr_minor = amount;
           } else {
-            dr_minor = amount; cr_minor = 0;
+            dr_minor = amount;
+            cr_minor = 0;
           }
         } else {
-          dr_minor = entry.commission_direction === 'partner_owes_tenant' ? amount : 0;
-          cr_minor = entry.commission_direction === 'tenant_owes_partner' ? amount : 0;
+          dr_minor =
+            entry.commission_direction === "partner_owes_tenant" ? amount : 0;
+          cr_minor =
+            entry.commission_direction === "tenant_owes_partner" ? amount : 0;
         }
-        const status: string = entry.status ?? (entry.settlement_id ? 'settled' : 'unsettled');
+        const status: string =
+          entry.status ?? (entry.settlement_id ? "settled" : "unsettled");
         return {
           id: entry.id,
           kind: entry.entry_type as string,
@@ -1595,7 +1692,11 @@ export class PartnerService {
           balance_minor: runBalance,
           currency: entry.currency as string,
           status,
-          ref: (entry.invoice_number ?? entry.payment_ref ?? (entry.booking_id ? String(entry.booking_id).slice(0, 8) : null)) as string | null,
+          ref: (entry.invoice_number ??
+            entry.payment_ref ??
+            (entry.booking_id
+              ? String(entry.booking_id).slice(0, 8)
+              : null)) as string | null,
         };
       });
 
@@ -1699,7 +1800,6 @@ export class PartnerController {
       parse(z.string().uuid(), id),
     );
   }
-
 
   @Get("partners/:id/bookings/unsettled-summary")
   @Access("partner.statement.read")

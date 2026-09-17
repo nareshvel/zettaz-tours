@@ -18,11 +18,16 @@
     "expo": "^57.0.9",
     "expo-camera": "~57.0.4",
     "expo-constants": "~57.0.18",
+    "expo-crypto": "~57.0.3",
+    "expo-local-authentication": "~57.0.3",
     "expo-secure-store": "~57.0.3",
     "expo-splash-screen": "~57.0.9",
+    "expo-sqlite": "~57.0.3",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
-    "react-native": "^0.86.3"
+    "react-native": "^0.86.3",
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1"
   },
   "devDependencies": {
     "@types/react": "^19.2.0",

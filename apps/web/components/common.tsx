@@ -1,5 +1,12 @@
 "use client";
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, Search, X } from "lucide-react";
 import Link from "next/link";
@@ -605,7 +612,8 @@ function CalendarPicker({
 
   const selected = value ? parseLocal(value) : null;
   const [view, setView] = useState<Date>(() => {
-    if (selected) return new Date(selected.getFullYear(), selected.getMonth(), 1);
+    if (selected)
+      return new Date(selected.getFullYear(), selected.getMonth(), 1);
     return new Date(today.getFullYear(), today.getMonth(), 1);
   });
 
@@ -614,7 +622,10 @@ function CalendarPicker({
 
   const year = view.getFullYear();
   const month = view.getMonth();
-  const monthLabel = view.toLocaleString("default", { month: "long", year: "numeric" });
+  const monthLabel = view.toLocaleString("default", {
+    month: "long",
+    year: "numeric",
+  });
 
   // Build calendar grid
   const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
@@ -673,7 +684,12 @@ function CalendarPicker({
     const handler = (e: MouseEvent) => {
       const popup = document.getElementById("tdp-popup");
       const anchor = anchorRef.current;
-      if (popup && !popup.contains(e.target as Node) && anchor && !anchor.contains(e.target as Node)) {
+      if (
+        popup &&
+        !popup.contains(e.target as Node) &&
+        anchor &&
+        !anchor.contains(e.target as Node)
+      ) {
         onClose();
       }
     };
@@ -704,18 +720,24 @@ function CalendarPicker({
             className="tdp-nav-btn"
             aria-label="Previous month"
             onClick={() => setView(new Date(year, month - 1, 1))}
-          >↑</button>
+          >
+            ↑
+          </button>
           <button
             type="button"
             className="tdp-nav-btn"
             aria-label="Next month"
             onClick={() => setView(new Date(year, month + 1, 1))}
-          >↓</button>
+          >
+            ↓
+          </button>
         </div>
       </div>
       <div className="tdp-grid">
         {DAY_LABELS.map((l, i) => (
-          <span key={i} className="tdp-day-label">{l}</span>
+          <span key={i} className="tdp-day-label">
+            {l}
+          </span>
         ))}
         {cells.map((d, i) =>
           d === null ? (
@@ -735,12 +757,30 @@ function CalendarPicker({
             >
               {d}
             </button>
-          )
+          ),
         )}
       </div>
       <div className="tdp-footer">
-        <button type="button" className="tdp-action" onClick={() => { onChange(""); onClose(); }}>Clear</button>
-        <button type="button" className="tdp-action" onClick={() => { onChange(toISO(today)); onClose(); }}>Today</button>
+        <button
+          type="button"
+          className="tdp-action"
+          onClick={() => {
+            onChange("");
+            onClose();
+          }}
+        >
+          Clear
+        </button>
+        <button
+          type="button"
+          className="tdp-action"
+          onClick={() => {
+            onChange(toISO(today));
+            onClose();
+          }}
+        >
+          Today
+        </button>
       </div>
     </div>
   );
@@ -801,7 +841,12 @@ export function TenantDateInput({
         }}
         role="button"
         tabIndex={disabled ? -1 : 0}
-        onKeyDown={(e) => { if (!disabled && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setOpen((o) => !o); } }}
+        onKeyDown={(e) => {
+          if (!disabled && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
+            setOpen((o) => !o);
+          }
+        }}
         aria-haspopup="dialog"
         aria-expanded={open}
       >

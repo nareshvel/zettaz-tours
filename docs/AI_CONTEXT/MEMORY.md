@@ -7,10 +7,10 @@ Keep under 200 lines. Update after sessions that change standing decisions.
 ## Current focus (agents)
 
 - **Sprint board:** [../HANDOFF/agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) — prefer over chat history.
-- **Owner priority (17 Sep):** Crew field pass deployed (`7257fb0`). Do not start Phase 4 offline until after the first connected live week. Operations menu group = complete until testing finds gaps. Customers polish in working tree; next non-Ops is remaining Administration tabs. **Hold** Subscription messaging.
+- **Owner priority (17 Sep):** Crew Phases 1–4 engineering complete in the working tree (Phase 4 = migration **088**). Owner deploys, builds EAS, and runs the full device test including airplane-mode. **Do not start Phase 5.** Operations menu group = complete until testing finds gaps. Customers / Audit / Document library polish in working tree; next is Profile owner visual. **Hold** Subscription messaging.
 - **In progress (15 Sep):** Tenant settings pass — printing, waivers, integrations, localization, sidebar. See the 15 September section below.
-- **Crew app (17 Sep):** Phases 1–3 + field pass on production (`7257fb0`). Next: new EAS preview. Phase 4 offline waits for the first connected live week.
-- **Deploy:** VPS at tip `7257fb0` via `./deploy.sh` (migrations through **087**, Pending: 0). Customers polish may still be local — check `git status`.
+- **Crew app (17 Sep):** Phases 1–4 engineering in the working tree. Production still `7257fb0` until owner deploys **088** and rebuilds EAS. Phase 5 Track B stays unscheduled.
+- **Deploy:** VPS at tip `7257fb0` via `./deploy.sh` (migrations through **087**, Pending: 0). Customers / Audit / Document library polish may still be local — check `git status`.
 - Claude paste brief: [../HANDOFF/claude-handoff-2026-09-14.md](../HANDOFF/claude-handoff-2026-09-14.md).
 
 ## Standing decisions
@@ -60,7 +60,7 @@ See [../STRATEGY/delivery.md](../STRATEGY/delivery.md).
 
 - First-slice NestJS/PostgreSQL API exists under apps/api, with shared validated contracts under packages/shared. See ADR 009 and HANDOFF/local-development.md.
 - `npm run db:seed` maintains two isolated local demo tenants; `sample-river-excursions` is displayed as Rock Adventures Demo with workbook-informed catalog and operational reference data, while all guest and financial records remain synthetic. See [../CLIENTS/rock-adventures/demo-data.md](../CLIENTS/rock-adventures/demo-data.md).
-- npm test runs real PostgreSQL/RLS/concurrency tests. Production startup is blocked pending identity/MFA and launch hardening. Next.js tenant operations UI and the connected Expo crew client exist; encrypted offline mobile sync and live payment integration remain policy-dependent.
+- npm test runs real PostgreSQL/RLS/concurrency tests. Production startup is blocked pending identity/MFA and launch hardening. Next.js tenant operations UI and the Expo crew client exist; Crew Phase 4 encrypted offline is implemented in the working tree (24h lease, command queue). Live card-present and Stripe Connect eligibility remain policy-dependent.
 - Terminology is Partners/Resellers for external hotel/reseller organizations.
 
 ## Boarding / partner reservation UX — 11 September 2026
@@ -85,6 +85,8 @@ See [../STRATEGY/delivery.md](../STRATEGY/delivery.md).
 - **Finance polish (11 September 2026):** Partner collections metrics, accept/reject confirm dialog, currency tags, mobile statement cards. Claim decision API unchanged.
 - **Reports polish (11 September 2026):** Departure-date presets, currency/timezone basis copy, exception emphasis, mobile daily cards. Report API unchanged.
 - **Customers polish (17 September 2026):** Insights metrics + list-action search, repeat-guest cue for email reuse only, purchaser/emergency kept on reservation detail, timeline cards with reservation links, tablet stack at 1366px. Create/edit/merge still deferred. Evidence: [../TESTING/customers-polish-evidence.md](../TESTING/customers-polish-evidence.md).
+- **Audit polish (17 September 2026):** Latest-100 search/area filter, actor names when RLS allows, details without payload dump, phone cards. Evidence: [../TESTING/audit-polish-evidence.md](../TESTING/audit-polish-evidence.md).
+- **Document library polish (17 September 2026):** Metrics, shared search bar, expired badge, ConfirmDialog remove. APIs unchanged. Evidence: [../TESTING/document-library-polish-evidence.md](../TESTING/document-library-polish-evidence.md).
 - **Team & resources polish (11 September 2026):** Tabbed Crew/Resources/Documents/Assignments layout (Catalog view-action-bar pattern); metrics + expiry callout; FormDialog create/edit; ConfirmDialog remove; override only when a document is expired.
 - **Staff & access polish (11 September 2026):** Staff↔Roles tabs, metrics, invite/create FormDialogs, revoke ConfirmDialog, mobile member/role cards. Invitation and member PATCH APIs unchanged.
 - **Tenant settings polish (11 September 2026):** Aside facts, `?tab=` deep links, short mobile nav labels, sticky saves, support-access ConfirmDialog with reason. Follow-up: shared `COUNTRIES` list + country dropdown, locked Track A currency copy, exclusive tax-rate explanation, denser desktop meta / tighter mobile tab spacing. Config APIs unchanged.

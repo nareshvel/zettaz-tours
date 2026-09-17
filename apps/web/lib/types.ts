@@ -307,6 +307,8 @@ export type Audit = {
   aggregate_id: string;
   reason: string | null;
   occurred_at: string;
+  actor_name?: string | null;
+  actor_role?: string | null;
 };
 export type Manifest = {
   departure: {

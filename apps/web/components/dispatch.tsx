@@ -82,8 +82,10 @@ export function OperationsBoard({ session }: { session: Session }) {
   useEffect(() => {
     if (!filterOpen) return;
     function onPointer(event: MouseEvent) {
-      if (!filterRef.current?.contains(event.target as Node) &&
-        !document.getElementById("tdp-popup")?.contains(event.target as Node)) {
+      if (
+        !filterRef.current?.contains(event.target as Node) &&
+        !document.getElementById("tdp-popup")?.contains(event.target as Node)
+      ) {
         setFilterOpen(false);
       }
     }

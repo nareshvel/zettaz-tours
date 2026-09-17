@@ -1,7 +1,7 @@
 # Zettaz Crew — delivery plan
 
 **Updated:** 17 September 2026  
-**Status:** Owner-accepted 17 September 2026. Phases 1–3 on production (`02dc7ea`). Field pass in progress. Phase 4 offline waits for the first connected live week.  
+**Status:** Owner-accepted 17 September 2026. Owner override 17 September 2026: complete Phases 1–4 before EAS full test. Phases 1–3 are on production (`7257fb0`). Phase 4 engineering is in the working tree. Phase 5 Track B is not scheduled.  
 **Audience:** owner + any IDE agent  
 **Scope authority:** [launch-contract.md](launch-contract.md) · **epic:** E08/E07 in [delivery.md](delivery.md) · **facade:** [crew-mobile-facade.md](../FEATURES/operations/crew-mobile-facade.md)
 
@@ -186,7 +186,7 @@ Calendar is **from owner acceptance of this file**, not from chat history. Indic
 | 4.7 | Revoke → wipe on next connect |
 | 4.8 | Cutover drill: one offline cycle in the 7–14 day parallel run |
 
-**Exit:** Documented airplane-mode test + sync. GPS still off.
+**Exit:** Documented airplane-mode test + sync. GPS still off. Engineering for 4.1–4.7 is in the working tree (17 Sep). Task 4.8 is the owner’s EAS + airplane-mode pass after VPS migrate **088**.
 
 ### Phase 5 — Track B / evidence-gated (do not schedule until Track A field is live)
 
@@ -210,7 +210,7 @@ Calendar is **from owner acceptance of this file**, not from chat history. Indic
 | 22 Sep – 3 Oct | Phase 1 |
 | 6–17 Oct | Phase 2 (slip if XCD/Stripe policy is missing — ship cash-only Pay) |
 | 20 Oct – 31 Oct | Phase 3 tablet |
-| After first live connected week | Phase 4 offline |
+| After first live connected week (brought forward 17 Sep) | Phase 4 offline |
 | After spreadsheet cutover | Phase 5 only with a written Track B reopen |
 
 These dates move if web Administration work stays the sprint priority. **This file does not silently override** [agent-current-sprint.md](../HANDOFF/agent-current-sprint.md). Owner chooses whether Phase 0/1 starts now or after the current web pass.
@@ -236,4 +236,4 @@ Google Places/routing, Plan pickups Phase 2 (multi-product van), live GPS, consu
 
 ## Start gate
 
-Owner accepted 17 September 2026. Phases 1–3 are on production (`02dc7ea`). A field pass is in progress so Pay and tablet can be used without 403 dead-ends. Phase 4 offline waits for the first connected live week. Rebuild EAS preview so devices pick up the new UI.
+Owner accepted 17 September 2026. Owner override the same day: complete Phases 1–4 before EAS full test. Phases 1–3 are on production (`7257fb0`). Phase 4 is in the working tree. Rebuild EAS after VPS migrate **088**. Do not start Phase 5.

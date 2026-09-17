@@ -3429,6 +3429,376 @@ test("crew today includes pickup sequence, balance-due facts, and assigned start
   assert.equal(afterStart.body.trips[0].boarding_pending, 0);
 });
 
+test("crew can collect remaining guest balance only on an assigned booking", async () => {
+  const t = await setupTenant(`crew-pay-${randomUUID().slice(0, 8)}`, {
+    ...mockConfig,
+    minimumPaidPercent: 0,
+  });
+  const member = await post("/admin/v1/members", t.token, {
+    name: "Mock Pay Guide",
+    email: `guide-${randomUUID()}@example.invalid`,
+    role: "guide",
+  });
+  assert.equal(member.status, 201, JSON.stringify(member.body));
+  const guide = await issueSession(admin, member.body.actorId, t.tenantId);
+  const dep = await departure(t.token);
+  assert.equal(
+    (
+      await post("/ops/v1/assignments", t.token, {
+        departureId: dep.departureId,
+        crewActorId: member.body.actorId,
+        assignmentRole: "guide",
+      })
+    ).status,
+    201,
+  );
+  const dueBooking = await heldBooking(dep.departureId, t.token);
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${dueBooking.bookingId}/passengers`,
+        t.token,
+        {
+          passengers: [
+            { name: "Due Traveler", category: "adult", isMinor: false },
+          ],
+        },
+      )
+    ).status,
+    201,
+  );
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${dueBooking.bookingId}/confirm`,
+        t.token,
+        {
+          version: 1,
+        },
+      )
+    ).status,
+    201,
+  );
+  const other = await departure(t.token);
+  const otherBooking = await heldBooking(other.departureId, t.token);
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${otherBooking.bookingId}/passengers`,
+        t.token,
+        {
+          passengers: [
+            { name: "Other traveller", category: "adult", isMinor: false },
+          ],
+        },
+      )
+    ).status,
+    201,
+  );
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${otherBooking.bookingId}/confirm`,
+        t.token,
+        { version: 1 },
+      )
+    ).status,
+    201,
+  );
+  const partner = await post("/finance/v1/partners", t.token, {
+    name: "Mock Crew Partner",
+    email: `crew-partner-${randomUUID()}@example.invalid`,
+    notes: "Synthetic crew pay partner",
+  });
+  assert.equal(partner.status, 201, JSON.stringify(partner.body));
+  const partnerHold = await post("/staff/v1/holds", t.token, {
+    departureId: dep.departureId,
+    party: { adult: 1 },
+  });
+  assert.equal(partnerHold.status, 201, JSON.stringify(partnerHold.body));
+  const partnerBooking = await post("/staff/v1/bookings", t.token, {
+    holdId: partnerHold.body.holdId,
+    leadName: "Partner Guest",
+    leadEmail: "partner-crew@example.invalid",
+    source: "partner_reseller",
+    pickup: { kind: "none" },
+    partner: {
+      partnerId: partner.body.id,
+      externalReference: "CREW-1",
+      collectionMode: "partner_invoice",
+      invoiceRequired: true,
+    },
+  });
+  assert.equal(partnerBooking.status, 201, JSON.stringify(partnerBooking.body));
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${partnerBooking.body.bookingId}/passengers`,
+        t.token,
+        {
+          passengers: [
+            { name: "Partner Traveler", category: "adult", isMinor: false },
+          ],
+        },
+      )
+    ).status,
+    201,
+  );
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${partnerBooking.body.bookingId}/confirm`,
+        t.token,
+        { version: 1 },
+      )
+    ).status,
+    201,
+  );
+  const {
+    rows: [dayRow],
+  } = await admin.query(
+    "SELECT local_date::text AS day FROM departures WHERE id=$1",
+    [dep.departureId],
+  );
+  const today = await get(`/crew/v1/today?date=${dayRow.day}`, guide);
+  assert.equal(today.status, 200, JSON.stringify(today.body));
+  const dueGuest = today.body.trips[0].guests.find(
+    (guest: { booking_id: string }) =>
+      guest.booking_id === dueBooking.bookingId,
+  );
+  const partnerGuest = today.body.trips[0].guests.find(
+    (guest: { booking_id: string }) =>
+      guest.booking_id === partnerBooking.body.bookingId,
+  );
+  assert.equal(dueGuest.boarding_clearance, "due");
+  assert.equal(partnerGuest.boarding_clearance, "partner");
+  assert.ok(today.body.paymentMethods.includes("cash"));
+  assert.equal(
+    (
+      await post(`/staff/v1/bookings/${dueBooking.bookingId}/payments`, guide, {
+        amountMinor: dueGuest.guest_balance_minor,
+        currency: dueGuest.currency,
+        method: "cash",
+        status: "settled",
+        occurredAt: new Date().toISOString(),
+        reason: "Must reject broad payment.write",
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await post(
+        `/crew/v1/bookings/${otherBooking.bookingId}/payments`,
+        guide,
+        {
+          amountMinor: 1000,
+          currency: "USD",
+          method: "cash",
+          status: "settled",
+          occurredAt: new Date().toISOString(),
+          reason: "Collected at boarding",
+        },
+      )
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await post(
+        `/crew/v1/bookings/${partnerBooking.body.bookingId}/payments`,
+        guide,
+        {
+          amountMinor: 1000,
+          currency: "USD",
+          method: "cash",
+          status: "settled",
+          occurredAt: new Date().toISOString(),
+          reason: "Collected at boarding",
+        },
+      )
+    ).status,
+    400,
+  );
+  const paid = await post(
+    `/crew/v1/bookings/${dueBooking.bookingId}/payments`,
+    guide,
+    {
+      amountMinor: dueGuest.guest_balance_minor,
+      currency: dueGuest.currency,
+      method: "cash",
+      status: "settled",
+      occurredAt: new Date().toISOString(),
+      reason: "Collected at boarding",
+      passengerId: dueGuest.passengers[0].id,
+    },
+  );
+  assert.equal(paid.status, 201, JSON.stringify(paid.body));
+  const afterPay = await get(`/crew/v1/today?date=${dayRow.day}`, guide);
+  const settled = afterPay.body.trips[0].guests.find(
+    (guest: { booking_id: string }) =>
+      guest.booking_id === dueBooking.bookingId,
+  );
+  assert.equal(settled.boarding_clearance, "settled");
+  assert.equal(settled.guest_balance_minor, 0);
+});
+
+test("crew tablet board, walk-up, and weather stay hidden from guides", async () => {
+  const t = await setupTenant(`crew-tablet-${randomUUID().slice(0, 8)}`, {
+    ...mockConfig,
+    minimumPaidPercent: 0,
+  });
+  const member = await post("/admin/v1/members", t.token, {
+    name: "Mock Tablet Guide",
+    email: `guide-${randomUUID()}@example.invalid`,
+    role: "guide",
+  });
+  assert.equal(member.status, 201, JSON.stringify(member.body));
+  const guide = await issueSession(admin, member.body.actorId, t.tenantId);
+  const desk = await post("/admin/v1/members", t.token, {
+    name: "Mock Reservations",
+    email: `res-${randomUUID()}@example.invalid`,
+    role: "reservations",
+  });
+  assert.equal(desk.status, 201, JSON.stringify(desk.body));
+  const reservations = await issueSession(
+    admin,
+    desk.body.actorId,
+    t.tenantId,
+  );
+  const dep = await departure(t.token);
+  assert.equal(
+    (
+      await post("/ops/v1/assignments", t.token, {
+        departureId: dep.departureId,
+        crewActorId: member.body.actorId,
+        assignmentRole: "guide",
+      })
+    ).status,
+    201,
+  );
+  const {
+    rows: [dayRow],
+  } = await admin.query(
+    "SELECT local_date::text AS day FROM departures WHERE id=$1",
+    [dep.departureId],
+  );
+  assert.equal(
+    (await get(`/crew/v1/board?date=${dayRow.day}`, guide)).status,
+    403,
+  );
+  const board = await get(`/crew/v1/board?date=${dayRow.day}`, t.token);
+  assert.equal(board.status, 200, JSON.stringify(board.body));
+  assert.equal(board.body.capabilities.walkUp, true);
+  assert.equal(board.body.capabilities.weather, true);
+  const row = board.body.items.find(
+    (item: { id: string }) => item.id === dep.departureId,
+  );
+  assert.ok(row, JSON.stringify(board.body));
+  assert.equal(row.crew[0].name, "Mock Tablet Guide");
+  const deskBoard = await get(
+    `/crew/v1/board?date=${dayRow.day}`,
+    reservations,
+  );
+  assert.equal(deskBoard.status, 200, JSON.stringify(deskBoard.body));
+  assert.equal(deskBoard.body.capabilities.walkUp, true);
+  assert.equal(deskBoard.body.capabilities.weather, false);
+  assert.equal(
+    (
+      await post(`/crew/v1/walk-ups`, guide, {
+        departureId: dep.departureId,
+        party: { adult: 1 },
+        leadName: "Walk Up Guest",
+        leadEmail: "walkup@example.invalid",
+      })
+    ).status,
+    403,
+  );
+  const walkUp = await post(`/crew/v1/walk-ups`, reservations, {
+    departureId: dep.departureId,
+    party: { adult: 1 },
+    leadName: "Walk Up Guest",
+    leadEmail: "walkup@example.invalid",
+  });
+  assert.equal(walkUp.status, 201, JSON.stringify(walkUp.body));
+  assert.equal(walkUp.body.state, "confirmed");
+  assert.equal(walkUp.body.needsPayment, false);
+  const roster = await get(`/crew/v1/board/${dep.departureId}`, t.token);
+  assert.equal(roster.status, 200, JSON.stringify(roster.body));
+  assert.equal(
+    roster.body.guests.some(
+      (guest: { lead_name: string }) => guest.lead_name === "Walk Up Guest",
+    ),
+    true,
+  );
+  const weather = await post(
+    `/crew/v1/departures/${dep.departureId}/operational-status`,
+    t.token,
+    {
+      version: row.operational_version,
+      status: "weather_hold",
+      reason: "Thunderstorm on the route",
+    },
+  );
+  assert.equal(weather.status, 201, JSON.stringify(weather.body));
+  assert.equal(
+    (
+      await post(
+        `/crew/v1/departures/${dep.departureId}/operational-status`,
+        guide,
+        {
+          version: weather.body.operational_version,
+          status: "open",
+          reason: "Guides cannot reopen",
+        },
+      )
+    ).status,
+    403,
+  );
+  const printed = await post("/crew/v1/print-jobs", t.token, {
+    documentType: "pickup_list",
+    sourceId: dep.departureId,
+  });
+  assert.equal(printed.status, 201, JSON.stringify(printed.body));
+  const pdf = await get(`/crew/v1/print-jobs/${printed.body.id}/pdf`, t.token);
+  assert.equal(pdf.status, 200);
+  assert.match(String(pdf.headers["content-type"]), /pdf/);
+  assert.equal(
+    (await get(`/crew/v1/print-jobs/${printed.body.id}/pdf`, guide)).status,
+    403,
+  );
+});
+
+test("crew tablet walk-up collects then confirms when a deposit is required", async () => {
+  const t = await setupTenant(`crew-walkpay-${randomUUID().slice(0, 8)}`, {
+    ...mockConfig,
+    minimumPaidPercent: 100,
+  });
+  const dep = await departure(t.token);
+  const held = await post("/crew/v1/walk-ups", t.token, {
+    departureId: dep.departureId,
+    party: { adult: 1 },
+    leadName: "Booth Guest",
+    leadEmail: "booth@example.invalid",
+  });
+  assert.equal(held.status, 201, JSON.stringify(held.body));
+  assert.equal(held.body.needsPayment, true);
+  assert.equal(held.body.state, "held");
+  const paid = await post("/crew/v1/walk-ups", t.token, {
+    bookingId: held.body.bookingId,
+    payment: {
+      amountMinor: held.body.quote.totalMinor,
+      currency: held.body.quote.currency,
+      method: "cash",
+      status: "settled",
+      occurredAt: new Date().toISOString(),
+      reason: "Walk-up cash",
+    },
+  });
+  assert.equal(paid.status, 201, JSON.stringify(paid.body));
+  assert.equal(paid.body.state, "confirmed");
+});
+
 test("partner organizations are tenant-scoped and require partner management permission", async () => {
   const t = await setupTenant(`partner-${randomUUID().slice(0, 8)}`);
   const partner = await post("/finance/v1/partners", t.token, {

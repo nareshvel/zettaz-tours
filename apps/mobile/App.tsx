@@ -14,21 +14,37 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { call, crewLoadMessage, isUnauthorized, requestKey } from "./src/api";
 import { APP_VERSION, SESSION_KEY, SUPPORT_EMAIL, WEB } from "./src/config";
 import {
   allAboardLabel,
+  attributionPassenger,
   clearanceLabel,
+  formatMoney,
   guestMatchesQuery,
+  paymentMethodLabel,
   pickupLabel,
   stayLabel,
+  suggestedBoardingShare,
   tripStarted,
+  TABLET_MIN_WIDTH,
+  type BoardItem,
+  type BoardPayload,
   type Guest,
   type Passenger,
   type Trip,
+  type WalkUpQuote,
 } from "./src/field";
+import {
+  DayBoard,
+  tenantDay,
+  WalkUpSheet,
+  WeatherSheet,
+  sharePickupText,
+} from "./src/tablet";
 type WaiverTemplate = {
   id: string;
   version: number;
@@ -46,7 +62,8 @@ type Profile = {
   actorEmail: string;
   actorPhone: string | null;
   role: string;
-  tenant: { name: string };
+  permissions?: string[];
+  tenant: { name: string; timezone?: string };
 };
 
 function roleLabel(role: string) {
@@ -88,6 +105,7 @@ function Button({
 }
 
 export default function App() {
+  const { width } = useWindowDimensions();
   const [token, setToken] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [email, setEmail] = useState("");
@@ -123,6 +141,27 @@ export default function App() {
   const [rosterQuery, setRosterQuery] = useState("");
   const [startOpen, setStartOpen] = useState(false);
   const [startReason, setStartReason] = useState("");
+  const [paymentMethods, setPaymentMethods] = useState<string[]>(["cash"]);
+  const [collectionCurrency, setCollectionCurrency] = useState<string | null>(
+    null,
+  );
+  const [paying, setPaying] = useState<{
+    guest: Guest;
+    passenger?: Passenger;
+  } | null>(null);
+  const [payAmount, setPayAmount] = useState("");
+  const [payMethod, setPayMethod] = useState("");
+  const [payReference, setPayReference] = useState("");
+  const [payNote, setPayNote] = useState("");
+  const [board, setBoard] = useState<BoardPayload | null>(null);
+  const [dock, setDock] = useState<"trips" | "board">("trips");
+  const [fromBoard, setFromBoard] = useState(false);
+  const [weatherItem, setWeatherItem] = useState<BoardItem | null>(null);
+  const [walkUpItem, setWalkUpItem] = useState<BoardItem | null>(null);
+  const [walkUpHeld, setWalkUpHeld] = useState<{
+    bookingId: string;
+    quote: WalkUpQuote;
+  } | null>(null);
 
   useEffect(() => {
     SecureStore.getItemAsync(SESSION_KEY)
@@ -137,13 +176,21 @@ export default function App() {
     setProfile(null);
     setMenuOpen(false);
     setShowProfile(false);
+    setPaying(null);
+    setBoard(null);
+    setDock("trips");
+    setFromBoard(false);
+    setWeatherItem(null);
+    setWalkUpItem(null);
+    setWalkUpHeld(null);
   }
   async function loadProfile(session: string) {
     try {
       const me = await call<Profile>("/staff/v1/workspace/session", session);
       setProfile(me);
+      return me;
     } catch {
-      /* Today can still load if session read fails. */
+      return null;
     }
   }
   async function load(session = token) {
@@ -151,16 +198,50 @@ export default function App() {
     setBusy(true);
     setError("");
     try {
-      await loadProfile(session);
-      const result = await call<{
-        trips: Trip[];
-        waiverTemplate: WaiverTemplate | null;
-      }>("/crew/v1/today", session);
-      setTrips(result.trips);
-      setWaiverTemplate(result.waiverTemplate);
-      if (active)
-        setActive(result.trips.find((trip) => trip.id === active.id) ?? null);
-      else setStartOpen(false);
+      const me = await loadProfile(session);
+      const canBoard = me?.permissions?.includes("manifest.read");
+      try {
+        const result = await call<{
+          trips: Trip[];
+          waiverTemplate: WaiverTemplate | null;
+          paymentMethods?: string[];
+          collectionCurrency?: string | null;
+        }>("/crew/v1/today", session);
+        setTrips(result.trips);
+        setWaiverTemplate(result.waiverTemplate);
+        setPaymentMethods(
+          (result.paymentMethods ?? []).filter(Boolean).length
+            ? (result.paymentMethods ?? [])
+            : ["cash"],
+        );
+        setCollectionCurrency(result.collectionCurrency ?? null);
+        if (active)
+          setActive(result.trips.find((trip) => trip.id === active.id) ?? null);
+        else setStartOpen(false);
+      } catch (reason) {
+        if (isUnauthorized(reason)) throw reason;
+        setTrips([]);
+        if (!canBoard) throw reason;
+      }
+      if (canBoard) {
+        const day = tenantDay(me?.tenant.timezone);
+        const result = await call<BoardPayload>(
+          `/crew/v1/board?date=${day}`,
+          session,
+        );
+        setBoard(result);
+        if (result.paymentMethods?.length)
+          setPaymentMethods(result.paymentMethods);
+        if (result.collectionCurrency !== undefined)
+          setCollectionCurrency(result.collectionCurrency ?? null);
+        if (fromBoard && active) {
+          const trip = await call<Trip>(
+            `/crew/v1/board/${active.id}`,
+            session,
+          );
+          setActive(trip);
+        }
+      }
     } catch (reason) {
       if (isUnauthorized(reason)) await clearSession();
       else setError(crewLoadMessage(reason));
@@ -219,6 +300,155 @@ export default function App() {
     } catch (reason) {
       if (isUnauthorized(reason)) await clearSession();
       else setError((reason as Error).message);
+      setBusy(false);
+    }
+  }
+  async function openBoarding(item: BoardItem) {
+    if (!token) return;
+    setBusy(true);
+    setError("");
+    try {
+      const trip = await call<Trip>(`/crew/v1/board/${item.id}`, token);
+      setActive(trip);
+      setFromBoard(true);
+      setWeatherItem(null);
+      setWalkUpItem(null);
+      setWalkUpHeld(null);
+    } catch (reason) {
+      if (isUnauthorized(reason)) await clearSession();
+      else setError((reason as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function saveWeather(
+    item: BoardItem,
+    status: "open" | "weather_hold" | "closed",
+    reason: string,
+  ) {
+    await mutate(`/crew/v1/departures/${item.id}/operational-status`, {
+      version: item.operational_version,
+      status,
+      reason,
+    });
+    setWeatherItem(null);
+  }
+  async function createWalkUp(input: {
+    adults: number;
+    leadName: string;
+    leadEmail: string;
+  }) {
+    if (!token || !walkUpItem) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await call<{
+        bookingId: string;
+        state: string;
+        needsPayment?: boolean;
+        quote?: WalkUpQuote;
+      }>("/crew/v1/walk-ups", token, {
+        method: "POST",
+        headers: { "Idempotency-Key": requestKey() },
+        body: JSON.stringify({
+          departureId: walkUpItem.id,
+          party: { adult: input.adults },
+          leadName: input.leadName,
+          leadEmail: input.leadEmail,
+        }),
+      });
+      if (result.needsPayment && result.quote) {
+        setWalkUpHeld({ bookingId: result.bookingId, quote: result.quote });
+      } else {
+        setWalkUpItem(null);
+        setWalkUpHeld(null);
+        await load(token);
+      }
+    } catch (reason) {
+      if (isUnauthorized(reason)) await clearSession();
+      else setError((reason as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function payWalkUp(input: { method: string; amountMinor: number }) {
+    if (!token || !walkUpHeld) return;
+    setBusy(true);
+    setError("");
+    try {
+      await call("/crew/v1/walk-ups", token, {
+        method: "POST",
+        headers: { "Idempotency-Key": requestKey() },
+        body: JSON.stringify({
+          bookingId: walkUpHeld.bookingId,
+          payment: {
+            amountMinor: input.amountMinor,
+            currency: walkUpHeld.quote.currency,
+            method: input.method,
+            status: "settled",
+            occurredAt: new Date().toISOString(),
+            reason: "Walk-up collection",
+          },
+        }),
+      });
+      setWalkUpItem(null);
+      setWalkUpHeld(null);
+      await load(token);
+    } catch (reason) {
+      if (isUnauthorized(reason)) await clearSession();
+      else setError((reason as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function sharePickup(item: BoardItem) {
+    if (!token) return;
+    setBusy(true);
+    setError("");
+    try {
+      const list = await call<{
+        departure: { product_name: string; starts_at: string };
+        stops: {
+          sequence: number;
+          pickup_at: string;
+          location_name: string;
+          lead_name: string;
+          party_size: number;
+          notes?: string | null;
+        }[];
+        exceptions: {
+          lead_name: string;
+          pickup_kind: string;
+          party_size: number;
+        }[];
+      }>(`/crew/v1/departures/${item.id}/pickup-list`, token);
+      const lines = [
+        `${list.departure.product_name} pickup list`,
+        new Date(list.departure.starts_at).toLocaleString(),
+        "",
+        ...list.stops.map(
+          (stop) =>
+            `${stop.sequence}. ${stop.location_name} · ${new Date(stop.pickup_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${stop.lead_name} (${stop.party_size})${stop.notes ? ` · ${stop.notes}` : ""}`,
+        ),
+        ...list.exceptions.map(
+          (row) => `Gap · ${row.lead_name} · ${row.pickup_kind} · ${row.party_size}`,
+        ),
+      ];
+      if (board?.capabilities.print) {
+        await call("/crew/v1/print-jobs", token, {
+          method: "POST",
+          headers: { "Idempotency-Key": requestKey() },
+          body: JSON.stringify({
+            documentType: "pickup_list",
+            sourceId: item.id,
+          }),
+        });
+      }
+      await sharePickupText(item.product_name, lines.filter(Boolean).join("\n"));
+    } catch (reason) {
+      if (isUnauthorized(reason)) await clearSession();
+      else setError((reason as Error).message);
+    } finally {
       setBusy(false);
     }
   }
@@ -367,6 +597,69 @@ export default function App() {
       ],
     );
   }
+  function openPay(guest: Guest, passenger?: Passenger) {
+    const attributed = attributionPassenger(guest, passenger);
+    const rosterCount = Math.max(
+      1,
+      guest.passengers.length || guest.party_size || 1,
+    );
+    const balance = guest.guest_balance_minor ?? 0;
+    const suggested =
+      passenger && rosterCount >= 2
+        ? suggestedBoardingShare(balance, rosterCount)
+        : balance;
+    setPaying({ guest, passenger: attributed });
+    setPayAmount((suggested / 100).toFixed(2));
+    setPayMethod(paymentMethods[0] ?? "cash");
+    setPayReference("");
+    setPayNote("");
+    setError("");
+  }
+  async function submitPay() {
+    if (!token || !paying) return;
+    const amountMinor = Math.round(Number(payAmount) * 100);
+    if (!Number.isFinite(amountMinor) || amountMinor <= 0) {
+      setError("Enter a payment amount greater than zero.");
+      return;
+    }
+    if (!payMethod) {
+      setError("Select a payment method.");
+      return;
+    }
+    const attributed = paying.passenger;
+    setBusy(true);
+    setError("");
+    try {
+      await call(
+        `/crew/v1/bookings/${paying.guest.booking_id}/payments`,
+        token,
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": requestKey() },
+          body: JSON.stringify({
+            amountMinor,
+            currency: paying.guest.currency ?? "USD",
+            method: payMethod,
+            status: "settled",
+            reference: payReference.trim(),
+            reason:
+              payNote.trim() ||
+              (attributed
+                ? `Collected at boarding · ${attributed.name}`
+                : "Collected at boarding"),
+            occurredAt: new Date().toISOString(),
+            ...(attributed ? { passengerId: attributed.id } : {}),
+          }),
+        },
+      );
+      setPaying(null);
+      await load(token);
+    } catch (reason) {
+      if (isUnauthorized(reason)) await clearSession();
+      else setError((reason as Error).message);
+      setBusy(false);
+    }
+  }
   async function openScanner() {
     const permission = cameraPermission?.granted
       ? cameraPermission
@@ -379,12 +672,21 @@ export default function App() {
     setScanning(true);
   }
 
+  const showBoard =
+    width >= TABLET_MIN_WIDTH &&
+    Boolean(profile?.permissions?.includes("manifest.read"));
   const header = (
     <View style={styles.header}>
       <View style={styles.grow}>
         <Text style={styles.eyebrow}>CONNECTED CREW</Text>
         <Text style={styles.title} numberOfLines={1}>
-          {showProfile ? "My profile" : active ? active.product_name : "Today"}
+          {showProfile
+            ? "My profile"
+            : active
+              ? active.product_name
+              : showBoard && dock === "board"
+                ? "Day Board"
+                : "Today"}
         </Text>
       </View>
       <View style={styles.headerActions}>
@@ -817,6 +1119,97 @@ export default function App() {
       </SafeAreaView>
     );
   }
+  if (paying) {
+    const guest = paying.guest;
+    const currency = guest.currency ?? "USD";
+    const balance = guest.guest_balance_minor ?? 0;
+    const conversionBlocked =
+      Boolean(collectionCurrency) &&
+      Boolean(currency) &&
+      collectionCurrency !== currency;
+    return (
+      <SafeAreaView style={styles.screen}>
+        <StatusBar style="dark" />
+        <View style={styles.header}>
+          <View style={styles.grow}>
+            <Text style={styles.eyebrow}>PAYMENT AT BOARDING</Text>
+            <Text style={styles.cardTitle}>
+              {paying.passenger?.name ?? guest.lead_name}
+            </Text>
+          </View>
+          <Button quiet onPress={() => setPaying(null)}>
+            Close
+          </Button>
+        </View>
+        {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
+        <ScrollView contentContainerStyle={styles.content}>
+          <View style={styles.card}>
+            <Text style={styles.muted}>
+              Balance due {formatMoney(balance, currency)}
+            </Text>
+            {paying.passenger ? (
+              <Text style={styles.muted}>
+                Optional attribution · {paying.passenger.name}
+              </Text>
+            ) : null}
+            {conversionBlocked ? (
+              <Text style={styles.warn}>
+                Record this in {currency}. Converting local cash to a different
+                booking currency is not enabled yet.
+              </Text>
+            ) : null}
+            <TextInput
+              style={styles.input}
+              keyboardType="decimal-pad"
+              placeholder={`Amount · ${currency}`}
+              value={payAmount}
+              onChangeText={setPayAmount}
+            />
+            <View style={styles.actions}>
+              {paymentMethods.map((method) => (
+                <Pressable
+                  key={method}
+                  onPress={() => setPayMethod(method)}
+                  style={[
+                    styles.choice,
+                    payMethod === method && styles.choiceSelected,
+                  ]}
+                >
+                  <Text
+                    style={
+                      payMethod === method
+                        ? styles.choiceTextSelected
+                        : styles.choiceText
+                    }
+                  >
+                    {paymentMethodLabel(method)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <TextInput
+              style={styles.input}
+              placeholder="Receipt / bank reference (optional)"
+              value={payReference}
+              onChangeText={setPayReference}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Collected at boarding"
+              value={payNote}
+              onChangeText={setPayNote}
+            />
+            <Button
+              disabled={busy || balance <= 0 || conversionBlocked}
+              onPress={() => void submitPay()}
+            >
+              {busy ? "Recording…" : "Record payment"}
+            </Button>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
   if (showProfile) {
     return (
       <SafeAreaView style={styles.screen}>
@@ -893,7 +1286,7 @@ export default function App() {
             </Button>
           </View>
         ) : null}
-        {busy && !trips.length ? (
+        {busy && !trips.length && !board?.items.length ? (
           <ActivityIndicator />
         ) : active ? (
           <>
@@ -904,9 +1297,13 @@ export default function App() {
                 setRosterQuery("");
                 setStartOpen(false);
                 setStartReason("");
+                if (fromBoard) {
+                  setDock("board");
+                  setFromBoard(false);
+                }
               }}
             >
-              Back to trips
+              {fromBoard ? "Back to board" : "Back to trips"}
             </Button>
             <View style={styles.card}>
               <Text style={styles.cardTitle}>
@@ -1073,6 +1470,11 @@ export default function App() {
                       {stayLabel(guest.stay)}
                       {aboard ? ` · all aboard ${aboard}` : ""}
                     </Text>
+                    {guest.boarding_clearance === "due" ? (
+                      <Button disabled={busy} onPress={() => openPay(guest)}>
+                        Pay
+                      </Button>
+                    ) : null}
                     {guest.passengers.map((passenger) => (
                       <Pressable
                         style={styles.person}
@@ -1128,6 +1530,15 @@ export default function App() {
                             >
                               No-show
                             </Button>
+                            {guest.boarding_clearance === "due" ? (
+                              <Button
+                                quiet
+                                disabled={busy}
+                                onPress={() => openPay(guest, passenger)}
+                              >
+                                Pay
+                              </Button>
+                            ) : null}
                           </View>
                         ) : null}
                       </Pressable>
@@ -1139,7 +1550,107 @@ export default function App() {
           </>
         ) : (
           <>
-            {!trips.length ? (
+            {showBoard ? (
+              <View style={styles.dock}>
+                <Pressable
+                  onPress={() => {
+                    setDock("trips");
+                    setWeatherItem(null);
+                    setWalkUpItem(null);
+                    setWalkUpHeld(null);
+                  }}
+                  style={[
+                    styles.dockTab,
+                    dock === "trips" && styles.dockTabActive,
+                  ]}
+                >
+                  <Text
+                    style={
+                      dock === "trips"
+                        ? styles.dockTabTextActive
+                        : styles.dockTabText
+                    }
+                  >
+                    My trips
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setDock("board")}
+                  style={[
+                    styles.dockTab,
+                    dock === "board" && styles.dockTabActive,
+                  ]}
+                >
+                  <Text
+                    style={
+                      dock === "board"
+                        ? styles.dockTabTextActive
+                        : styles.dockTabText
+                    }
+                  >
+                    Day Board
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+            {showBoard && dock === "board" ? (
+              weatherItem ? (
+                <WeatherSheet
+                  item={weatherItem}
+                  busy={busy}
+                  onClose={() => setWeatherItem(null)}
+                  onSave={(status, reason) =>
+                    void saveWeather(weatherItem, status, reason)
+                  }
+                />
+              ) : walkUpItem ? (
+                <WalkUpSheet
+                  item={walkUpItem}
+                  busy={busy}
+                  methods={paymentMethods}
+                  held={walkUpHeld}
+                  error={error}
+                  onClose={() => {
+                    setWalkUpItem(null);
+                    setWalkUpHeld(null);
+                  }}
+                  onCreate={(input) => void createWalkUp(input)}
+                  onPay={(input) => void payWalkUp(input)}
+                />
+              ) : (
+                <DayBoard
+                  board={
+                    board ?? {
+                      date: tenantDay(profile?.tenant.timezone),
+                      capabilities: {
+                        walkUp: Boolean(
+                          profile?.permissions?.includes("bookings.write"),
+                        ),
+                        weather: Boolean(
+                          profile?.permissions?.includes("operations.write"),
+                        ),
+                        print: Boolean(
+                          profile?.permissions?.includes("print.jobs.create"),
+                        ),
+                        checkin: Boolean(
+                          profile?.permissions?.includes("checkin.write"),
+                        ),
+                      },
+                      items: [],
+                    }
+                  }
+                  busy={busy}
+                  onOpen={(item) => void openBoarding(item)}
+                  onWalkUp={(item) => {
+                    setWalkUpHeld(null);
+                    setWalkUpItem(item);
+                  }}
+                  onWeather={setWeatherItem}
+                  onShare={(item) => void sharePickup(item)}
+                  onRefresh={() => void load()}
+                />
+              )
+            ) : !trips.length ? (
               <View style={styles.empty}>
                 <Text style={styles.cardTitle}>No assigned trips today</Text>
                 <Text style={styles.muted}>
@@ -1309,6 +1820,18 @@ const styles = StyleSheet.create({
   startSheet: { gap: 10, marginTop: 8 },
   warn: { color: "#b42318", fontWeight: "700", lineHeight: 20 },
   empty: { alignItems: "center", gap: 6, paddingVertical: 64 },
+  dock: { flexDirection: "row", gap: 8 },
+  dockTab: {
+    backgroundColor: "white",
+    borderColor: "#dce7e4",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  dockTabActive: { backgroundColor: "#087b72", borderColor: "#087b72" },
+  dockTabText: { color: "#17353a", fontWeight: "700" },
+  dockTabTextActive: { color: "white", fontWeight: "700" },
   success: { color: "#087b72", lineHeight: 20 },
   legalRow: {
     flexDirection: "row",

@@ -39,7 +39,7 @@ Staff can confirm reservations with a partial or zero guest payment where policy
 - Authorized audited boarding exception (“board with reason” while balance remains).
 - Mixed collection (partner portion + guest remainder) with explicit allocation rules.
 - True per-passenger owed balances / board-when-own-share-paid.
-- Crew mobile on-device Pay sheet (web manifest Pay exists; mobile still server-gates on clearance). Sequenced as Phase 2 in [crew-app-delivery.md](../../STRATEGY/crew-app-delivery.md).
+- Crew mobile on-device Pay sheet (web manifest Pay exists). Phase 2 implemented; production device pass pending. See [crew-app-delivery.md](../../STRATEGY/crew-app-delivery.md).
 - Public self-serve payment link from boarding.
 - Import/WTE/website apply paths must set collection mode explicitly so channel source never silently implies settlement.
 - Finance remittance for `partner_collects_for_tenant` still expects later collection claims; boarding clearance by policy does not replace claim recording.

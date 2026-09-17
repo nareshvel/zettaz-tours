@@ -7,17 +7,17 @@ Keep under 200 lines. Update after sessions that change standing decisions.
 ## Current focus (agents)
 
 - **Sprint board:** [../HANDOFF/agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) — prefer over chat history.
-- **Owner priority (17 Sep):** Crew Phase 1 device pass after deploy. Operations menu group = complete until testing finds gaps. **Hold** Subscription messaging. Administration web pass resumes after Crew device pass unless redirected.
+- **Owner priority (17 Sep):** Crew Phases 2–3 (Pay + tablet) in the working tree, then deploy. Operations menu group = complete until testing finds gaps. **Hold** Subscription messaging. Phase 1 device notes parked for one later field pass.
 - **In progress (15 Sep):** Tenant settings pass — printing, waivers, integrations, localization, sidebar. See the 15 September section below.
-- **Crew app (17 Sep):** Plan accepted. Phase 1 connected field is in the working tree. Next: commit/push, VPS deploy, assign a same-day guide, new EAS preview. Do not start Phase 2 Pay until that device pass.
-- **Deploy:** VPS at tip `a18e083` via `./deploy.sh` (migrations 067, Pending 0). Do not invent “push migration 060.” Local Crew leftovers (`086`, profile menu, `/api/mobile`) may still be undeployed — check `git status`.
+- **Crew app (17 Sep):** Plan accepted. Phase 1 live on production + EAS preview. Phase 1 UI notes parked until after Phase 2–3. Phase 2 Pay and Phase 3 tablet are in the working tree. Next: commit/push, deploy, new preview. Phase 4 offline waits for the first connected live week.
+- **Deploy:** VPS at tip `34047a3` via `./deploy.sh` (migrations through **087**, Pending: 0). Phase 2 Pay and Phase 3 tablet may still be local — check `git status`.
 - Claude paste brief: [../HANDOFF/claude-handoff-2026-09-14.md](../HANDOFF/claude-handoff-2026-09-14.md).
 
 ## Standing decisions
 
 - **External partners/resellers:** means hotels/resellers belonging to a tenant's partner network, not tenant staff. Track A uses staff-managed partner records, evidence, obligations and remittances; no shared tenant-staff login for partners. Partner portal and automated settlement remain Track B.
 - **Booking source vs settlement:** source slugs (`phone`, `walk_in`, `website`, `partner_reseller`) are channel attribution. Guest vs partner money follows collection mode and ledger facts. Channel brands (Viator, GetYourGuide) are partner organizations under Partner / reseller, not separate booking sources.
-- **Boarding money:** `partner_invoice` and `partner_collects_for_tenant` clear boarding without a new guest payment; other bookings collect remaining guest balance on the web manifest Pay sheet. Pending: complimentary/prepaid flags, boarding exceptions, mixed allocation, crew-mobile Pay. See [../FEATURES/operations/boarding-balance-collection.md](../FEATURES/operations/boarding-balance-collection.md).
+- **Boarding money:** `partner_invoice` and `partner_collects_for_tenant` clear boarding without a new guest payment; other bookings collect remaining guest balance on the web manifest Pay sheet or the Crew Phase 2 Pay sheet (in working tree). Pending: complimentary/prepaid flags, boarding exceptions, mixed allocation. See [../FEATURES/operations/boarding-balance-collection.md](../FEATURES/operations/boarding-balance-collection.md).
 
 - **One Zettaz Crew binary.** Phone field, tablet dock, and Pay are densities of `apps/mobile`, not separate apps. Empty Today is correct when the actor is unassigned. Phased delivery: [../STRATEGY/crew-app-delivery.md](../STRATEGY/crew-app-delivery.md). GPS, card-present, consumer app, and a white-label second binary remain Track B.
 - **Crew mobile production API:** phones call `https://tours.zettaz.com/api/mobile` (allowlisted Next.js proxy, Bearer only). Do not expose the full Nest API on the public hostname. Store runbook: [../HANDOFF/crew-mobile-store-publish.md](../HANDOFF/crew-mobile-store-publish.md).
@@ -48,7 +48,7 @@ Keep under 200 lines. Update after sessions that change standing decisions.
 - SMTP secrets and sender-domain verification
 - Rock printer/station inventory and final document retention
 - Rock sign-off for schedules, capacities, waiver wording, operational configuration, and cutover evidence
-- Complimentary/prepaid boarding-policy flags, authorized boarding exceptions, mixed collection, crew-mobile Pay UI
+- Complimentary/prepaid boarding-policy flags, authorized boarding exceptions, mixed collection
 
 ## First slice
 

@@ -6,7 +6,7 @@ Current cross-epic specification: [first-slice/requirements.md](first-slice/requ
 
 Current operations specification: [operations/resources-and-assignments.md](operations/resources-and-assignments.md), defining the Track A minimum for crew/resource records, expiry controls and departure assignment.
 
-Crew connected-mobile boundary: [operations/crew-mobile-facade.md](operations/crew-mobile-facade.md). Phased Track A/B delivery (one binary, phone → Pay → tablet → offline): [../STRATEGY/crew-app-delivery.md](../STRATEGY/crew-app-delivery.md). Phase 1 evidence: [../TESTING/crew-app-phase-1-evidence.md](../TESTING/crew-app-phase-1-evidence.md).
+Crew connected-mobile boundary: [operations/crew-mobile-facade.md](operations/crew-mobile-facade.md). Phased Track A/B delivery: [../STRATEGY/crew-app-delivery.md](../STRATEGY/crew-app-delivery.md). Phase 1 evidence: [../TESTING/crew-app-phase-1-evidence.md](../TESTING/crew-app-phase-1-evidence.md). Phase 2 evidence: [../TESTING/crew-app-phase-2-evidence.md](../TESTING/crew-app-phase-2-evidence.md). Phase 3 evidence: [../TESTING/crew-app-phase-3-evidence.md](../TESTING/crew-app-phase-3-evidence.md).
 
 Short-lived document hot store and archive sync-out: [operations/document-storage.md](operations/document-storage.md).
 

@@ -1,7 +1,7 @@
 # Zettaz Crew — delivery plan
 
 **Updated:** 17 September 2026  
-**Status:** Owner-accepted 17 September 2026. Phase 1 implemented in repo; deploy + device QA still required.  
+**Status:** Owner-accepted 17 September 2026. Phase 1 on production (`34047a3`) and EAS preview. Phase 2 Pay and Phase 3 tablet implemented in working tree. Phase 1 device notes parked until after Phase 2–3.  
 **Audience:** owner + any IDE agent  
 **Scope authority:** [launch-contract.md](launch-contract.md) · **epic:** E08/E07 in [delivery.md](delivery.md) · **facade:** [crew-mobile-facade.md](../FEATURES/operations/crew-mobile-facade.md)
 
@@ -150,7 +150,9 @@ Calendar is **from owner acceptance of this file**, not from chat history. Indic
 
 **Still web/policy (not Crew):** complimentary/prepaid flags, mixed allocation, true per-passenger owed, boarding exception “board with reason.” Crew must not invent those.
 
-**Exit:** Guide can take a recorded cash/manual remainder and then waiver/board; partner-invoice guests skip Pay.
+**Exit:** Guide can take a recorded cash/manual remainder and then waiver/board; partner-invoice guests skip Pay. Engineering complete 17 Sep; production device pass follows deploy.
+
+**Do not:** Card-present; invent an XCD→USD rate.
 
 ### Phase 3 — Tablet dock · ~2 weeks
 
@@ -165,7 +167,7 @@ Calendar is **from owner acceptance of this file**, not from chat history. Indic
 | 3.5 | Share/print pickup list + receipt PDF | `print.jobs.*` |
 | 3.6 | Hide board/walk-up from guide/driver | RBAC |
 
-**Exit:** Reservations or owner on an iPad can sell a walk-up on a selected departure and hand the same device to a guide for boarding.
+**Exit:** Reservations or owner on an iPad can sell a walk-up on a selected departure and hand the same device to a guide for boarding. Engineering complete 17 Sep; production device pass follows deploy.
 
 **Do not:** Catalog editor, partner statements, settings, OTA inbox.
 
@@ -234,4 +236,4 @@ Google Places/routing, Plan pickups Phase 2 (multi-product van), live GPS, consu
 
 ## Start gate
 
-Owner accepted 17 September 2026. Phase 1 is in the working tree. Next: commit/push, VPS deploy, same-day crew assignment, new EAS preview. Phase 2 (Pay) waits on that device pass.
+Owner accepted 17 September 2026. Phase 1 is live on production and EAS preview. Phase 2 Pay and Phase 3 tablet are in the working tree. Phase 1 UI notes are parked until after Phase 2–3 so the full field pass can be planned once. Next: commit/push Phases 2–3, VPS deploy, new EAS preview. Phase 4 offline waits for the first connected live week.

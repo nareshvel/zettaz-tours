@@ -44,10 +44,10 @@ export function isUnauthorized(reason: unknown) {
 
 export function crewLoadMessage(reason: unknown) {
   if (reason instanceof ApiError && reason.status === 403)
-    return "This app only shows trips you are assigned to as crew. Use a guide or driver account, or assign this person on a departure.";
+    return "This screen is limited to assigned crew trips. Desk tools appear on a tablet when your role can run the Day Board.";
   const text = reason instanceof Error ? reason.message : String(reason);
   if (/^forbidden$/i.test(text))
-    return "This app only shows trips you are assigned to as crew. Use a guide or driver account, or assign this person on a departure.";
+    return "This screen is limited to assigned crew trips. Desk tools appear on a tablet when your role can run the Day Board.";
   return text;
 }
 
@@ -94,4 +94,32 @@ export async function call<T>(
   if (!data || typeof data !== "object")
     throw new ApiError("Crew service returned an empty response.", response.status);
   return data as T;
+}
+
+export async function downloadPdf(path: string, token: string) {
+  let response: Response;
+  try {
+    response = await fetch(`${API}${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch (reason) {
+    throw new ApiError(networkMessage(reason), 0);
+  }
+  if (!response.ok) {
+    let message = "Could not download the document.";
+    try {
+      const data = await response.json();
+      message = readMessage(data, message);
+    } catch {
+      /* binary error bodies stay generic */
+    }
+    throw new ApiError(message, response.status);
+  }
+  const bytes = await response.arrayBuffer();
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const match = disposition.match(/filename="?([^"]+)"?/i);
+  return {
+    bytes,
+    filename: match?.[1] ?? "document.pdf",
+  };
 }

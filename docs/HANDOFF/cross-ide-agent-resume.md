@@ -28,21 +28,21 @@ Stack is locked: NestJS modular monolith, Next.js workspace, Expo crew app, Post
 ## Current implementation state
 
 - Persistent local PostgreSQL is the normal development database.
-- Repo migrations exist through **`067_booking_created_at.sql`**. Production migrate via `./deploy.sh` → `db:migrate:prod`. Sign-in email verification under RLS: migration `061` + [../ISSUES_FIXES/signin-email-verified-rls.md](../ISSUES_FIXES/signin-email-verified-rls.md).
-- **`main` tracks `origin/main`** as of 14 September 2026 tip `a18e083` (pickup location improvement). Do not claim auth/trial migration `060` is “unpushed.”
+- Repo migrations exist through **`087_product_cover_image.sql`**. Production migrate via `./deploy.sh` → `db:migrate:prod`. Sign-in email verification under RLS: migration `061` + [../ISSUES_FIXES/signin-email-verified-rls.md](../ISSUES_FIXES/signin-email-verified-rls.md).
+- **VPS tip `34047a3`** (Phase 1). Phase 2–3 may still be local — check `git status`.
 - Production demo (`tours.zettaz.com`): tenant `f6e566ce-…`; deploy notes in [deploy.md](deploy.md) and [demo-tenant-export.md](demo-tenant-export.md).
 - **Ops pickups (14 September 2026) closed:** Plan pickups Phase 1, Print list polish, Settings → Pickup locations (Esri map, tenant city/country default), demo multi-stop seed. See [../FEATURES/operations/pickup-disposition-and-plans.md](../FEATURES/operations/pickup-disposition-and-plans.md) and [../TESTING/pickup-location-modal-and-print-evidence.md](../TESTING/pickup-location-modal-and-print-evidence.md).
-- Connected crew 1.0 exists (Today, scan, check-in, waiver, events). **Phase 1** adds roster search, pickup sequence, start/no-show, and balance-due badges — [../STRATEGY/crew-app-delivery.md](../STRATEGY/crew-app-delivery.md). Encrypted offline, crew-mobile Pay, tablet Day Board/walk-up remain later phases.
+- Connected crew 1.0 + Phase 1 live. Pay and tablet dock are in the working tree — [../STRATEGY/crew-app-delivery.md](../STRATEGY/crew-app-delivery.md). Encrypted offline remains Phase 4.
 - Boarding money pending: [../FEATURES/operations/boarding-balance-collection.md](../FEATURES/operations/boarding-balance-collection.md).
 
 ## Current task sequence
 
 See [agent-current-sprint.md](agent-current-sprint.md). Short form (17 Sep):
 
-1. **Crew plan accepted; Phase 1 in working tree** — [../STRATEGY/crew-app-delivery.md](../STRATEGY/crew-app-delivery.md). Next: commit/push, VPS deploy, assign a same-day guide, new EAS preview.
-2. **Operations menu group closed** pending further testing — do not expand Ops features.
-3. **Hold** Subscription messaging polish.
-4. Administration / non-Ops web pass resumes after the Crew Phase 1 device pass unless the owner redirects.
+1. **Crew Phase 1 live** on `34047a3` + EAS preview. Phase 1 UI notes parked.
+2. **Phases 2–3 in working tree** (Pay + tablet) — commit/push, deploy, new preview. Phase 4 offline waits for the first connected live week.
+3. **Operations menu group closed** pending further testing.
+4. **Hold** Subscription messaging polish.
 
 Pasteable Claude brief: [claude-handoff-2026-09-14.md](claude-handoff-2026-09-14.md).
 
@@ -89,7 +89,7 @@ npm run mobile:typecheck
 - SMTP sender-domain DNS / production delivery policy
 - Printer inventory, Go agent retention
 - Rock waiver legal text, schedules/capacities sign-off, cutover parallel-run evidence
-- Complimentary/prepaid boarding flags, boarding exceptions, mixed collection, crew-mobile Pay
+- Complimentary/prepaid boarding flags, boarding exceptions, mixed collection
 
 ## Agent operating notes
 

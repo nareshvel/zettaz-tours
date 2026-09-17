@@ -83,6 +83,7 @@ class FinanceModule {}
     BookingChangeController,
     RebookingController,
   ],
+  exports: [ReservationService],
 })
 class ReservationModule {}
 @Module({ providers: [OutboxService], controllers: [OperationsController] })

@@ -114,6 +114,86 @@ export function clearanceLabel(guest: Guest) {
   return "Settled";
 }
 
+export function formatMoney(amountMinor: number, currency = "USD") {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+    }).format(amountMinor / 100);
+  } catch {
+    return `${currency} ${(amountMinor / 100).toFixed(2)}`;
+  }
+}
+
+export function suggestedBoardingShare(
+  balanceMinor: number,
+  rosterCount: number,
+) {
+  if (balanceMinor <= 0) return 0;
+  if (rosterCount <= 1) return balanceMinor;
+  const share = Math.floor(balanceMinor / rosterCount);
+  const lastShare = balanceMinor - share * (rosterCount - 1);
+  return balanceMinor <= lastShare ? balanceMinor : share;
+}
+
+export function attributionPassenger(guest: Guest, passenger?: Passenger) {
+  if (!passenger) return undefined;
+  if (!passenger.is_minor) return passenger;
+  return guest.passengers.find((person) => !person.is_minor) ?? passenger;
+}
+
+export function paymentMethodLabel(method: string) {
+  return method.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export type CrewMember = {
+  assignment_role: string;
+  name: string;
+};
+export type BoardCapabilities = {
+  walkUp: boolean;
+  weather: boolean;
+  print: boolean;
+  checkin: boolean;
+};
+export type BoardItem = {
+  id: string;
+  starts_at: string;
+  product_name: string;
+  capacity: number;
+  committed: number;
+  confirmed_guests: number;
+  boarded_guests: number;
+  boarding_pending: number;
+  operational_status: string;
+  operational_reason: string | null;
+  operational_version: number;
+  trip_run_state: string | null;
+  crew: CrewMember[];
+};
+export type BoardPayload = {
+  date: string;
+  capabilities: BoardCapabilities;
+  items: BoardItem[];
+  paymentMethods?: string[];
+  collectionCurrency?: string | null;
+};
+export type WalkUpQuote = {
+  totalMinor: number;
+  currency: string;
+};
+export const TABLET_MIN_WIDTH = 700;
+
+export function occupancyLabel(item: BoardItem) {
+  return `${item.committed}/${item.capacity} seats · ${item.confirmed_guests} guests`;
+}
+
+export function operationalLabel(status?: string) {
+  if (status === "weather_hold") return "Weather hold";
+  if (status === "closed") return "Closed";
+  return "Open";
+}
+
 export function guestMatchesQuery(guest: Guest, query: string) {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;

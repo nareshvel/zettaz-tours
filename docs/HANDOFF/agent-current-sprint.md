@@ -10,11 +10,11 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 
 ---
 
-## Owner priority (17 September 2026 — Crew Phase 1)
+## Owner priority (17 September 2026 — Crew Phases 2–3)
 
-1. **Crew app plan accepted.** Phase 1 connected field is the current engineering stream. See the Crew section below.
+1. **Crew app.** Phase 1 is live on production and EAS preview. Phase 1 UI notes are **parked** until after Phase 2–3 for one planned field pass. Phases 2–3 (Pay + tablet) are in the working tree.
 2. **Operations menu group** remains functionally complete pending testing. Do not open new Ops web feature work unless testing finds a bug.
-3. **Hold Subscription messaging.** Administration / non-Ops verification resumes after the Crew Phase 1 device pass unless the owner redirects.
+3. **Hold Subscription messaging.**
 
 ---
 
@@ -23,16 +23,16 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 | Fact | Value |
 | --- | --- |
 | Branch | `main` |
-| Tip deployed | `a18e083` (*add pickup location improvement*) |
-| Mac ↔ `origin/main` | Was in sync at deploy time; **local handoff-doc commits may still be unpushed** — check `git status` before claiming docs are on GitHub |
-| Migrations | Through **`067_booking_created_at.sql`**; prod migrate **COMPLETE**, Pending: 0 |
+| Tip deployed | `34047a3` (Crew Phase 1 + catalog cover images) |
+| Mac ↔ `origin/main` | Check `git status`; Phase 2 Pay and Phase 3 tablet may still be local |
+| Migrations | Through **`087_product_cover_image.sql`**; prod migrate **COMPLETE**, Pending: 0 |
 | Email verification / trial auth | **Already on `main`** (`060`–`061`); do not invent “never pushed” |
 
-**VPS deploy completed 14 September 2026** (`/var/www/zettaz-tours`):
+**VPS deploy completed 17 September 2026** (`/var/www/zettaz-tours`):
 
-- Dirty `package-lock.json` blocked first pull → `git checkout -- package-lock.json` → `./deploy.sh` succeeded.
-- Fast-forward `2187c6d..a18e083`, npm install, API + web build, migrations all SKIP/already applied, PM2 `tours-api` + `tours-web` restarted online.
-- Smoke: https://tours.zettaz.com/login
+- Fast-forward `a7ad226..34047a3`, npm install, API + web build, migration `087` applied, Pending: 0, PM2 `tours-api` + `tours-web` restarted online.
+- EAS preview Android `1ca2c4ba-…` and iOS `2fc95609-…` installed; owner confirmed assigned-trip Phase 1 UI.
+- Phase 1 device issues: park until after Phase 2–3, then one planned field pass.
 
 If a later pull fails on dirty lockfile again:
 
@@ -48,21 +48,19 @@ Server may still show local-only drift (`apps/mobile/package.json`, `ecosystem.c
 
 ---
 
-## Crew app — owner accepted 17 September 2026 · Phase 1 in repo
+## Crew app — Phases 2–3 in working tree (17 September 2026)
 
-Phased delivery: [crew-app-delivery.md](../STRATEGY/crew-app-delivery.md). Owner accepted; Phase 1 connected field is implemented locally.
+Phased delivery: [crew-app-delivery.md](../STRATEGY/crew-app-delivery.md).
 
-**Now:**
+**Shipped on production / preview:** Phase 1 connected field (roster search, pickups, start/no-show, clearance badges). Empty Today is correct when unassigned.
 
-1. Commit/push this increment, then VPS `./deploy.sh` (discard dirty `package-lock.json` if pull blocks).
-2. Sign out/in after migrate `086` if that session is still old.
-3. Assign a **guide** to a **today** departure; empty Today is correct when unassigned.
-4. New EAS **preview** so phones pick up Phase 1 UI.
-5. Do **not** start Phase 2 (Pay) until the device pass on Phase 1.
+**Parked:** Phase 1 device UX notes until after Phase 2–3, then one planned field pass / re-engineer.
 
-Phase 1 in this increment: roster search, assigned pickup sequence on Today, start/no-show, balance-due / partner-settled badge, stay/pickup labels. Evidence: [crew-app-phase-1-evidence.md](../TESTING/crew-app-phase-1-evidence.md).
+**Now:** commit/push Crew Pay + tablet dock, VPS `./deploy.sh`, new EAS preview. Do not start Phase 4 offline until after the first connected live week.
 
-Connected 1.0 packaging already on `main` (store consoles still owner work). Runbook: [crew-mobile-store-publish.md](crew-mobile-store-publish.md).
+Pay: `POST /crew/v1/bookings/{id}/payments`. Tablet: `GET /crew/v1/board`, walk-up, weather, print/share. Evidence: [crew-app-phase-2-evidence.md](../TESTING/crew-app-phase-2-evidence.md), [crew-app-phase-3-evidence.md](../TESTING/crew-app-phase-3-evidence.md).
+
+Later: Phase 4 offline after the first connected live week. GPS / card-present stay Track B.
 
 ---
 

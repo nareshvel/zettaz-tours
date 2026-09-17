@@ -12033,6 +12033,24 @@ a.briefing-tile:hover {
   margin-top: 3px;
   overflow-wrap: anywhere;
 }
+.customer-name-block {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+.customer-name-block .status {
+  margin-top: 2px;
+}
+.customer-privacy-note {
+  margin: 0 0 22px;
+  color: var(--muted);
+  font-size: 13px;
+  max-width: 62rem;
+}
+.customer-contact-facts strong {
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
 .customer-detail-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 0.8fr);
@@ -12076,6 +12094,15 @@ a.briefing-tile:hover {
 .timeline-list p {
   margin: 5px 0 0;
 }
+.timeline-list a {
+  display: block;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.timeline-list a:hover strong {
+  color: var(--accent);
+}
 .support-access-banner {
   display: flex;
   align-items: center;
@@ -12096,11 +12123,15 @@ a.briefing-tile:hover {
   flex-wrap: wrap;
   justify-content: flex-end;
 }
+@media (max-width: 1366px) {
+  .customer-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
 @media (max-width: 850px) {
   .dispatch-grid,
   .pickup-layout,
-  .rebooking-layout,
-  .customer-detail-grid {
+  .rebooking-layout {
     grid-template-columns: 1fr;
   }
   .customer-list > a {

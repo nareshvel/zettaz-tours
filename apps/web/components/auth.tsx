@@ -667,11 +667,6 @@ export function Entry({
           </form>
         )}
         {error && <Notice error>{error}</Notice>}
-        <p className="login-note">
-          Local development uses the persistent workspace database. Invitation
-          activation is available; MFA and account recovery remain required
-          before production use.
-        </p>
       </section>
     </main>
   );

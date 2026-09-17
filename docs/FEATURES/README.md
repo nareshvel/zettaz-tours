@@ -18,7 +18,7 @@ Waiver template versioning and deletion rules: [tenant-settings/waiver-template-
 
 Customer communication boundary: [customer-notifications.md](customer-notifications.md).
 
-Customer identity, booking snapshots and history: [reservations/customer-records.md](reservations/customer-records.md).
+Customer identity, booking snapshots and history: [reservations/customer-records.md](reservations/customer-records.md). Insights list/detail polish: [../TESTING/customers-polish-evidence.md](../TESTING/customers-polish-evidence.md).
 
 Mode-aware New reservation discovery: [reservations/mode-aware-discovery.md](reservations/mode-aware-discovery.md).
 

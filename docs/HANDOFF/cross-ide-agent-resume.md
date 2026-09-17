@@ -29,7 +29,7 @@ Stack is locked: NestJS modular monolith, Next.js workspace, Expo crew app, Post
 
 - Persistent local PostgreSQL is the normal development database.
 - Repo migrations exist through **`087_product_cover_image.sql`**. Production migrate via `./deploy.sh` → `db:migrate:prod`. Sign-in email verification under RLS: migration `061` + [../ISSUES_FIXES/signin-email-verified-rls.md](../ISSUES_FIXES/signin-email-verified-rls.md).
-- **VPS tip `02dc7ea`** (Crew Phases 2–3). Field-pass fixes may still be local.
+- **VPS tip `7257fb0`** (Crew field pass). Customers polish may still be local.
 - Production demo (`tours.zettaz.com`): tenant `f6e566ce-…`; deploy notes in [deploy.md](deploy.md) and [demo-tenant-export.md](demo-tenant-export.md).
 - **Ops pickups (14 September 2026) closed:** Plan pickups Phase 1, Print list polish, Settings → Pickup locations (Esri map, tenant city/country default), demo multi-stop seed. See [../FEATURES/operations/pickup-disposition-and-plans.md](../FEATURES/operations/pickup-disposition-and-plans.md) and [../TESTING/pickup-location-modal-and-print-evidence.md](../TESTING/pickup-location-modal-and-print-evidence.md).
 - Connected crew Phases 1–3 live on production. Encrypted offline remains Phase 4.
@@ -39,10 +39,11 @@ Stack is locked: NestJS modular monolith, Next.js workspace, Expo crew app, Post
 
 See [agent-current-sprint.md](agent-current-sprint.md). Short form (17 Sep):
 
-1. **Crew Phases 1–3 live** on `02dc7ea`. Field pass in progress. Rebuild EAS preview.
+1. **Crew Phases 1–3 + field pass live** on `7257fb0`. Rebuild EAS preview.
 2. **Phase 4 offline waits** for the first connected live week.
 3. **Operations menu group closed** pending further testing.
-4. **Hold** Subscription messaging polish.
+4. **Customers polish** in working tree (owner visual outstanding). Next non-Ops: remaining Administration tabs.
+5. **Hold** Subscription messaging polish.
 
 Pasteable Claude brief: [claude-handoff-2026-09-14.md](claude-handoff-2026-09-14.md).
 

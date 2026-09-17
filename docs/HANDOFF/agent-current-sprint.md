@@ -10,11 +10,12 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 
 ---
 
-## Owner priority (17 September 2026 — Crew field pass)
+## Owner priority (17 September 2026 — non-Ops after Crew field pass)
 
-1. **Crew app.** Phases 1–3 deployed at `02dc7ea`. Phase 1–3 device notes are the current engineering stream (one planned field pass). **Do not start Phase 4 offline** until after the first connected live week.
+1. **Crew app.** Phases 1–3 plus field pass deployed at `7257fb0`. Rebuild EAS preview for Pay / tablet / field-pass UI. **Do not start Phase 4 offline** until after the first connected live week.
 2. **Operations menu group** remains functionally complete pending testing. Do not open new Ops web feature work unless testing finds a bug.
-3. **Hold Subscription messaging.**
+3. **Non-Ops:** Customers polish is in the working tree (needs owner visual). Next incomplete Administration remaining tabs, then Profile. Reports already polished.
+4. **Hold Subscription messaging.**
 
 ---
 
@@ -23,15 +24,15 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 | Fact | Value |
 | --- | --- |
 | Branch | `main` |
-| Tip deployed | `02dc7ea` (Crew Phases 2–3: Pay + tablet dock) |
-| Mac ↔ `origin/main` | In sync at deploy time; field-pass fixes may still be local |
+| Tip deployed | `7257fb0` (Crew field pass: desk Pay, hide 403 actions, tablet waiver on board) |
+| Mac ↔ `origin/main` | In sync at field-pass deploy; Customers polish may still be local |
 | Migrations | Through **`087_product_cover_image.sql`**; prod migrate **COMPLETE**, Pending: 0 |
 | Email verification / trial auth | **Already on `main`** (`060`–`061`); do not invent “never pushed” |
 
 **VPS deploy completed 17 September 2026** (`/var/www/zettaz-tours`):
 
-- Fast-forward through `02dc7ea` (Crew Pay + tablet). Migrations through **087**, Pending: 0, PM2 restarted.
-- Rebuild EAS **preview** so phones/tablets pick up Pay and Day Board (the `1ca2c4ba` / `2fc95609` binaries are Phase 1 only).
+- Fast-forward through `7257fb0` (Crew field pass on top of Pay + tablet). Migrations through **087**, Pending: 0, PM2 restarted.
+- Rebuild EAS **preview** so phones/tablets pick up Pay, Day Board, and field-pass UI (the `1ca2c4ba` / `2fc95609` binaries are Phase 1 only).
 - Phase 4 encrypted offline waits for the first connected live week.
 
 If a later pull fails on dirty lockfile again:
@@ -52,9 +53,9 @@ Server may still show local-only drift (`apps/mobile/package.json`, `ecosystem.c
 
 Phased delivery: [crew-app-delivery.md](../STRATEGY/crew-app-delivery.md).
 
-**Shipped on production:** Phase 1 field + Phase 2 Pay + Phase 3 tablet (`02dc7ea`). Empty Today is correct when unassigned. Day Board is tablet-width + `manifest.read`.
+**Shipped on production:** Phase 1 field + Phase 2 Pay + Phase 3 tablet + field pass (`7257fb0`). Empty Today is correct when unassigned. Day Board is tablet-width + `manifest.read`. Desk Pay uses `payment.write`; guides still need assignment + `checkin.write`.
 
-**Now:** field-pass fixes (desk Pay, hide 403 actions, phone copy for desk roles), then a new EAS preview. **Do not start Phase 4 offline** until after the first connected live week.
+**Now:** new EAS preview for devices. **Do not start Phase 4 offline** until after the first connected live week. Web next: non-Ops remaining Administration surfaces.
 
 Evidence: [crew-app-phase-2-evidence.md](../TESTING/crew-app-phase-2-evidence.md), [crew-app-phase-3-evidence.md](../TESTING/crew-app-phase-3-evidence.md).
 
@@ -129,8 +130,8 @@ Work **outside** the Operations aside group. Suggested order (adjust with owner)
 - Home / overview — exceptions, setup checklist, role-appropriate dashboard
 
 ### 2. Insights
-- Reports
-- Customers (search/detail; create/edit may still be limited by product truth)
+- Reports — polish implemented 11 Sep; owner visual still outstanding
+- **Customers — polish implemented 17 Sep; owner visual still outstanding.** Evidence: [customers-polish-evidence.md](../TESTING/customers-polish-evidence.md). Next Insights item after owner pass is none; continue Administration remaining tabs.
 
 ### 3. Administration
 - Finance (overview, payments, partner statements — slim Track A)

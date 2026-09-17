@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
+  Modal,
   Pressable,
   RefreshControl,
   SafeAreaView,
@@ -53,6 +54,23 @@ type ScannedPassenger = {
   name: string;
   category: string;
 };
+type Profile = {
+  actorName: string;
+  actorEmail: string;
+  actorPhone: string | null;
+  role: string;
+  tenant: { name: string };
+};
+
+function roleLabel(role: string) {
+  return role.replace(/_/g, " ");
+}
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const letters = (parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "");
+  return (letters || "?").toUpperCase();
+}
 
 function Button({
   children,
@@ -112,6 +130,9 @@ export default function App() {
   const [recovering, setRecovering] = useState(false);
   const [recoverySent, setRecoverySent] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
 
   useEffect(() => {
     SecureStore.getItemAsync(SESSION_KEY)
@@ -123,12 +144,24 @@ export default function App() {
     setToken(null);
     setTrips([]);
     setActive(null);
+    setProfile(null);
+    setMenuOpen(false);
+    setShowProfile(false);
+  }
+  async function loadProfile(session: string) {
+    try {
+      const me = await call<Profile>("/staff/v1/workspace/session", session);
+      setProfile(me);
+    } catch {
+      /* Today can still load if session read fails. */
+    }
   }
   async function load(session = token) {
     if (!session) return;
     setBusy(true);
     setError("");
     try {
+      await loadProfile(session);
       const result = await call<{
         trips: Trip[];
         waiverTemplate: WaiverTemplate | null;
@@ -309,6 +342,72 @@ export default function App() {
     setScanned(null);
     setScanning(true);
   }
+
+  const header = (
+    <View style={styles.header}>
+      <View style={styles.grow}>
+        <Text style={styles.eyebrow}>CONNECTED CREW</Text>
+        <Text style={styles.title} numberOfLines={1}>
+          {showProfile ? "My profile" : active ? active.product_name : "Today"}
+        </Text>
+      </View>
+      <View style={styles.headerActions}>
+        {!showProfile && (trips.length > 0 || active || scanned) ? (
+          <Button quiet onPress={() => void openScanner()}>
+            Scan
+          </Button>
+        ) : null}
+        <Pressable
+          accessibilityLabel="Account menu"
+          onPress={() => setMenuOpen(true)}
+          style={styles.avatar}
+        >
+          <Text style={styles.avatarText}>
+            {initials(profile?.actorName ?? "")}
+          </Text>
+        </Pressable>
+      </View>
+      <Modal
+        transparent
+        animationType="fade"
+        visible={menuOpen}
+        onRequestClose={() => setMenuOpen(false)}
+      >
+        <Pressable
+          style={styles.menuBackdrop}
+          onPress={() => setMenuOpen(false)}
+        >
+          <View style={styles.menuSheet}>
+            <Text style={styles.cardTitle}>
+              {profile?.actorName ?? "Account"}
+            </Text>
+            <Text style={styles.muted}>{profile?.actorEmail ?? ""}</Text>
+            <Pressable
+              style={styles.menuItem}
+              onPress={() => {
+                setMenuOpen(false);
+                setShowProfile(true);
+                setActive(null);
+                setSigning(null);
+                setScanning(false);
+              }}
+            >
+              <Text style={styles.menuItemText}>My profile</Text>
+            </Pressable>
+            <Pressable
+              style={styles.menuItem}
+              onPress={() => {
+                setMenuOpen(false);
+                void signOut();
+              }}
+            >
+              <Text style={styles.menuItemDanger}>Sign out</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+    </View>
+  );
 
   if (!ready)
     return (
@@ -682,25 +781,41 @@ export default function App() {
       </SafeAreaView>
     );
   }
+  if (showProfile) {
+    return (
+      <SafeAreaView style={styles.screen}>
+        <StatusBar style="dark" />
+        {header}
+        <ScrollView contentContainerStyle={styles.content}>
+          <View style={styles.card}>
+            <Text style={styles.eyebrow}>STAFF</Text>
+            <Text style={styles.cardTitle}>
+              {profile?.actorName ?? "Signed in"}
+            </Text>
+            <Text style={styles.muted}>{roleLabel(profile?.role ?? "")}</Text>
+          </View>
+          <View style={styles.card}>
+            <Text style={styles.muted}>Email</Text>
+            <Text style={styles.personName}>{profile?.actorEmail ?? "—"}</Text>
+            <Text style={styles.muted}>Phone</Text>
+            <Text style={styles.personName}>
+              {profile?.actorPhone || "Not on file"}
+            </Text>
+            <Text style={styles.muted}>Workspace</Text>
+            <Text style={styles.personName}>{profile?.tenant.name ?? "—"}</Text>
+          </View>
+          <Button quiet onPress={() => setShowProfile(false)}>
+            Back to today
+          </Button>
+          <Text style={styles.version}>Version {APP_VERSION}</Text>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
   return (
     <SafeAreaView style={styles.screen}>
       <StatusBar style="dark" />
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.eyebrow}>CONNECTED CREW</Text>
-          <Text style={styles.title}>
-            {active ? active.product_name : "Today"}
-          </Text>
-        </View>
-        <View style={styles.headerActions}>
-          <Button quiet onPress={() => void openScanner()}>
-            Scan
-          </Button>
-          <Button quiet onPress={() => void signOut()}>
-            Sign out
-          </Button>
-        </View>
-      </View>
+      {header}
       {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
       <ScrollView
         contentContainerStyle={styles.content}
@@ -833,8 +948,8 @@ export default function App() {
                 <Text style={styles.cardTitle}>No assigned trips today</Text>
                 <Text style={styles.muted}>
                   Only departures you are assigned to as crew appear here.
-                  Assign this person under Team & resources, or sign in as
-                  that guide or driver.
+                  Assign this person under Team & resources, or sign in as that
+                  guide or driver.
                 </Text>
               </View>
             ) : (
@@ -885,7 +1000,33 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  headerActions: { flexDirection: "row", gap: 8 },
+  headerActions: { flexDirection: "row", gap: 8, alignItems: "center" },
+  avatar: {
+    alignItems: "center",
+    backgroundColor: "#087b72",
+    borderRadius: 22,
+    height: 44,
+    justifyContent: "center",
+    width: 44,
+  },
+  avatarText: { color: "white", fontSize: 16, fontWeight: "800" },
+  menuBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(23,53,58,0.28)",
+    alignItems: "flex-end",
+    paddingTop: 88,
+    paddingRight: 16,
+  },
+  menuSheet: {
+    backgroundColor: "white",
+    borderRadius: 16,
+    gap: 6,
+    minWidth: 220,
+    padding: 16,
+  },
+  menuItem: { paddingVertical: 12 },
+  menuItemText: { color: "#17353a", fontSize: 16, fontWeight: "700" },
+  menuItemDanger: { color: "#b42318", fontSize: 16, fontWeight: "700" },
   content: { padding: 18, gap: 12 },
   brand: {
     color: "#087b72",

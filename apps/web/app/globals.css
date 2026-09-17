@@ -12467,6 +12467,18 @@ a.briefing-tile:hover {
   color: var(--text);
   width: 130px;
 }
+/* Wrapper for TenantDateInput in the finance period bar — constrains width */
+.finance-period-date-wrap {
+  width: 130px;
+  flex-shrink: 0;
+}
+.finance-period-date-wrap .compact-control {
+  width: 100%;
+}
+.finance-period-date-wrap .tenant-date-input {
+  min-width: 0;
+  width: 100%;
+}
 .finance-period-dash {
   font-size: 0.82rem;
   color: var(--muted);
@@ -12833,7 +12845,7 @@ a.briefing-tile:hover {
 }
 @media (max-width: 600px) {
   .finance-net-position { grid-template-columns: 1fr; }
-  .finance-period-date, .finance-period-dash { display: none; }
+  .finance-period-date, .finance-period-date-wrap, .finance-period-dash { display: none; }
   .finance-period-select { max-width: 96px; font-size: 0.75rem; padding: 3px 6px; }
   .finance-activity-row { grid-template-columns: 60px 1fr auto; }
   .finance-activity-partner { display: none; }

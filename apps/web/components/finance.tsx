@@ -81,7 +81,7 @@ export function periodDates(key: PeriodKey, customFrom: string, customTo: string
 // ─── Period selector (right-side slot for Overview tab) ───────────────────────
 
 function PeriodSelector({
-  period, onPeriod, customFrom, customTo, onCustomFrom, onCustomTo,
+  period, onPeriod, customFrom, customTo, onCustomFrom, onCustomTo, dateFormat, locale,
 }: {
   period: PeriodKey;
   onPeriod: (k: PeriodKey) => void;
@@ -89,6 +89,8 @@ function PeriodSelector({
   customTo: string;
   onCustomFrom: (v: string) => void;
   onCustomTo: (v: string) => void;
+  dateFormat: "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD";
+  locale: string;
 }) {
   return (
     <div className="finance-period-selector catalog-view-actions">
@@ -105,11 +107,27 @@ function PeriodSelector({
       </select>
       {period === "custom" && (
         <>
-          <input type="date" value={customFrom} onChange={(e) => onCustomFrom(e.target.value)}
-            className="finance-period-date" />
+          <div className="finance-period-date-wrap">
+            <TenantDateInput
+              label="From"
+              value={customFrom}
+              onChange={onCustomFrom}
+              dateFormat={dateFormat}
+              locale={locale}
+              compact
+            />
+          </div>
           <span className="finance-period-dash">–</span>
-          <input type="date" value={customTo} onChange={(e) => onCustomTo(e.target.value)}
-            className="finance-period-date" />
+          <div className="finance-period-date-wrap">
+            <TenantDateInput
+              label="To"
+              value={customTo}
+              onChange={onCustomTo}
+              dateFormat={dateFormat}
+              locale={locale}
+              compact
+            />
+          </div>
         </>
       )}
     </div>
@@ -215,6 +233,8 @@ export function Finance({
       period={period} onPeriod={setPeriod}
       customFrom={customFrom} customTo={customTo}
       onCustomFrom={setCustomFrom} onCustomTo={setCustomTo}
+      dateFormat={session.tenant.config.dateFormat as "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD"}
+      locale={session.tenant.config.locale}
     />
   ) : undefined;
 

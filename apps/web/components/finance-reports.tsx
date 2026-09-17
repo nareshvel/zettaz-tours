@@ -4,6 +4,7 @@ import { BarChart2, FileText, TrendingUp, Users } from "lucide-react";
 import { useCallback, useState } from "react";
 import type { Session } from "@/lib/types";
 import { money, useResource } from "@/lib/client";
+import { TenantDateInput } from "./common";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -82,16 +83,15 @@ function AgingReport({ session }: { session: Session }) {
     <div className="aging-report-wrap">
       {/* Filter bar */}
       <div className="aging-filters">
-        <label className="aging-filter-group">
-          <span className="aging-filter-label">As of</span>
-          <input
-            type="date"
-            className="input-sm"
-            value={asOf}
-            max={today}
-            onChange={(e) => setAsOf(e.target.value || today)}
-          />
-        </label>
+        <TenantDateInput
+          label="As of"
+          value={asOf}
+          onChange={(v) => setAsOf(v || today)}
+          max={today}
+          dateFormat={session.tenant.config.dateFormat as "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD"}
+          locale={session.tenant.config.locale}
+          compact
+        />
 
         <label className="aging-filter-group">
           <span className="aging-filter-label">Direction</span>

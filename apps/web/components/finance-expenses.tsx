@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import type { Session } from "@/lib/types";
 import { dateOnly, money, useMutation, useResource } from "@/lib/client";
-import { Empty, Field, FormDialog, Loading, Notice } from "./common";
+import { Empty, Field, FormDialog, Loading, Notice, TenantDateInput } from "./common";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -251,7 +251,7 @@ type Line = { category_id: string; description: string; amount: string };
 const emptyLine = (): Line => ({ category_id: "", description: "", amount: "" });
 
 function BillEntryModal({
-  open, categories, vendors, onClose, onSaved, onVendorsChanged, defaultCurrency, reportingCurrency, recentExpenses, editExpense,
+  open, categories, vendors, onClose, onSaved, onVendorsChanged, defaultCurrency, reportingCurrency, recentExpenses, editExpense, dateFormat, locale,
 }: {
   open: boolean;
   categories: ExpenseCategory[];
@@ -263,6 +263,8 @@ function BillEntryModal({
   reportingCurrency: string;
   recentExpenses: Expense[];
   editExpense?: Expense | null;
+  dateFormat: "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD";
+  locale: string;
 }) {
   const isEdit = !!editExpense;
   const [vendor, setVendor] = useState("");
@@ -422,12 +424,15 @@ function BillEntryModal({
               <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--muted)", textAlign: "right" }}>Invoice #</span>
               <input placeholder="INV-2024-001" value={reference} onChange={(e) => setReference(e.target.value)} />
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "auto 180px", gap: 10, alignItems: "center" }}>
-              <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--muted)", textAlign: "right" }}>
-                Date <span style={{ color: "#e53e3e" }}>*</span>
-              </span>
-              <input type="date" value={expenseDate} onChange={(e) => setExpenseDate(e.target.value)} required />
-            </div>
+            <TenantDateInput
+              label="Date"
+              value={expenseDate}
+              onChange={setExpenseDate}
+              max={new Date().toISOString().slice(0, 10)}
+              dateFormat={dateFormat}
+              locale={locale}
+              compact
+            />
             <div style={{ display: "grid", gridTemplateColumns: "auto 180px", gap: 10, alignItems: "center" }}>
               <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--muted)", textAlign: "right" }}>Currency</span>
               <select value={currency} onChange={(e) => { const nc = e.target.value; setCurrency(nc); setFxRate(lastFxRate(nc)); }}>
@@ -562,7 +567,7 @@ function BillEntryModal({
 
 function EditExpenseModal({
   open, expense, categories, vendors, onClose, onSaved, onVendorsChanged,
-  defaultCurrency, reportingCurrency, recentExpenses,
+  defaultCurrency, reportingCurrency, recentExpenses, dateFormat, locale,
 }: {
   open: boolean;
   expense: Expense | null;
@@ -574,6 +579,8 @@ function EditExpenseModal({
   defaultCurrency: string;
   reportingCurrency: string;
   recentExpenses: Expense[];
+  dateFormat: "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD";
+  locale: string;
 }) {
   if (!open || !expense) return null;
   return (
@@ -588,6 +595,8 @@ function EditExpenseModal({
       reportingCurrency={reportingCurrency}
       recentExpenses={recentExpenses}
       editExpense={expense}
+      dateFormat={dateFormat}
+      locale={locale}
     />
   );
 }
@@ -791,12 +800,16 @@ export function FinanceExpenses({ session }: { session: Session }) {
         onClose={() => setAddOpen(false)} onSaved={saved} onVendorsChanged={vendorsChanged}
         defaultCurrency={session.tenant.config.collectionCurrency ?? "XCD"}
         reportingCurrency={session.tenant.config.reportingCurrency ?? session.tenant.config.collectionCurrency ?? "XCD"}
-        recentExpenses={expenses} />
+        recentExpenses={expenses}
+        dateFormat={session.tenant.config.dateFormat as "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD"}
+        locale={session.tenant.config.locale} />
       <EditExpenseModal open={!!editExpense} expense={editExpense} categories={categories}
         vendors={vendors} onClose={() => setEditExpense(null)} onSaved={saved} onVendorsChanged={vendorsChanged}
         defaultCurrency={session.tenant.config.collectionCurrency ?? "XCD"}
         reportingCurrency={session.tenant.config.reportingCurrency ?? session.tenant.config.collectionCurrency ?? "XCD"}
-        recentExpenses={expenses} />
+        recentExpenses={expenses}
+        dateFormat={session.tenant.config.dateFormat as "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD"}
+        locale={session.tenant.config.locale} />
       <VoidExpenseDialog expense={voidExpense} open={!!voidExpense}
         onClose={() => setVoidExpense(null)}
         onVoided={() => { setVoidExpense(null); setRefresh((r) => r + 1); }} />

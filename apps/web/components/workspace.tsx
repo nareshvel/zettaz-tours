@@ -37,6 +37,12 @@ import {
   useResource,
 } from "@/lib/client";
 import { Loading, Notice } from "./common";
+import { LegalPage } from "./legal";
+import {
+  Entry,
+  Signup,
+  VerifyEmail,
+} from "./auth";
 import {
   Overview,
   Reservations,
@@ -63,7 +69,6 @@ import {
   RolesPermissions,
 } from "./administration";
 import { Profile } from "./profile";
-import { Entry, Signup, VerifyEmail } from "./auth";
 import { Resources } from "./resources";
 import { DocumentLibrary } from "./document-library";
 import { Finance, type FinanceSection } from "./finance";
@@ -363,7 +368,9 @@ export function Workspace({
       </main>
     );
   }
-  // Signup page — accessible without a session
+  // Public marketing / legal / signup pages — accessible without a session
+  if (path === "/terms") return <LegalPage doc="terms" />;
+  if (path === "/privacy") return <LegalPage doc="privacy" />;
   if (path === "/signup") return <Signup />;
   if (path === "/verify-email") return <VerifyEmail />;
 
@@ -386,7 +393,10 @@ export function Workspace({
     path === "/login" ||
     path === "/activate" ||
     path === "/forgot-password" ||
-    path === "/reset-password"
+    path === "/reset-password" ||
+    path === "/signup" ||
+    path === "/terms" ||
+    path === "/privacy"
   ) {
     return (
       <main className="workspace-boot" aria-busy="true">
@@ -817,14 +827,6 @@ export function Workspace({
                 <span>Your workspace is ready.</span>
               </div>
               <div className="welcome-banner-actions">
-                {session.permissions.includes("config.write") && (
-                  <a
-                    className="welcome-banner-cta"
-                    href="/profile/subscription"
-                  >
-                    Start free trial →
-                  </a>
-                )}
                 <button
                   type="button"
                   className="welcome-banner-dismiss"

@@ -5,12 +5,16 @@ import { useState, useEffect } from "react";
 import {
   ArrowRight,
   BarChart3,
+  Building2,
+  Check,
   CheckCircle2,
   Clock,
   Globe,
   LockKeyhole,
   Map,
+  Rocket,
   Shield,
+  Ship,
   UsersRound,
   Zap,
 } from "lucide-react";
@@ -23,6 +27,7 @@ import {
   currencyForCountry,
 } from "@/lib/countries";
 import { Loading, Notice } from "./common";
+import { LegalDocumentModal, type LegalDoc } from "./legal";
 
 export function Entry({
   login,
@@ -405,50 +410,178 @@ export function Entry({
           </div>
         </section>
 
-        {/* Pricing teaser */}
-        <section className="landing-pricing-teaser">
-          <h2>Simple, transparent pricing</h2>
-          <p>
-            Start free, scale as you grow. Every plan includes the full feature
-            set — limits only vary by team size.
-          </p>
-          <div className="landing-pricing-cards">
-            <div className="landing-pricing-card">
-              <p className="plan-name">Essentials</p>
-              <p className="plan-price">
-                $79<span>/mo</span>
-              </p>
-              <p className="plan-desc">3 staff · 1 location · 50 products</p>
-            </div>
-            <div className="landing-pricing-card popular">
-              <p className="plan-name">Operations ★</p>
-              <p className="plan-price">
-                $149<span>/mo</span>
-              </p>
-              <p className="plan-desc">10 staff · 2 locations · 200 products</p>
-            </div>
-            <div className="landing-pricing-card">
-              <p className="plan-name">Growth</p>
-              <p className="plan-price">
-                $249<span>/mo</span>
-              </p>
-              <p className="plan-desc">
-                25 staff · 5 locations · 1,000 products
-              </p>
-            </div>
-            <div className="landing-pricing-card">
-              <p className="plan-name">Enterprise</p>
-              <p className="plan-price">
-                $599<span>/mo</span>
-              </p>
-              <p className="plan-desc">Unlimited everything · Priority SLA</p>
-            </div>
+        {/* Plans overview — no prices until billing is ready to promote */}
+        <section className="landing-plans">
+          <div className="landing-plans-intro">
+            <p className="landing-plans-eyebrow">Workspace plans</p>
+            <h2>Built for operators at every stage</h2>
+            <p>
+              Same platform from day one. Capacity and channels scale with your
+              team — start free for 14 days, pick a plan when you&apos;re ready.
+            </p>
           </div>
-          <p style={{ marginTop: 20 }}>
+
+          <div className="landing-plans-grid">
+            <article className="landing-plan-card">
+              <div className="landing-plan-icon" aria-hidden>
+                <Ship size={22} />
+              </div>
+              <h3>Essentials</h3>
+              <p className="landing-plan-blurb">
+                Core booking and day-of operations for a focused team.
+              </p>
+              <dl className="landing-plan-limits">
+                <div>
+                  <dt>Staff</dt>
+                  <dd>3</dd>
+                </div>
+                <div>
+                  <dt>Support</dt>
+                  <dd>Standard</dd>
+                </div>
+                <div>
+                  <dt>Storage</dt>
+                  <dd>500 MB</dd>
+                </div>
+              </dl>
+              <ul className="landing-plan-features">
+                <li>
+                  <Check size={15} strokeWidth={2.5} aria-hidden />
+                  Reservations &amp; availability
+                </li>
+                <li>
+                  <Check size={15} strokeWidth={2.5} aria-hidden />
+                  Manifests &amp; payments
+                </li>
+                <li>
+                  <Check size={15} strokeWidth={2.5} aria-hidden />
+                  Email confirmations
+                </li>
+              </ul>
+            </article>
+
+            <article className="landing-plan-card featured">
+              <p className="landing-plan-badge">Most popular</p>
+              <div className="landing-plan-icon" aria-hidden>
+                <Rocket size={22} />
+              </div>
+              <h3>Operations</h3>
+              <p className="landing-plan-blurb">
+                Full ops for crews, vehicles, waivers, and guest check-in.
+              </p>
+              <dl className="landing-plan-limits">
+                <div>
+                  <dt>Staff</dt>
+                  <dd>10</dd>
+                </div>
+                <div>
+                  <dt>Support</dt>
+                  <dd>Standard</dd>
+                </div>
+                <div>
+                  <dt>Storage</dt>
+                  <dd>2 GB</dd>
+                </div>
+              </dl>
+              <ul className="landing-plan-features">
+                <li>
+                  <Check size={15} strokeWidth={2.5} aria-hidden />
+                  Everything in Essentials
+                </li>
+                <li>
+                  <Check size={15} strokeWidth={2.5} aria-hidden />
+                  Dispatch &amp; pickup routes
+                </li>
+                <li>
+                  <Check size={15} strokeWidth={2.5} aria-hidden />
+                  Crew app &amp; digital waivers
+                </li>
+              </ul>
+            </article>
+
+            <article className="landing-plan-card">
+              <div className="landing-plan-icon" aria-hidden>
+                <Building2 size={22} />
+              </div>
+              <h3>Growth</h3>
+              <p className="landing-plan-blurb">
+                Partners, channels, and reporting as you expand distribution.
+              </p>
+              <dl className="landing-plan-limits">
+                <div>
+                  <dt>Staff</dt>
+                  <dd>25</dd>
+                </div>
+                <div>
+                  <dt>Support</dt>
+                  <dd>Priority</dd>
+                </div>
+                <div>
+                  <dt>Storage</dt>
+                  <dd>10 GB</dd>
+                </div>
+              </dl>
+              <ul className="landing-plan-features">
+                <li>
+                  <Check size={15} strokeWidth={2.5} aria-hidden />
+                  Everything in Operations
+                </li>
+                <li>
+                  <Check size={15} strokeWidth={2.5} aria-hidden />
+                  Partner attribution &amp; statements
+                </li>
+                <li>
+                  <Check size={15} strokeWidth={2.5} aria-hidden />
+                  Channel integrations
+                </li>
+              </ul>
+            </article>
+
+            <article className="landing-plan-card">
+              <div className="landing-plan-icon" aria-hidden>
+                <Shield size={22} />
+              </div>
+              <h3>Enterprise</h3>
+              <p className="landing-plan-blurb">
+                Custom scale, priority support, and white-label options.
+              </p>
+              <dl className="landing-plan-limits">
+                <div>
+                  <dt>Staff</dt>
+                  <dd>All</dd>
+                </div>
+                <div>
+                  <dt>Support</dt>
+                  <dd>SLA</dd>
+                </div>
+                <div>
+                  <dt>Storage</dt>
+                  <dd>50 GB</dd>
+                </div>
+              </dl>
+              <ul className="landing-plan-features">
+                <li>
+                  <Check size={15} strokeWidth={2.5} aria-hidden />
+                  Everything in Growth
+                </li>
+                <li>
+                  <Check size={15} strokeWidth={2.5} aria-hidden />
+                  Priority SLA &amp; onboarding
+                </li>
+                <li>
+                  <Check size={15} strokeWidth={2.5} aria-hidden />
+                  API &amp; white-label
+                </li>
+              </ul>
+            </article>
+          </div>
+
+          <div className="landing-plans-cta">
             <Link href="/signup" className="button">
-              Try free for 14 days <ArrowRight size={17} />
+              Start free trial <ArrowRight size={17} />
             </Link>
-          </p>
+            <p>14 days free · No credit card · Cancel anytime</p>
+          </div>
         </section>
 
         {/* Footer */}
@@ -616,6 +749,7 @@ export function Signup() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [agreed, setAgreed] = useState(false);
+  const [legalDoc, setLegalDoc] = useState<LegalDoc | null>(null);
 
   useEffect(() => {
     setTimezone(defaultTimezoneForCountry(country));
@@ -1018,13 +1152,21 @@ export function Signup() {
               />
               <span>
                 I agree to the{" "}
-                <a href="/terms" style={{ color: "#176c63" }}>
+                <button
+                  type="button"
+                  className="text-link legal-inline-link"
+                  onClick={() => setLegalDoc("terms")}
+                >
                   Terms of Service
-                </a>{" "}
+                </button>{" "}
                 and{" "}
-                <a href="/privacy" style={{ color: "#176c63" }}>
+                <button
+                  type="button"
+                  className="text-link legal-inline-link"
+                  onClick={() => setLegalDoc("privacy")}
+                >
                   Privacy Policy
-                </a>
+                </button>
                 .
               </span>
             </label>
@@ -1064,6 +1206,11 @@ export function Signup() {
           </Link>
         </p>
       </section>
+      <LegalDocumentModal
+        doc={legalDoc}
+        open={Boolean(legalDoc)}
+        onClose={() => setLegalDoc(null)}
+      />
     </main>
   );
 }

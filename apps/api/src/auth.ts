@@ -265,14 +265,10 @@ export class AuthController {
   @Access("public")
   async register(@Body() body: unknown) {
     const input = registerSchema.parse(body);
-    const { rows: existing } = await this.db.pool.query(
-      "SELECT 1 FROM staff_users WHERE lower(email)=lower($1) LIMIT 1",
-      [input.email],
-    );
-    if (existing.length > 0)
-      throw new ConflictException(
-        "An account with that email address already exists.",
-      );
+    // NOTE: email uniqueness check was moved inside tenantSvc.create() where the
+    // transaction runs with app.platform=true — bare pool.query has no platform
+    // flag set so RLS on staff_users would hide all existing rows, making the check
+    // silently ineffective and causing a 23505 unique constraint violation on retry.
     const slug =
       input.companyName
         .toLowerCase()
@@ -314,6 +310,13 @@ export class AuthController {
       role: "platform",
       permissions: ["tenant.provision"] as string[],
     };
+    const planId =
+      input.planId ?? "3e595412-81e5-4c76-8216-25321d7ba56a";
+    // tenantSvc.create() runs in a platform-mode transaction that:
+    //   1. Checks email uniqueness (visible under platform RLS)
+    //   2. Creates tenant, roles, owner user, memberships
+    //   3. Creates trial subscription
+    // All-or-nothing: if subscription creation fails, the whole TX rolls back.
     const { tenantId, ownerId } = await this.tenantSvc.create(platformActor, {
       slug,
       name: input.companyName,
@@ -322,18 +325,13 @@ export class AuthController {
       ownerName: input.ownerName,
       ownerEmail: input.email,
       country: input.country,
+      planId,
     });
-    // Store password (SECURITY DEFINER bypasses RLS on user_credentials)
+    // Store password hash (SECURITY DEFINER bypasses RLS on user_credentials)
     const passwordHash = await hashPassword(input.password);
     await this.db.pool.query("SELECT upsert_user_credentials($1,$2)", [
       ownerId,
       passwordHash,
-    ]);
-    // Create trial subscription (Growth plan by default; SECURITY DEFINER bypasses RLS)
-    const planId = input.planId ?? "3e595412-81e5-4c76-8216-25321d7ba56a";
-    await this.db.pool.query("SELECT create_trial_subscription($1,$2)", [
-      tenantId,
-      planId,
     ]);
     // Generate e-mail verification token (24 h TTL)
     const verifValue = token();

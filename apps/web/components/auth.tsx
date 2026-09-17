@@ -544,29 +544,56 @@ const TRIAL_PLANS = [
   {
     id: "4e0e6cc1-89b1-4dcb-a627-bfccb14f0af9",
     name: "Essentials",
-    price: "$79/mo",
-    limits: "3 staff · 1 location · 50 products",
+    tagline: "Core booking for small operators",
+    features: [
+      "Reservations & manual booking",
+      "Departure calendar & availability",
+      "Day manifest & print / PDF",
+      "Payments — deposits, balances, cash & links",
+      "Email booking confirmations",
+    ],
     recommended: false,
   },
   {
     id: "f7317df1-086a-4ad9-a9c9-c229a5995dcd",
     name: "Operations",
-    price: "$149/mo",
-    limits: "10 staff · 2 locations · 200 products",
+    tagline: "Full ops with crew & digital waivers",
+    features: [
+      "Everything in Essentials",
+      "Dispatch board & pickup routes",
+      "Crew mobile app (iOS & Android)",
+      "Digital waivers & guest check-in",
+      "Resource & fleet basics",
+      "Weather & closure controls",
+    ],
     recommended: false,
   },
   {
     id: "3e595412-81e5-4c76-8216-25321d7ba56a",
     name: "Growth",
-    price: "$249/mo",
-    limits: "25 staff · 5 locations · 1,000 products",
+    tagline: "Multi-channel & partner capability",
+    features: [
+      "Everything in Operations",
+      "Partner & reseller attribution",
+      "Channel integrations (OTA import)",
+      "Customer notifications (SMTP)",
+      "Partner statements & invoicing",
+      "Advanced reporting",
+    ],
     recommended: true,
   },
   {
     id: "70a106d7-1977-48a4-aa6d-d816470e477f",
     name: "Enterprise",
-    price: "$599/mo",
-    limits: "Unlimited · Priority SLA",
+    tagline: "Unlimited scale & priority support",
+    features: [
+      "Everything in Growth",
+      "Unlimited staff & locations",
+      "Priority support & SLA",
+      "Custom branding & white-label",
+      "API access",
+      "Dedicated onboarding",
+    ],
     recommended: false,
   },
 ];
@@ -857,30 +884,38 @@ export function Signup() {
                           fontWeight: 700,
                           fontSize: 14,
                           color: "#142f36",
-                          marginBottom: 2,
+                          marginBottom: 3,
                         }}
                       >
                         {plan.name}
                       </div>
                       <div
                         style={{
-                          fontSize: 17,
-                          fontWeight: 800,
-                          color: sel ? "#176c63" : "#142f36",
-                          marginBottom: 4,
-                        }}
-                      >
-                        {plan.price}
-                      </div>
-                      <div
-                        style={{
                           fontSize: 11,
-                          color: "#65777b",
-                          lineHeight: 1.4,
+                          color: sel ? "#176c63" : "#65777b",
+                          marginBottom: 8,
+                          fontStyle: "italic",
                         }}
                       >
-                        {plan.limits}
+                        {plan.tagline}
                       </div>
+                      <ul
+                        style={{
+                          margin: 0,
+                          padding: 0,
+                          listStyle: "none",
+                          fontSize: 11,
+                          color: "#45676b",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        {plan.features.map((f) => (
+                          <li key={f} style={{ display: "flex", gap: 5, alignItems: "flex-start" }}>
+                            <span style={{ color: "#176c63", flexShrink: 0, marginTop: 1 }}>✓</span>
+                            {f}
+                          </li>
+                        ))}
+                      </ul>
                       {sel && (
                         <CheckCircle2
                           size={15}

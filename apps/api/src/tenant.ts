@@ -71,6 +71,17 @@ export class TenantService {
   async create(actor: Actor, input: unknown) {
     const data = parse(tenantSchema, input);
     return this.db.transaction(actor, async (tx) => {
+      // Email uniqueness check inside the platform-mode transaction so RLS
+      // does not hide existing rows (bare pool.query has no app.platform set).
+      const { rows: existing } = await tx.query(
+        "SELECT 1 FROM staff_users WHERE lower(email)=lower($1) LIMIT 1",
+        [data.ownerEmail],
+      );
+      if (existing.length > 0)
+        throw new ConflictException(
+          "An account with that email address already exists.",
+        );
+
       const tenantId = randomUUID(),
         ownerId = randomUUID();
       await tx.query(
@@ -147,6 +158,15 @@ export class TenantService {
         role: "owner",
         active: true,
       });
+      // Create trial subscription inside the same transaction so the whole
+      // signup is atomic — if this fails, tenant + owner are rolled back too.
+      if (data.planId) {
+        await tx.query("SELECT create_trial_subscription($1,$2)", [
+          tenantId,
+          data.planId,
+        ]);
+      }
+
       return { tenantId, ownerId, isMock: true };
     });
   }

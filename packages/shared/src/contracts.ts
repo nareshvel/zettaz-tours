@@ -94,6 +94,7 @@ export const tenantSchema = z
     ownerEmail: z.string().email().max(254),
     country: z.string().min(2).max(2),
     config: configSchema,
+    planId: z.string().uuid().optional(),
   })
   .strict();
 export const updateConfigSchema = z

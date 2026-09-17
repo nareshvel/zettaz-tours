@@ -13,6 +13,7 @@ const DEVICE_SECRET = "zettaz-crew-device-secret";
 const BOX_KEY = "zettaz-crew-box-key";
 const PIN_HASH = "zettaz-crew-pin-hash";
 const PIN_SALT = "zettaz-crew-pin-salt";
+const LAST_SYNC = "zettaz-crew-last-sync";
 
 export type OfflineCommandKind =
   "checkin" | "trip_event" | "waiver" | "payment";
@@ -284,6 +285,7 @@ export async function syncQueue(token: string) {
   if (!pending.length) {
     await downloadSnapshot(token);
     await purgeExpired();
+    await SecureStore.setItemAsync(LAST_SYNC, new Date().toISOString());
     return { synced: 0, failed: 0 };
   }
   const headers = deviceHeaders(device.id, device.secret);
@@ -326,6 +328,7 @@ export async function syncQueue(token: string) {
   }
   await downloadSnapshot(token);
   await purgeExpired();
+  await SecureStore.setItemAsync(LAST_SYNC, new Date().toISOString());
   return { synced, failed };
 }
 
@@ -344,6 +347,10 @@ export async function purgeExpired() {
   await db.runAsync("DELETE FROM commands WHERE status='synced'");
 }
 
+export async function lastSyncAt() {
+  return SecureStore.getItemAsync(LAST_SYNC);
+}
+
 export async function wipeOffline() {
   try {
     const db = await database();
@@ -356,6 +363,7 @@ export async function wipeOffline() {
   await SecureStore.deleteItemAsync(BOX_KEY);
   await SecureStore.deleteItemAsync(PIN_HASH);
   await SecureStore.deleteItemAsync(PIN_SALT);
+  await SecureStore.deleteItemAsync(LAST_SYNC);
   dbPromise = null;
 }
 

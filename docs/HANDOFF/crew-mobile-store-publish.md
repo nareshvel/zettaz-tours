@@ -60,7 +60,7 @@ Staff check-in, waivers, and trip status for Zettaz Tours operators.
 
 Zettaz Crew is the field app for tour and charter operators who use Zettaz Tours & Charters.
 
-Assigned crew can sign in with their work account, open today’s trips, scan passenger check-in codes, collect digital waivers, and record trip events. The app shows only the roster for trips you are assigned to. It is not a public booking or payment app.
+Assigned crew can sign in with their work account, open today’s trips, scan passenger check-in codes, collect digital waivers, record trip events, and collect remaining guest cash at boarding when allowed. Tablet-width devices can open today’s Day Board and walk-up booking when the staff role allows. After the operator prepares the device for offline use, assigned work can continue without a network and syncs when connected. The app shows only the roster for trips you are assigned to. It is not a public booking app.
 
 A sign-in is required. Ask your operator for a staff account. Guests book through their operator’s existing website or desk.
 
@@ -83,7 +83,8 @@ No photos are stored. The camera is used only to read an opaque check-in QR code
 | Signatures (stroke vectors) | Yes | Yes | Waiver evidence |
 | Photos / camera roll | No | — | Camera preview only; no image saved |
 | Precise location | No | — | — |
-| Payment info | No | — | — |
+| Payment info | Manual cash/method amounts only; no card numbers | Yes | Boarding collection |
+| Device PIN / biometrics | Unlock only; not sent to server | No | Offline lock |
 | Advertising ID | No | — | — |
 
 Encryption in transit: HTTPS. Encryption at rest: OS secure storage for the session token. `ITSAppUsesNonExemptEncryption` is false (HTTPS + OS keychain only).
@@ -97,6 +98,6 @@ Capture on device after the preview build (do not invent marketing screens):
 - Android phone: same five screens
 - Play feature graphic is already `apps/mobile/store/feature-graphic.png`
 
-## Not part of this 1.0
+## Not part of this binary
 
-Encrypted offline cache, crew-mobile Pay, GPS/ETAs, push notifications, retained waiver PDFs.
+GPS/ETAs, push notifications, card-present / Stripe Terminal, guest kiosk lock, white-label second app. Google Drive waiver copies stay server-side and flagged off.

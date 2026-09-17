@@ -27,6 +27,7 @@ import {
   hasPin,
   isOfflineError,
   isRevoked,
+  lastSyncAt,
   listCommands,
   prepareOffline,
   queuedCount,
@@ -191,6 +192,9 @@ export default function App() {
   const [queueOpen, setQueueOpen] = useState(false);
   const [queueItems, setQueueItems] = useState<QueuedCommand[]>([]);
   const [canBiometric, setCanBiometric] = useState(false);
+  const [enrolled, setEnrolled] = useState(false);
+  const [leaseExpiresAt, setLeaseExpiresAt] = useState<string | null>(null);
+  const [lastSync, setLastSync] = useState<string | null>(null);
 
   useEffect(() => {
     SecureStore.getItemAsync(SESSION_KEY)
@@ -231,6 +235,10 @@ export default function App() {
   }
   async function refreshQueue() {
     setQueueSize(await queuedCount());
+    setEnrolled(Boolean(await deviceCredentials()));
+    const snapshot = await readSnapshot();
+    setLeaseExpiresAt(snapshot?.leaseExpiresAt ?? null);
+    setLastSync(await lastSyncAt());
   }
   async function applyCachedSnapshot() {
     const snapshot = await readSnapshot();
@@ -608,6 +616,16 @@ export default function App() {
     }
   }
   async function signOut() {
+    if ((await queuedCount()) > 0) {
+      setShowProfile(true);
+      setMenuOpen(false);
+      setQueueItems(await listCommands());
+      setQueueOpen(true);
+      setError(
+        "Sync or discard queued work before signing out. Unsynced waivers and cash must not be dropped.",
+      );
+      return;
+    }
     if (token)
       try {
         await call("/auth/v1/sign-out", token, { method: "POST" });
@@ -951,6 +969,7 @@ export default function App() {
                 setActive(null);
                 setSigning(null);
                 setScanning(false);
+                void refreshQueue();
               }}
             >
               <Text style={styles.menuItemText}>My profile</Text>
@@ -1516,6 +1535,23 @@ export default function App() {
               trip events, and cash stay on this device until sync. Never
               collect the same cash twice.
             </Text>
+            {enrolled ? (
+              <>
+                <Text style={styles.personName}>This device is enrolled</Text>
+                <Text style={styles.muted}>
+                  Lease{" "}
+                  {leaseExpiresAt
+                    ? `until ${new Date(leaseExpiresAt).toLocaleString()}`
+                    : "not downloaded yet"}
+                </Text>
+                <Text style={styles.muted}>
+                  Last sync{" "}
+                  {lastSync
+                    ? new Date(lastSync).toLocaleString()
+                    : "not yet"}
+                </Text>
+              </>
+            ) : null}
             {offlineSetup ? (
               <>
                 <TextInput
@@ -1565,7 +1601,7 @@ export default function App() {
               </>
             ) : (
               <Button quiet onPress={() => setOfflineSetup(true)}>
-                Prepare offline
+                {enrolled ? "Change PIN / re-enroll" : "Prepare offline"}
               </Button>
             )}
             {queueSize > 0 ? (

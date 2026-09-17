@@ -1,6 +1,6 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type {
   Actor,
@@ -88,6 +88,15 @@ export class DocumentStorageService {
         "Signature evidence is retained as vector strokes in the database.",
         "This PDF is a short-lived hot copy for archive sync-out.",
       ];
+      const {
+        rows: [existing],
+      } = await tx.query(
+        `SELECT id FROM document_artifacts
+         WHERE tenant_id=$1 AND source_type='waiver_signature' AND source_id=$2
+         ORDER BY created_at DESC LIMIT 1`,
+        [actor.tenantId, waiver.id],
+      );
+      if (existing) return existing as { id: string };
       const bytes = textPdf("Signed waiver", lines);
       const hash = createHash("sha256").update(bytes).digest("hex");
       const artifactId = randomUUID();
@@ -184,6 +193,38 @@ export class DocumentStorageService {
         );
       }
       return result;
+    });
+  }
+
+  async waiverPdf(actor: Actor, passengerId: string) {
+    return this.db.transaction(actor, async (tx) => {
+      const {
+        rows: [signature],
+      } = await tx.query(
+        `SELECT id FROM waiver_signatures
+         WHERE tenant_id=$1 AND passenger_id=$2
+         ORDER BY occurred_at DESC, id DESC LIMIT 1`,
+        [actor.tenantId, passengerId],
+      );
+      if (!signature) throw new NotFoundException("No signed waiver");
+      const {
+        rows: [artifact],
+      } = await tx.query(
+        `SELECT hot_path FROM document_artifacts
+         WHERE tenant_id=$1 AND source_type='waiver_signature' AND source_id=$2
+           AND hot_path IS NOT NULL AND purged_at IS NULL
+         ORDER BY created_at DESC LIMIT 1`,
+        [actor.tenantId, signature.id],
+      );
+      if (!artifact?.hot_path)
+        throw new NotFoundException(
+          "Waiver PDF hot copy is not available. Signature strokes remain on the booking.",
+        );
+      const bytes = await readFile(path.join(hotRoot(), artifact.hot_path));
+      return {
+        bytes,
+        filename: `waiver-${passengerId.slice(0, 8)}.pdf`,
+      };
     });
   }
 

@@ -11,19 +11,20 @@
 - `POST /crew/v1/offline/commands` (max 50) applies check-in, trip_event, waiver, and payment. Duplicate `clientCommandId` returns `duplicate` when the original was accepted; rejected/conflict originals stay rejected/conflict. Server remains authoritative for assignment and money.
 - Revoked device → HTTP 410 `{ code: "device_revoked" }`. Expo wipes the local box key, device secret, PIN, and SQLite blobs on next connect.
 - `/api/mobile` allowlists the new GET/POST paths and forwards device headers. Walk-up, weather, start-trip, print, and scan stay online-only.
-- Expo: `expo-sqlite` + tweetnacl secretbox of snapshot/command blobs; key in SecureStore. Profile **Prepare offline** (PIN + enroll + snapshot). Lock screen (PIN / biometrics). Queue banner, authorized discard of quarantined commands, reconnect sync before live Today.
+- Expo: `expo-sqlite` + tweetnacl secretbox of snapshot/command blobs; key in SecureStore. Profile **Prepare offline** (PIN + enroll + snapshot). Lock screen (PIN / biometrics). Queue banner, last-sync time, authorized discard of quarantined commands, reconnect sync before live Today. Sign-out is blocked while commands are queued.
 
 ## Verification this session
 
 - `npx tsc -p tsconfig.json --noEmit` — passed
 - `npm run mobile:typecheck` — passed
 - `npm run web:typecheck` — passed
-- Crew isolation tests — façade, today, Pay, tablet board/walk-up, walk-up deposit, **offline enroll/snapshot/dedupe/revoke 410** — passed
-- Local `db:migrate` was `INCOMPLETE` after 088’s file was edited post-apply (`Applied migration was modified`). Restored `088_crew_offline.sql` to the exact applied checksum. Local migrate is `COMPLETE` again (skip 088/089). Fresh empty-database migrate ran **001–089** including 088/089, then the offline enroll test passed. **Do not edit 088 or 089 after this; add a new script if schema must change.** Production is still on 087, so VPS `./deploy.sh` will apply 088 then 089 once.
+- Crew isolation tests — façade (including waiver PDF 200 / guide 403), today, Pay, tablet board/walk-up, walk-up deposit, **offline enroll/snapshot/dedupe/revoke 410** — passed
+- Local `db:migrate` was `INCOMPLETE` after 088’s file was edited post-apply (`Applied migration was modified`). Restored `088_crew_offline.sql` to the exact applied checksum. Local migrate is `COMPLETE` again (skip 088/089). Fresh empty-database migrate ran **001–089** including 088/089, then the offline enroll test passed. **Do not edit 088 or 089 after this; add a new script if schema must change.**
+- Production `./deploy.sh` at `cad0ed8` applied **088** and **089**, Pending: 0.
 
 ## Not verified here
 
-- Airplane-mode cycle on a physical iPhone and Android (task 4.8). Needs VPS migrate **088**, new EAS preview, then owner full test.
+- Airplane-mode cycle on a physical iPhone and Android (task 4.8). Needs a new EAS preview against this production tip, then owner full test.
 - Cached money is not updated until sync (by design). Do not collect the same cash twice.
 
 ## Out of this increment

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import type { Booking, Manifest } from "@/lib/types";
-import { label, useMutation, useResource } from "@/lib/client";
+import { downloadApiFile, label, useMutation, useResource } from "@/lib/client";
 import { Field, Notice } from "./common";
 
 type Stay = NonNullable<Booking["stay"]>;
@@ -120,6 +120,7 @@ export function BoardingWaiverModal({
       guardian_passenger_name: string | null;
       captured_at: string | null;
       occurred_at: string;
+      pdf_ready?: boolean;
     }[]
   >(mode === "view" ? `ops/v1/bookings/${booking.booking_id}/waivers` : null);
   const sign = useMutation();
@@ -155,6 +156,7 @@ export function BoardingWaiverModal({
         guardianPassengerName: viewRow.guardian_passenger_name,
         capturedAt: viewRow.captured_at ?? viewRow.occurred_at,
         templateVersion: viewRow.template_version,
+        pdfReady: Boolean(viewRow.pdf_ready),
       }
     : null;
   const displayStrokes =
@@ -344,11 +346,25 @@ export function BoardingWaiverModal({
                     aria-label="Stored signature"
                   />
                   <p className="muted boarding-waiver-note">
-                    Drawn from signature strokes stored with the booking. No PDF
-                    copy is required to review this waiver.
+                    Drawn from signature strokes stored with the booking. The
+                    server also keeps an immutable PDF hot copy for download.
                   </p>
                 </section>
                 <div className="boarding-waiver-actions">
+                  {viewSignature.pdfReady ? (
+                    <button
+                      type="button"
+                      className="button"
+                      onClick={() =>
+                        void downloadApiFile(
+                          `ops/v1/passengers/${passenger.id}/waiver-pdf`,
+                          `waiver-${passenger.id.slice(0, 8)}.pdf`,
+                        )
+                      }
+                    >
+                      Download PDF
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="button secondary"

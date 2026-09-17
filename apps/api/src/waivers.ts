@@ -6,16 +6,20 @@ import {
   Get,
   Headers,
   Injectable,
+  Logger,
   NotFoundException,
   Param,
   Post,
   Query,
+  Res,
 } from "@nestjs/common";
+import type { Response } from "express";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { Actor, id } from "../../../packages/shared/src/contracts";
 import { Database, record } from "./database";
 import { FinanceService } from "./finance";
+import { DocumentStorageService } from "./document-storage";
 import { Access, CurrentActor, keySchema, parse } from "./http";
 const template = z
   .object({
@@ -88,9 +92,11 @@ const crewSignature = z
   .strict();
 @Injectable()
 export class WaiverService {
+  private readonly log = new Logger(WaiverService.name);
   constructor(
     private readonly db: Database,
     private readonly finance: FinanceService,
+    private readonly documents: DocumentStorageService,
   ) {}
   /**
    * Active template by default — every signing surface wants exactly the
@@ -320,7 +326,12 @@ export class WaiverService {
           `SELECT w.id,w.template_id,w.template_version,w.signer_name,w.signer_capacity,w.passenger_id,w.guardian_passenger_id,w.occurred_at,
         w.consent_text,w.signature_strokes,w.stay_snapshot,w.captured_at,
         t.title AS template_title,t.body AS template_body,
-        p.name AS passenger_name,g.name AS guardian_passenger_name
+        p.name AS passenger_name,g.name AS guardian_passenger_name,
+        EXISTS(
+          SELECT 1 FROM document_artifacts a
+          WHERE a.tenant_id=w.tenant_id AND a.source_type='waiver_signature'
+            AND a.source_id=w.id AND a.hot_path IS NOT NULL AND a.purged_at IS NULL
+        ) AS pdf_ready
         FROM waiver_signatures w
         LEFT JOIN waiver_templates t ON t.tenant_id=w.tenant_id AND t.id=w.template_id
         LEFT JOIN booking_passengers p ON p.tenant_id=w.tenant_id AND p.id=w.passenger_id
@@ -349,7 +360,12 @@ export class WaiverService {
         `SELECT w.id,w.template_id,w.template_version,w.signer_name,w.signer_capacity,
           w.consent_text,w.signature_strokes,w.stay_snapshot,w.captured_at,w.occurred_at,
           t.title AS template_title,t.body AS template_body,
-          g.name AS guardian_passenger_name
+          g.name AS guardian_passenger_name,
+          EXISTS(
+            SELECT 1 FROM document_artifacts a
+            WHERE a.tenant_id=w.tenant_id AND a.source_type='waiver_signature'
+              AND a.source_id=w.id AND a.hot_path IS NOT NULL AND a.purged_at IS NULL
+          ) AS pdf_ready
          FROM waiver_signatures w
          LEFT JOIN waiver_templates t ON t.tenant_id=w.tenant_id AND t.id=w.template_id
          LEFT JOIN booking_passengers g ON g.tenant_id=w.tenant_id AND g.id=w.guardian_passenger_id
@@ -381,14 +397,15 @@ export class WaiverService {
               staySnapshot: signature.stay_snapshot,
               guardianPassengerName: signature.guardian_passenger_name,
               capturedAt: signature.captured_at ?? signature.occurred_at,
+              pdfReady: Boolean(signature.pdf_ready),
             }
           : null,
       };
     });
   }
-  crewSign(a: Actor, passengerId: string, k: string, raw: unknown) {
+  async crewSign(a: Actor, passengerId: string, k: string, raw: unknown) {
     const v = parse(crewSignature, raw);
-    return this.db.command(
+    const result = await this.db.command(
       a,
       `crew.waiver:${passengerId}`,
       k,
@@ -560,6 +577,27 @@ export class WaiverService {
         return result;
       },
     );
+    try {
+      await this.documents.captureWaiverPdf(a, {
+        id: result.id,
+        bookingId: result.bookingId,
+        passengerId: result.passengerId,
+        templateId: result.templateId,
+        templateVersion: result.templateVersion,
+        signerName: result.signerName,
+        signerCapacity: result.signerCapacity,
+        stay: result.stay,
+        capturedAt: result.capturedAt,
+      });
+    } catch (error) {
+      this.log.warn(
+        `Waiver PDF hot copy failed after signature ${result.id}: ${(error as Error).message}`,
+      );
+    }
+    return result;
+  }
+  waiverPdf(a: Actor, passengerId: string) {
+    return this.documents.waiverPdf(a, passengerId);
   }
   checkIn(a: Actor, bookingId: string, key: string, raw: unknown) {
     const input = parse(checkin, raw);
@@ -695,6 +733,21 @@ export class WaiverController {
     @Param("id") passengerId: string,
   ) {
     return this.s.passengerWaiver(a, parse(id, passengerId));
+  }
+  @Get("passengers/:id/waiver-pdf") @Access("manifest.read") async waiverPdf(
+    @CurrentActor() a: Actor,
+    @Param("id") passengerId: string,
+    @Res() response: Response,
+  ) {
+    const result = await this.s.waiverPdf(a, parse(id, passengerId));
+    response
+      .status(200)
+      .set({
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${result.filename}"`,
+        "Cache-Control": "no-store",
+      })
+      .send(result.bytes);
   }
   @Post("bookings/:id/checkin") @Access("checkin.write") checkIn(
     @CurrentActor() a: Actor,

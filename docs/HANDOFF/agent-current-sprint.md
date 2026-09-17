@@ -12,9 +12,9 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 
 ## Owner priority (17 September 2026 — non-Ops after Crew field pass)
 
-1. **Crew app.** Phases 1–4 engineering is in the working tree (Phase 4 includes migration **088**). Owner deploys VPS, then builds EAS and runs the full device test including one airplane-mode cycle (task 4.8). **Do not start Phase 5.**
+1. **Crew app.** Phases 1–4 plus retained waiver PDF download are in the working tree on top of production `cad0ed8`. Owner deploys this increment (`document_artifacts` GRANT + PDF after sign), then builds EAS preview and runs the full device test including airplane-mode (4.8). **Do not start Phase 5.**
 2. **Operations menu group** remains functionally complete pending testing. Do not open new Ops web feature work unless testing finds a bug.
-3. **Non-Ops:** Customers, Audit, and Document library polish are in the working tree (owner visual). Tenant settings remaining tabs already have earlier polish; Security non-owner empty state added. Next: Profile owner visual. Reports already polished.
+3. **Non-Ops:** Customers, Audit, and Document library polish are on production (`cad0ed8`; owner visual still outstanding). Tenant settings remaining tabs already have earlier polish; Security non-owner empty state added. Next: Profile owner visual. Reports already polished.
 4. **Hold Subscription messaging.**
 
 ---
@@ -24,16 +24,16 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 | Fact | Value |
 | --- | --- |
 | Branch | `main` |
-| Tip deployed | `7257fb0` (Crew field pass: desk Pay, hide 403 actions, tablet waiver on board) |
-| Mac ↔ `origin/main` | In sync at field-pass deploy; Customers / Audit / Document library polish may still be local |
-| Migrations | Through **`087_product_cover_image.sql`** on production; working tree adds **`088_crew_offline.sql`** (and **`089_crew_captain_roles.sql`**). Prod migrate **COMPLETE** through 087, Pending: 0 until this tree is deployed |
+| Tip deployed | `cad0ed8` (Crew Phases 1–4 + Customers / Audit / Document library polish) |
+| Mac ↔ `origin/main` | In sync at this VPS deploy |
+| Migrations | Through **`089_crew_captain_roles.sql`** on production. Prod migrate **COMPLETE**, Applied this run: **088**, **089**, Pending: 0 |
 | Email verification / trial auth | **Already on `main`** (`060`–`061`); do not invent “never pushed” |
 
 **VPS deploy completed 17 September 2026** (`/var/www/zettaz-tours`):
 
-- Fast-forward through `7257fb0` (Crew field pass on top of Pay + tablet). Migrations through **087**, Pending: 0, PM2 restarted.
-- Rebuild EAS **preview** after this tree is deployed so phones pick up Pay, Day Board, field-pass UI, and Phase 4 offline.
-- Phase 4 encrypted offline is implemented in the working tree. Cutover drill (4.8) is the owner’s airplane-mode pass after EAS.
+- Fast-forward `25ab896..cad0ed8`. Migrations **088** and **089** applied, Pending: 0, PM2 restarted.
+- Rebuild EAS **preview** now so phones pick up Pay, Day Board, field-pass UI, and Phase 4 offline.
+- Task 4.8 (airplane-mode cycle) is the owner’s device pass after that EAS install.
 
 If a later pull fails on dirty lockfile again:
 
@@ -53,9 +53,9 @@ Server may still show local-only drift (`apps/mobile/package.json`, `ecosystem.c
 
 Phased delivery: [crew-app-delivery.md](../STRATEGY/crew-app-delivery.md).
 
-**On production:** Phase 1 field + Phase 2 Pay + Phase 3 tablet + field pass (`7257fb0`). **In working tree:** Phase 4 encrypted offline (migration **088**, device enroll/snapshot/command queue, Expo PIN + secretbox cache).
+**On production (`cad0ed8`):** Phases 1–4 including encrypted offline (088) and Crew/Captain roles (089).
 
-**Now:** owner deploys this tree (`088` must migrate), builds a new EAS preview, and runs the full device test including one airplane-mode cycle. **Do not start Phase 5.**
+**Now:** owner deploys this increment, builds a new EAS preview, and runs the full device test including one airplane-mode cycle. **Do not start Phase 5.**
 
 Evidence: [crew-app-phase-2-evidence.md](../TESTING/crew-app-phase-2-evidence.md), [crew-app-phase-3-evidence.md](../TESTING/crew-app-phase-3-evidence.md), [crew-app-phase-4-evidence.md](../TESTING/crew-app-phase-4-evidence.md).
 

@@ -28,21 +28,21 @@ Stack is locked: NestJS modular monolith, Next.js workspace, Expo crew app, Post
 ## Current implementation state
 
 - Persistent local PostgreSQL is the normal development database.
-- Repo migrations exist through **`087_product_cover_image.sql`**. Production migrate via `./deploy.sh` → `db:migrate:prod`. Sign-in email verification under RLS: migration `061` + [../ISSUES_FIXES/signin-email-verified-rls.md](../ISSUES_FIXES/signin-email-verified-rls.md).
-- **VPS tip `7257fb0`** (Crew field pass). Customers / Audit / Document library polish may still be local.
+- Repo migrations exist through **`089_crew_captain_roles.sql`**. Production migrate via `./deploy.sh` → `db:migrate:prod`. Sign-in email verification under RLS: migration `061` + [../ISSUES_FIXES/signin-email-verified-rls.md](../ISSUES_FIXES/signin-email-verified-rls.md).
+- **VPS tip `cad0ed8`** (Crew Phases 1–4 + Customers / Audit / Document library polish).
 - Production demo (`tours.zettaz.com`): tenant `f6e566ce-…`; deploy notes in [deploy.md](deploy.md) and [demo-tenant-export.md](demo-tenant-export.md).
 - **Ops pickups (14 September 2026) closed:** Plan pickups Phase 1, Print list polish, Settings → Pickup locations (Esri map, tenant city/country default), demo multi-stop seed. See [../FEATURES/operations/pickup-disposition-and-plans.md](../FEATURES/operations/pickup-disposition-and-plans.md) and [../TESTING/pickup-location-modal-and-print-evidence.md](../TESTING/pickup-location-modal-and-print-evidence.md).
-- Connected crew Phases 1–3 live on production. Phase 4 encrypted offline is in the working tree (migration **088**); 4.8 airplane-mode drill is owner after deploy + EAS.
+- Connected crew Phases 1–4 live on production (`088`/`089` applied). 4.8 airplane-mode drill is owner after EAS.
 - Boarding money pending: [../FEATURES/operations/boarding-balance-collection.md](../FEATURES/operations/boarding-balance-collection.md).
 
 ## Current task sequence
 
 See [agent-current-sprint.md](agent-current-sprint.md). Short form (17 Sep):
 
-1. **Crew Phases 1–4 engineering** in the working tree. Owner deploys **088**, rebuilds EAS, full device test including airplane-mode.
+1. **Crew Phases 1–4 engineering** on production (`cad0ed8`). Owner rebuilds EAS, full device test including airplane-mode.
 2. **Do not start Phase 5** (kiosk, GPS, card-present, push, white-label).
 3. **Operations menu group closed** pending further testing.
-4. **Customers / Audit / Document library polish** in working tree (owner visual outstanding). Next non-Ops: Profile owner visual.
+4. **Customers / Audit / Document library polish** on production (owner visual outstanding). Next non-Ops: Profile owner visual.
 5. **Hold** Subscription messaging polish.
 
 Pasteable Claude brief: [claude-handoff-2026-09-14.md](claude-handoff-2026-09-14.md).

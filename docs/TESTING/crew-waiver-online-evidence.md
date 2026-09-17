@@ -23,4 +23,4 @@
 ## Remaining acceptance
 
 - Physical iOS/Android phone and tablet visual/touch review is required before this screen is marked device-accepted.
-- Encrypted offline cache/queue, resumable signature-media upload, server-generated retained PDF, and optional drive copies are not part of this connected increment and remain next tasks.
+- Encrypted offline cache/queue is Phase 4 (on production `cad0ed8`). Server-generated retained PDF is wired after accepted crew/web signature evidence; permissioned download is `GET /ops/v1/passengers/:id/waiver-pdf` (`manifest.read`). Optional Drive/OneDrive/Dropbox copy stays feature-flagged until credentials exist.

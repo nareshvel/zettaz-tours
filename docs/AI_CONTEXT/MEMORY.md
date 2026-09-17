@@ -7,10 +7,10 @@ Keep under 200 lines. Update after sessions that change standing decisions.
 ## Current focus (agents)
 
 - **Sprint board:** [../HANDOFF/agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) — prefer over chat history.
-- **Owner priority (17 Sep):** Crew Phases 1–4 engineering complete in the working tree (Phase 4 = migration **088**). Owner deploys, builds EAS, and runs the full device test including airplane-mode. **Do not start Phase 5.** Operations menu group = complete until testing finds gaps. Customers / Audit / Document library polish in working tree; next is Profile owner visual. **Hold** Subscription messaging.
+- **Owner priority (17 Sep):** Crew Phases 1–4 plus retained waiver PDF are ready to deploy on top of `cad0ed8`. Owner deploys, builds EAS, full device test including airplane-mode. **Do not start Phase 5.**
 - **In progress (15 Sep):** Tenant settings pass — printing, waivers, integrations, localization, sidebar. See the 15 September section below.
-- **Crew app (17 Sep):** Phases 1–4 engineering in the working tree. Production still `7257fb0` until owner deploys **088** and rebuilds EAS. Phase 5 Track B stays unscheduled.
-- **Deploy:** VPS at tip `7257fb0` via `./deploy.sh` (migrations through **087**, Pending: 0). Customers / Audit / Document library polish may still be local — check `git status`.
+- **Crew app (17 Sep):** Phases 1–4 engineering on production. Rebuild EAS; 4.8 airplane-mode is owner after that install. Phase 5 Track B stays unscheduled.
+- **Deploy:** VPS at tip `cad0ed8` via `./deploy.sh` (migrations through **089**, Pending: 0).
 - Claude paste brief: [../HANDOFF/claude-handoff-2026-09-14.md](../HANDOFF/claude-handoff-2026-09-14.md).
 
 ## Standing decisions

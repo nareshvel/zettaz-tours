@@ -3110,6 +3110,21 @@ test("crew mobile façade exposes only assigned trips and restricts crew check-i
     crewWaiverTemplate.body.version,
   );
   assert.equal(crewWaiver.body.stay.kind, "private_accommodation");
+  const waiverPdf = await get(
+    `/ops/v1/passengers/${crewPassenger.id}/waiver-pdf`,
+    t.token,
+  );
+  assert.equal(waiverPdf.status, 200, JSON.stringify(waiverPdf.body));
+  assert.match(String(waiverPdf.headers["content-type"]), /pdf/i);
+  assert.equal(
+    (
+      await get(
+        `/ops/v1/passengers/${crewPassenger.id}/waiver-pdf`,
+        guide,
+      )
+    ).status,
+    403,
+  );
   const afterWaiver = await get(
     `/crew/v1/today?date=${DateTime.utc().plus({ days: 10 }).toISODate()}`,
     guide,

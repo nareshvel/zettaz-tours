@@ -1,7 +1,7 @@
 # Zettaz Crew — delivery plan
 
 **Updated:** 17 September 2026  
-**Status:** Owner-accepted 17 September 2026. Owner override 17 September 2026: complete Phases 1–4 before EAS full test. Phases 1–3 are on production (`7257fb0`). Phase 4 engineering is in the working tree. Phase 5 Track B is not scheduled.  
+**Status:** Owner-accepted 17 September 2026. Owner override 17 September 2026: complete Phases 1–4 before EAS full test. Phases 1–4 are on production (`cad0ed8`, migrations 088/089). Phase 5 Track B is not scheduled.  
 **Audience:** owner + any IDE agent  
 **Scope authority:** [launch-contract.md](launch-contract.md) · **epic:** E08/E07 in [delivery.md](delivery.md) · **facade:** [crew-mobile-facade.md](../FEATURES/operations/crew-mobile-facade.md)
 
@@ -40,7 +40,7 @@ Connected 1.0 in `apps/mobile`:
 
 Web already has the APIs Crew will reuse: pickup plans, start/no-show, boarding Pay, print jobs, weather/closure, assignments, New reservation / holds.
 
-**In repo, not on all devices yet:** profile menu + My profile; `crew.trip.read` for owner/admin/dispatcher/ops manager (migration `086`); friendlier empty/403 copy. Needs commit, VPS migrate, **new EAS preview**, sign-out/in.
+**In repo, not on all devices yet:** Pay, tablet Day Board, encrypted offline, retained waiver PDF download. Needs this tree on VPS, **new EAS preview**, sign-out/in.
 
 ---
 
@@ -59,7 +59,7 @@ Launch contract wins. Delivery.md lists E07 offline under “after cutover”; t
 | Print/share pickup list + receipt PDF | `expo-print` / share against existing `ops/v1/print-jobs` |
 | Encrypted offline | After first connected operating week if needed. ADR 007 + ADR 016. Cutover must exercise one offline cycle |
 | Store listing | Unlisted/internal; screenshots; reviewer demo **guide** with a same-day assignment |
-| Retained waiver PDF / drive copy | Server-side; Crew only needs sync/status, not a new editor |
+| Retained waiver PDF / drive copy | Server generates an immutable PDF after accepted evidence. Manifest **Download PDF**. Drive/OneDrive/Dropbox adapters stay flagged off. |
 | Device revoke | Session revoke already exists; offline lease/wipe lands with the offline phase |
 
 ### Track A — **not** in the Crew app (web / policy)
@@ -186,7 +186,7 @@ Calendar is **from owner acceptance of this file**, not from chat history. Indic
 | 4.7 | Revoke → wipe on next connect |
 | 4.8 | Cutover drill: one offline cycle in the 7–14 day parallel run |
 
-**Exit:** Documented airplane-mode test + sync. GPS still off. Engineering for 4.1–4.7 is in the working tree (17 Sep). Task 4.8 is the owner’s EAS + airplane-mode pass after VPS migrate **088**.
+**Exit:** Documented airplane-mode test + sync. GPS still off. Engineering for 4.1–4.7 is on production (`cad0ed8`). Task 4.8 is the owner’s EAS + airplane-mode pass.
 
 ### Phase 5 — Track B / evidence-gated (do not schedule until Track A field is live)
 
@@ -236,4 +236,4 @@ Google Places/routing, Plan pickups Phase 2 (multi-product van), live GPS, consu
 
 ## Start gate
 
-Owner accepted 17 September 2026. Owner override the same day: complete Phases 1–4 before EAS full test. Phases 1–3 are on production (`7257fb0`). Phase 4 is in the working tree. Rebuild EAS after VPS migrate **088**. Do not start Phase 5.
+Owner accepted 17 September 2026. Owner override the same day: complete Phases 1–4 before EAS full test. Phases 1–4 are on production (`cad0ed8`). Rebuild EAS preview now. Do not start Phase 5.

@@ -243,6 +243,8 @@ export class AuthController {
   async changePassword(@CurrentActor() actor: Actor, @Body() body: unknown) {
     const input = parse(passwordChangeSchema, body);
     return this.db.transaction(actor, async (tx) => {
+      // RLS credential_owner_only scopes this to app.actor; runtime needs
+      // SELECT/UPDATE on user_credentials (see migrate.ts grants).
       const {
         rows: [credential],
       } = await tx.query(
@@ -254,10 +256,10 @@ export class AuthController {
         !(await verifyPassword(input.currentPassword, credential.password_hash))
       )
         throw new UnauthorizedException("Current password is incorrect.");
-      await tx.query(
-        "UPDATE user_credentials SET password_hash=$2 WHERE user_id=$1",
-        [actor.actorId, await hashPassword(input.newPassword)],
-      );
+      await tx.query("SELECT upsert_user_credentials($1,$2)", [
+        actor.actorId,
+        await hashPassword(input.newPassword),
+      ]);
       return { ok: true };
     });
   }

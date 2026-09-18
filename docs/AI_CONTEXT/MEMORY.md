@@ -7,7 +7,7 @@ Keep under 200 lines. Update after sessions that change standing decisions.
 ## Current focus (agents)
 
 - **Sprint board:** [../HANDOFF/agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) — prefer over chat history.
-- **Owner priority (17 Sep):** Crew Phases 1–4 on production `cad0ed8`. Owner deploys `0acc028` (retained waiver PDF), builds EAS, full device test including airplane-mode. Profile polish is local. **Do not start Phase 5.**
+- **Owner priority (17 Sep):** Crew Phases 1–4 on production. Field-pass UI (covers, tabs, status sheet, waiver sign, auto-offline) is local; needs VPS + new EAS. **Do not start Phase 5.** Owner-editable Crew role matrix: [../FEATURES/operations/crew-roles-and-permissions.md](../FEATURES/operations/crew-roles-and-permissions.md).
 - **In progress (15 Sep):** Tenant settings pass — printing, waivers, integrations, localization, sidebar. See the 15 September section below.
 - **Crew app (17 Sep):** Phases 1–4 engineering on production. Rebuild EAS; 4.8 airplane-mode is owner after that install. Phase 5 Track B stays unscheduled.
 - **Deploy:** VPS at tip `cad0ed8` via `./deploy.sh` (migrations through **089**, Pending: 0). `origin/main` `0acc028` not yet on VPS.

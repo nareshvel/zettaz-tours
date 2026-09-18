@@ -14,7 +14,7 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 
 1. **Crew app.** Phases 1–4 are on production `cad0ed8`. Retained waiver PDF + Crew sync-centre sign-out are on `origin/main` at `0acc028` (no new numbered migration). Owner deploys that tip, then builds EAS preview and runs the full device test including airplane-mode (4.8). **Do not start Phase 5.**
 2. **Operations menu group** remains functionally complete pending testing. Do not open new Ops web feature work unless testing finds a bug.
-3. **Non-Ops:** Customers, Audit, and Document library polish are on production (`cad0ed8`; owner visual still outstanding). **Profile polish follow-up** is local (uncommitted) — see [profile-polish-evidence.md](../TESTING/profile-polish-evidence.md). Next: remaining Administration owner visual (General & branding, Taxes, Guest stays, Partners). Reports already polished.
+3. **Non-Ops:** Customers, Audit, and Document library polish are on production (`cad0ed8`; owner visual still outstanding). **Profile polish follow-up** is local (uncommitted) — see [profile-polish-evidence.md](../TESTING/profile-polish-evidence.md). **Crew field-pass UI** (covers, tabs, status sheet, waiver sign, auto-offline) is local — see [crew-field-pass-ui-evidence.md](../TESTING/crew-field-pass-ui-evidence.md). Next: remaining Administration owner visual (General & branding, Taxes, Guest stays, Partners). Reports already polished.
 4. **Hold Subscription messaging.**
 
 ---
@@ -25,7 +25,7 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 | --- | --- |
 | Branch | `main` |
 | Tip deployed | `cad0ed8` (Crew Phases 1–4 + Customers / Audit / Document library polish) |
-| `origin/main` | `0acc028` (retained waiver PDF + Crew sync-centre sign-out). **Owner deploying.** Profile polish is local until committed. |
+| `origin/main` | `0acc028` (retained waiver PDF + Crew sync-centre sign-out). Owner may have deployed. **Local:** Profile polish + Crew field-pass UI (uncommitted). |
 | Mac ↔ `origin/main` | Ahead locally with Profile polish; VPS still `cad0ed8` until `./deploy.sh` |
 | Migrations | Through **`089_crew_captain_roles.sql`** on production. Prod migrate **COMPLETE**, Applied this run: **088**, **089**, Pending: 0 |
 | Email verification / trial auth | **Already on `main`** (`060`–`061`); do not invent “never pushed” |

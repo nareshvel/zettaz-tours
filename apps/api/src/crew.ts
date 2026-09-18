@@ -19,6 +19,7 @@ import { randomUUID } from "node:crypto";
 import { DateTime } from "luxon";
 import { z } from "zod";
 import {
+  isFieldCrewRole,
   partySchema,
   paymentSchema,
   type Actor,
@@ -98,7 +99,7 @@ function pendingRoster(party: Record<string, number>, leadName: string) {
 }
 
 function fieldRole(role: string) {
-  return ["guide", "driver"].includes(role);
+  return isFieldCrewRole(role);
 }
 
 function boardingClearance(
@@ -136,6 +137,7 @@ export class CrewService {
         input.date ?? DateTime.now().setZone(tenant.timezone).toISODate();
       const { rows: trips } = await tx.query(
         `SELECT d.id,d.starts_at,d.local_date,d.operational_status,p.name AS product_name,
+          p.cover_path,
           r.state AS trip_run_state,
           array_agg(a.assignment_role ORDER BY a.assignment_role) AS assignment_roles
          FROM departure_assignments a
@@ -144,7 +146,7 @@ export class CrewService {
          JOIN crew_profiles c ON c.tenant_id=a.tenant_id AND c.membership_actor_id=a.crew_actor_id AND c.active
          LEFT JOIN trip_runs r ON r.tenant_id=d.tenant_id AND r.departure_id=d.id
          WHERE a.tenant_id=$1 AND a.crew_actor_id=$2 AND a.status='active' AND d.local_date=$3
-         GROUP BY d.id,d.starts_at,d.local_date,d.operational_status,p.name,r.state
+         GROUP BY d.id,d.starts_at,d.local_date,d.operational_status,p.name,p.cover_path,r.state
          ORDER BY d.starts_at,d.id`,
         [actor.tenantId, actor.actorId, date],
       );
@@ -271,6 +273,7 @@ export class CrewService {
             starts_at: trip.starts_at,
             local_date: trip.local_date,
             product_name: trip.product_name,
+            cover_path: trip.cover_path,
             assignment_roles: trip.assignment_roles,
             operational_status: trip.operational_status,
             trip_run_state: trip.trip_run_state,
@@ -481,6 +484,7 @@ export class CrewService {
         rows: [trip],
       } = await tx.query(
         `SELECT d.id,d.starts_at,d.local_date,d.operational_status,p.name AS product_name,
+          p.cover_path,
           r.state AS trip_run_state
          FROM departures d
          JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id
@@ -722,6 +726,7 @@ function shapeTrip(
     starts_at: string;
     local_date: string;
     product_name: string;
+    cover_path?: string | null;
     operational_status: string;
     trip_run_state: string | null;
   },
@@ -745,6 +750,7 @@ function shapeTrip(
     starts_at: trip.starts_at,
     local_date: trip.local_date,
     product_name: trip.product_name,
+    cover_path: trip.cover_path ?? null,
     assignment_roles: crew.map((row) => row.assignment_role),
     operational_status: trip.operational_status,
     trip_run_state: trip.trip_run_state,

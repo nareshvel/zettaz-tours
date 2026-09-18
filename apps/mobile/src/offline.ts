@@ -183,6 +183,13 @@ export async function enrollDevice(token: string) {
   return enrolled;
 }
 
+export async function ensureOfflineReady(token: string) {
+  if (!(await deviceCredentials())) {
+    await enrollDevice(token);
+  }
+  await downloadSnapshot(token);
+}
+
 export async function downloadSnapshot(token: string, date?: string) {
   const device = await deviceCredentials();
   if (!device) throw new Error("Enroll this device before going offline.");

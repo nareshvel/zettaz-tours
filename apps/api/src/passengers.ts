@@ -12,7 +12,10 @@ import {
 } from "@nestjs/common";
 import { randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
-import type { Actor } from "../../../packages/shared/src/contracts";
+import {
+  isFieldCrewRole,
+  type Actor,
+} from "../../../packages/shared/src/contracts";
 import { Database, digest, record } from "./database";
 import { FinanceService } from "./finance";
 import { Access, CurrentActor, keySchema, parse } from "./http";
@@ -306,7 +309,7 @@ export class PassengerService {
           | undefined;
         if (!passenger || passenger.state !== "confirmed")
           throw new NotFoundException();
-        if (["guide", "driver"].includes(actor.role)) {
+        if (isFieldCrewRole(actor.role)) {
           const assignment = await tx.query(
             "SELECT 1 FROM departure_assignments WHERE tenant_id=$1 AND crew_actor_id=$2 AND departure_id=$3 AND status='active'",
             [actor.tenantId, actor.actorId, passenger.departure_id],

@@ -74,9 +74,8 @@ export const configSchema = z
       })
       .default({ quotaBytes: 1073741824 }),
   })
-  .strict()
-  ; // Multi-currency supported: bookingCurrency, collectionCurrency, and reportingCurrency
-  // may each differ. FX conversion is deferred; expense records store their own currency.
+  .strict(); // Multi-currency supported: bookingCurrency, collectionCurrency, and reportingCurrency
+// may each differ. FX conversion is deferred; expense records store their own currency.
 export type TenantConfig = z.infer<typeof configSchema>;
 export const tenantSchema = z
   .object({
@@ -137,6 +136,10 @@ export const roles = [
   "partner_manager",
 ] as const;
 export type Role = (typeof roles)[number];
+export const fieldCrewRoles = ["guide", "driver", "crew", "captain"] as const;
+export function isFieldCrewRole(role: string) {
+  return (fieldCrewRoles as readonly string[]).includes(role);
+}
 export const grants: Record<Role, readonly string[]> = {
   owner: [
     "config.write",

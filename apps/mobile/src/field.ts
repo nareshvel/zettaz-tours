@@ -49,6 +49,7 @@ export type Trip = {
   id: string;
   starts_at: string;
   product_name: string;
+  cover_path?: string | null;
   assignment_roles: string[];
   operational_status?: string;
   trip_run_state?: string | null;
@@ -160,6 +161,7 @@ export type BoardItem = {
   id: string;
   starts_at: string;
   product_name: string;
+  cover_path?: string | null;
   capacity: number;
   committed: number;
   confirmed_guests: number;
@@ -221,4 +223,39 @@ export function tripStarted(trip: Trip) {
   return ["departed", "completed", "cancelled"].includes(
     trip.trip_run_state ?? "",
   );
+}
+
+const checkinLabels: Record<string, string> = {
+  not_arrived: "Not arrived",
+  arrived: "Arrived",
+  waiver_pending: "Waiver needed",
+  balance_pending: "Balance due",
+  cleared_to_board: "Ready to board",
+  boarded: "Boarded",
+  no_show: "No-show",
+};
+
+export function checkinLabel(state?: string | null) {
+  const value = state || "not_arrived";
+  return checkinLabels[value] ?? value.replace(/_/g, " ");
+}
+
+export type PassengerAction =
+  | { kind: "waiver"; label: string }
+  | { kind: "arrived"; label: string }
+  | { kind: "clear"; label: string }
+  | { kind: "board"; label: string }
+  | { kind: "pay"; label: string };
+
+export function nextPassengerAction(
+  passenger: Passenger,
+): PassengerAction | null {
+  const state = passenger.checkin_state ?? "not_arrived";
+  if (state === "boarded" || state === "no_show") return null;
+  if (!passenger.waiver_signed || passenger.identity_pending)
+    return { kind: "waiver", label: "Sign waiver" };
+  if (state === "balance_pending") return { kind: "pay", label: "Collect" };
+  if (state === "cleared_to_board") return { kind: "board", label: "Board" };
+  if (state === "arrived") return { kind: "clear", label: "Clear to board" };
+  return { kind: "arrived", label: "Mark arrived" };
 }

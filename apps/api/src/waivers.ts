@@ -16,7 +16,11 @@ import {
 import type { Response } from "express";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { Actor, id } from "../../../packages/shared/src/contracts";
+import {
+  Actor,
+  id,
+  isFieldCrewRole,
+} from "../../../packages/shared/src/contracts";
 import { Database, record } from "./database";
 import { FinanceService } from "./finance";
 import { DocumentStorageService } from "./document-storage";
@@ -449,7 +453,7 @@ export class WaiverService {
           passenger.name = v.passengerName;
           passenger.identity_pending = false;
         }
-        if (["guide", "driver"].includes(a.role)) {
+        if (isFieldCrewRole(a.role)) {
           const assigned = await tx.query(
             "SELECT 1 FROM departure_assignments WHERE tenant_id=$1 AND crew_actor_id=$2 AND departure_id=$3 AND status='active'",
             [a.tenantId, a.actorId, passenger.departure_id],
@@ -620,7 +624,7 @@ export class WaiverService {
           throw new BadRequestException(
             "Only confirmed bookings can be checked in",
           );
-        if (["guide", "driver"].includes(a.role)) {
+        if (isFieldCrewRole(a.role)) {
           const { rows: assigned } = await tx.query(
             `SELECT 1
              FROM departure_assignments x

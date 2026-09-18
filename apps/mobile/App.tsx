@@ -1,10 +1,11 @@
 import * as SecureStore from "expo-secure-store";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Linking,
   Modal,
   Pressable,
@@ -22,8 +23,8 @@ import { APP_VERSION, SESSION_KEY, SUPPORT_EMAIL, WEB } from "./src/config";
 import {
   biometricAvailable,
   discardQuarantined,
-  downloadSnapshot,
   enqueue,
+  ensureOfflineReady,
   hasPin,
   isOfflineError,
   isRevoked,
@@ -43,9 +44,11 @@ import {
 import {
   allAboardLabel,
   attributionPassenger,
+  checkinLabel,
   clearanceLabel,
   formatMoney,
   guestMatchesQuery,
+  nextPassengerAction,
   paymentMethodLabel,
   pickupLabel,
   stayLabel,
@@ -66,6 +69,18 @@ import {
   WeatherSheet,
   sharePickupText,
 } from "./src/tablet";
+import {
+  OptionSheet,
+  TabBar,
+  TodayStrip,
+  TripCard,
+  stayChoiceLabel,
+  stayChoices,
+  todayRoleHint,
+  tripStatusChoices,
+  tripStatusLabel,
+  type TabId,
+} from "./src/chrome";
 type WaiverTemplate = {
   id: string;
   version: number;
@@ -195,6 +210,12 @@ export default function App() {
   const [enrolled, setEnrolled] = useState(false);
   const [leaseExpiresAt, setLeaseExpiresAt] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [stayOpen, setStayOpen] = useState(false);
+  const tokenRef = useRef<string | null>(null);
+  const signingRef = useRef(false);
+  tokenRef.current = token;
+  signingRef.current = Boolean(signing);
 
   useEffect(() => {
     SecureStore.getItemAsync(SESSION_KEY)
@@ -334,8 +355,9 @@ export default function App() {
       setOfflineMode(false);
       await refreshQueue();
       try {
-        if ((await deviceCredentials()) && (await queuedCount()) === 0) {
-          await downloadSnapshot(session);
+        if (me?.permissions?.includes("crew.trip.read")) {
+          await ensureOfflineReady(session);
+          await refreshQueue();
         }
       } catch (reason) {
         if (await handleDeviceFailure(reason)) return;
@@ -362,6 +384,13 @@ export default function App() {
   useEffect(() => {
     if (token) void load(token);
   }, [token]);
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active" && tokenRef.current && !signingRef.current)
+        void load(tokenRef.current);
+    });
+    return () => sub.remove();
+  }, []);
   async function signIn() {
     setBusy(true);
     setError("");
@@ -912,6 +941,38 @@ export default function App() {
   const canPay = can("checkin.write") || can("payment.write");
   const canCheckin = can("checkin.write");
   const canEvents = can("crew.trip.read");
+  const activeTab: TabId = showProfile
+    ? "profile"
+    : showBoard && dock === "board"
+      ? "board"
+      : "today";
+  function goTab(tab: TabId) {
+    if (tab === "scan") {
+      setShowProfile(false);
+      void openScanner();
+      return;
+    }
+    setScanning(false);
+    setSigning(null);
+    if (tab === "profile") {
+      setShowProfile(true);
+      setActive(null);
+      void refreshQueue();
+      return;
+    }
+    setShowProfile(false);
+    setActive(null);
+    setFromBoard(false);
+    setDock(tab === "board" ? "board" : "trips");
+  }
+  const footer = (
+    <TabBar
+      active={activeTab}
+      showScan={canCheckin}
+      showBoard={showBoard}
+      onChange={goTab}
+    />
+  );
   const header = (
     <View style={styles.header}>
       <View style={styles.grow}>
@@ -929,13 +990,6 @@ export default function App() {
         </Text>
       </View>
       <View style={styles.headerActions}>
-        {!showProfile &&
-        canCheckin &&
-        (trips.length > 0 || active || scanned) ? (
-          <Button quiet onPress={() => void openScanner()}>
-            Scan
-          </Button>
-        ) : null}
         <Pressable
           accessibilityLabel="Account menu"
           onPress={() => setMenuOpen(true)}
@@ -1196,7 +1250,11 @@ export default function App() {
           </Button>
         </View>
         {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
           {signing.passenger.identity_pending ? (
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Guest identity</Text>
@@ -1218,38 +1276,14 @@ export default function App() {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Stay and pickup details</Text>
             <Text style={styles.muted}>
-              Select where this guest is staying. Unit numbers are optional.
+              Choose where this guest is staying. Unit numbers are optional.
             </Text>
-            <View style={styles.actions}>
-              {(
-                [
-                  ["none", "None"],
-                  ["cruise", "Vessel"],
-                  ["hotel", "Hotel"],
-                  ["private_accommodation", "Airbnb / private"],
-                  ["local", "Local"],
-                ] as const
-              ).map(([value, label]) => (
-                <Pressable
-                  key={value}
-                  onPress={() => setStayKind(value)}
-                  style={[
-                    styles.choice,
-                    stayKind === value && styles.choiceSelected,
-                  ]}
-                >
-                  <Text
-                    style={
-                      stayKind === value
-                        ? styles.choiceTextSelected
-                        : styles.choiceText
-                    }
-                  >
-                    {label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+            <Pressable style={styles.select} onPress={() => setStayOpen(true)}>
+              <Text style={styles.selectLabel}>Stay</Text>
+              <Text style={styles.selectValue}>
+                {stayChoiceLabel(stayKind)}
+              </Text>
+            </Pressable>
             {["cruise", "hotel", "private_accommodation"].includes(stayKind) ? (
               <TextInput
                 style={styles.input}
@@ -1337,62 +1371,61 @@ export default function App() {
             <Text style={styles.muted}>
               I have read and agree to the waiver shown above.
             </Text>
-            <View
-              style={styles.signaturePad}
-              onLayout={(event) => setPadSize(event.nativeEvent.layout)}
-              onStartShouldSetResponder={() => true}
-              onMoveShouldSetResponder={() => true}
-              onResponderGrant={(event) => {
-                const { locationX, locationY } = event.nativeEvent;
-                setSignaturePoints([
-                  {
-                    x: locationX / padSize.width,
-                    y: locationY / padSize.height,
-                  },
-                ]);
-              }}
-              onResponderMove={(event) => {
-                const { locationX, locationY } = event.nativeEvent;
-                setSignaturePoints((current) =>
-                  current.length >= 5000
-                    ? current
-                    : [
-                        ...current,
-                        {
-                          x: Math.max(
-                            0,
-                            Math.min(1, locationX / padSize.width),
-                          ),
-                          y: Math.max(
-                            0,
-                            Math.min(1, locationY / padSize.height),
-                          ),
-                        },
-                      ],
-                );
-              }}
-            >
-              {!signaturePoints.length ? (
-                <Text style={styles.signatureHint}>
-                  Sign here with your finger
-                </Text>
-              ) : (
-                signaturePoints.map((point, index) => (
-                  <View
-                    key={index}
-                    style={[
-                      styles.signaturePoint,
+          </View>
+        </ScrollView>
+        <View style={styles.signDock}>
+          <View
+            style={styles.signaturePad}
+            onStartShouldSetResponder={() => true}
+            onMoveShouldSetResponder={() => true}
+            onResponderTerminationRequest={() => false}
+            onLayout={(event) => setPadSize(event.nativeEvent.layout)}
+            onResponderGrant={(event) => {
+              const { locationX, locationY } = event.nativeEvent;
+              setSignaturePoints([
+                {
+                  x: locationX / padSize.width,
+                  y: locationY / padSize.height,
+                },
+              ]);
+            }}
+            onResponderMove={(event) => {
+              const { locationX, locationY } = event.nativeEvent;
+              setSignaturePoints((current) =>
+                current.length >= 5000
+                  ? current
+                  : [
+                      ...current,
                       {
-                        left: point.x * padSize.width - 2,
-                        top: point.y * padSize.height - 2,
+                        x: Math.max(0, Math.min(1, locationX / padSize.width)),
+                        y: Math.max(0, Math.min(1, locationY / padSize.height)),
                       },
-                    ]}
-                  />
-                ))
-              )}
-            </View>
+                    ],
+              );
+            }}
+          >
+            {!signaturePoints.length ? (
+              <Text style={styles.signatureHint}>
+                Sign here with your finger
+              </Text>
+            ) : (
+              signaturePoints.map((point, index) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.signaturePoint,
+                    {
+                      left: point.x * padSize.width - 2,
+                      top: point.y * padSize.height - 2,
+                    },
+                  ]}
+                />
+              ))
+            )}
+          </View>
+          <View style={styles.rowActions}>
             <Button quiet onPress={() => setSignaturePoints([])}>
-              Clear signature
+              Clear
             </Button>
             <Button
               disabled={
@@ -1407,10 +1440,21 @@ export default function App() {
               }
               onPress={() => void submitWaiver()}
             >
-              {busy ? "Saving…" : "Accept and save waiver"}
+              {busy ? "Saving…" : "Accept waiver"}
             </Button>
           </View>
-        </ScrollView>
+        </View>
+        <OptionSheet
+          title="Stay type"
+          visible={stayOpen}
+          selected={stayKind}
+          options={stayChoices.map((item) => ({
+            value: item.value,
+            label: item.label,
+          }))}
+          onSelect={setStayKind}
+          onClose={() => setStayOpen(false)}
+        />
       </SafeAreaView>
     );
   }
@@ -1531,27 +1575,37 @@ export default function App() {
           <View style={styles.card}>
             <Text style={styles.eyebrow}>OFFLINE</Text>
             <Text style={styles.muted}>
-              Download assigned trips for a 24-hour lease. Check-in, waiver,
-              trip events, and cash stay on this device until sync. Never
-              collect the same cash twice.
+              This phone keeps a 24-hour copy of assigned trips automatically
+              while you are online. Check-in, waiver, trip events, and cash
+              queue here if the signal drops, then sync when you reconnect.
+              Never collect the same cash twice.
             </Text>
             {enrolled ? (
               <>
-                <Text style={styles.personName}>This device is enrolled</Text>
+                <Text style={styles.personName}>
+                  {offlineMode
+                    ? "Working from the device copy"
+                    : "Offline copy ready"}
+                </Text>
+                <Text style={styles.muted}>
+                  Last synced{" "}
+                  {lastSync
+                    ? new Date(lastSync).toLocaleString()
+                    : "just now, after sign-in"}
+                </Text>
                 <Text style={styles.muted}>
                   Lease{" "}
                   {leaseExpiresAt
                     ? `until ${new Date(leaseExpiresAt).toLocaleString()}`
-                    : "not downloaded yet"}
-                </Text>
-                <Text style={styles.muted}>
-                  Last sync{" "}
-                  {lastSync
-                    ? new Date(lastSync).toLocaleString()
-                    : "not yet"}
+                    : "refreshing with each online load"}
                 </Text>
               </>
-            ) : null}
+            ) : (
+              <Text style={styles.muted}>
+                Device enroll happens on the next successful online load when
+                this account can read assigned trips.
+              </Text>
+            )}
             {offlineSetup ? (
               <>
                 <TextInput
@@ -1596,12 +1650,12 @@ export default function App() {
                     })();
                   }}
                 >
-                  {busy ? "Preparing…" : "Enroll this device"}
+                  {busy ? "Saving PIN…" : "Save PIN"}
                 </Button>
               </>
             ) : (
               <Button quiet onPress={() => setOfflineSetup(true)}>
-                {enrolled ? "Change PIN / re-enroll" : "Prepare offline"}
+                {enrolled ? "Add or change unlock PIN" : "Add unlock PIN"}
               </Button>
             )}
             {queueSize > 0 ? (
@@ -1617,36 +1671,6 @@ export default function App() {
                 {`Review queued work (${queueSize})`}
               </Button>
             ) : null}
-            <Button
-              quiet
-              disabled={busy || !token}
-              onPress={() => {
-                void (async () => {
-                  if (!token) return;
-                  setBusy(true);
-                  setError("");
-                  try {
-                    await downloadSnapshot(token);
-                    const result = await syncQueue(token);
-                    await load(token);
-                    await refreshQueue();
-                    setOfflineMode(false);
-                    setError(
-                      result.failed
-                        ? `${result.synced} synced, ${result.failed} need review.`
-                        : "Offline lease refreshed.",
-                    );
-                  } catch (reason) {
-                    if (await handleDeviceFailure(reason)) return;
-                    setError((reason as Error).message);
-                  } finally {
-                    setBusy(false);
-                  }
-                })();
-              }}
-            >
-              Sync now
-            </Button>
           </View>
           {queueOpen ? (
             <View style={styles.card}>
@@ -1684,11 +1708,9 @@ export default function App() {
               </Button>
             </View>
           ) : null}
-          <Button quiet onPress={() => setShowProfile(false)}>
-            Back to today
-          </Button>
           <Text style={styles.version}>Version {APP_VERSION}</Text>
         </ScrollView>
+        {footer}
       </SafeAreaView>
     );
   }
@@ -1711,6 +1733,7 @@ export default function App() {
         </Text>
       ) : null}
       <ScrollView
+        style={styles.flex}
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl
@@ -1786,28 +1809,17 @@ export default function App() {
                 {active.boarding_pending ?? 0} pending ·{" "}
                 {active.no_show_guests ?? 0} no-show
               </Text>
-              <View style={styles.actions}>
-                {canEvents
-                  ? ["preparing", "boarding", "departed", "completed"].map(
-                      (state) => (
-                        <Button
-                          key={state}
-                          disabled={busy}
-                          onPress={() =>
-                            void mutate(
-                              `/crew/v1/departures/${active.id}/events`,
-                              {
-                                state,
-                              },
-                            )
-                          }
-                        >
-                          {state.replace("_", " ")}
-                        </Button>
-                      ),
-                    )
-                  : null}
-              </View>
+              {canEvents ? (
+                <Pressable
+                  style={styles.select}
+                  onPress={() => setStatusOpen(true)}
+                >
+                  <Text style={styles.selectLabel}>Trip status</Text>
+                  <Text style={styles.selectValue}>
+                    {tripStatusLabel(active.trip_run_state)}
+                  </Text>
+                </Pressable>
+              ) : null}
               {!tripStarted(active) ? (
                 canCheckin ? (
                   startOpen ? (
@@ -1938,76 +1950,83 @@ export default function App() {
                         Pay
                       </Button>
                     ) : null}
-                    {guest.passengers.map((passenger) => (
-                      <Pressable
-                        style={styles.person}
-                        key={passenger.id}
-                        onPress={() =>
-                          canCheckin ? openWaiver(guest, passenger) : undefined
-                        }
-                      >
-                        <View style={styles.grow}>
-                          <Text style={styles.personName}>
-                            {passenger.identity_pending
-                              ? "Guest name required"
-                              : passenger.name}
-                          </Text>
-                          <Text style={styles.muted}>
-                            {passenger.category}
-                            {passenger.is_minor ? " · minor" : ""} ·{" "}
-                            {passenger.checkin_state ?? "not arrived"} ·{" "}
-                            {passenger.waiver_signed
-                              ? "waiver signed"
-                              : "waiver required"}
-                          </Text>
-                        </View>
-                        {!["boarded", "no_show"].includes(
-                          passenger.checkin_state ?? "",
-                        ) && canCheckin ? (
-                          <View style={styles.rowActions}>
-                            <Button
-                              disabled={busy}
-                              onPress={() =>
-                                void mutate(
-                                  `/staff/v1/passengers/${passenger.id}/checkin`,
-                                  {
-                                    state:
-                                      passenger.checkin_state === "arrived"
-                                        ? "cleared_to_board"
-                                        : passenger.checkin_state ===
-                                            "cleared_to_board"
-                                          ? "boarded"
-                                          : "arrived",
-                                  },
-                                )
-                              }
-                            >
-                              {passenger.checkin_state === "arrived"
-                                ? "Clear"
-                                : passenger.checkin_state === "cleared_to_board"
-                                  ? "Board"
-                                  : "Arrived"}
-                            </Button>
-                            <Button
-                              quiet
-                              disabled={busy}
-                              onPress={() => confirmNoShow(passenger)}
-                            >
-                              No-show
-                            </Button>
-                            {guest.boarding_clearance === "due" && canPay ? (
+                    {guest.passengers.map((passenger) => {
+                      const action = nextPassengerAction(passenger);
+                      return (
+                        <View style={styles.person} key={passenger.id}>
+                          <Pressable
+                            style={styles.grow}
+                            onPress={() =>
+                              canCheckin
+                                ? openWaiver(guest, passenger)
+                                : undefined
+                            }
+                          >
+                            <Text style={styles.personName}>
+                              {passenger.identity_pending
+                                ? "Guest name required"
+                                : passenger.name}
+                            </Text>
+                            <Text style={styles.muted}>
+                              {passenger.category}
+                              {passenger.is_minor ? " · minor" : ""} ·{" "}
+                              {checkinLabel(passenger.checkin_state)} ·{" "}
+                              {passenger.waiver_signed
+                                ? "waiver signed"
+                                : "waiver required"}
+                            </Text>
+                          </Pressable>
+                          {action && canCheckin ? (
+                            <View style={styles.rowActions}>
+                              <Button
+                                disabled={busy}
+                                onPress={() => {
+                                  if (action.kind === "waiver") {
+                                    openWaiver(guest, passenger);
+                                    return;
+                                  }
+                                  if (action.kind === "pay") {
+                                    openPay(guest, passenger);
+                                    return;
+                                  }
+                                  void mutate(
+                                    `/staff/v1/passengers/${passenger.id}/checkin`,
+                                    {
+                                      state:
+                                        action.kind === "clear"
+                                          ? "cleared_to_board"
+                                          : action.kind === "board"
+                                            ? "boarded"
+                                            : "arrived",
+                                    },
+                                  );
+                                }}
+                              >
+                                {action.label}
+                              </Button>
                               <Button
                                 quiet
                                 disabled={busy}
-                                onPress={() => openPay(guest, passenger)}
+                                onPress={() => confirmNoShow(passenger)}
                               >
-                                Pay
+                                No-show
                               </Button>
-                            ) : null}
-                          </View>
-                        ) : null}
-                      </Pressable>
-                    ))}
+                              {guest.boarding_clearance === "due" &&
+                              canPay &&
+                              action.kind !== "pay" ? (
+                                <Button
+                                  quiet
+                                  disabled={busy}
+                                  onPress={() => openPay(guest, passenger)}
+                                >
+                                  Pay
+                                </Button>
+                              ) : null}
+                            </View>
+                          ) : null}
+                        </View>
+                      );
+                    })}
                   </View>
                 );
               })
@@ -2119,48 +2138,23 @@ export default function App() {
               <View style={styles.empty}>
                 <Text style={styles.cardTitle}>No assigned trips today</Text>
                 <Text style={styles.muted}>
-                  {can("manifest.read") && !showBoard
-                    ? "This phone view only lists trips assigned to you as crew. Open Zettaz Crew on a tablet for Day Board and walk-up."
-                    : "Only departures you are assigned to as crew appear here. Assign this person under Team & resources, or sign in as that guide or driver."}
+                  {todayRoleHint(profile?.role, showBoard)}
                 </Text>
               </View>
             ) : (
-              trips.map((trip) => {
-                const due = trip.guests.filter(
-                  (guest) => guest.boarding_clearance === "due",
-                ).length;
-                return (
-                  <Pressable
-                    style={styles.card}
+              <>
+                <TodayStrip trips={trips} />
+                <Text style={styles.muted}>
+                  {todayRoleHint(profile?.role, showBoard)}
+                </Text>
+                {trips.map((trip) => (
+                  <TripCard
                     key={trip.id}
+                    trip={trip}
                     onPress={() => setActive(trip)}
-                  >
-                    <Text style={styles.cardTitle}>{trip.product_name}</Text>
-                    <Text style={styles.muted}>
-                      {new Date(trip.starts_at).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}{" "}
-                      · {trip.assignment_roles.join(" · ")}
-                      {trip.trip_run_state
-                        ? ` · ${trip.trip_run_state.replace(/_/g, " ")}`
-                        : ""}
-                    </Text>
-                    <Text style={styles.muted}>
-                      {trip.guests.reduce(
-                        (sum, item) => sum + item.party_size,
-                        0,
-                      )}{" "}
-                      guests
-                      {due ? ` · ${due} balance due` : ""}
-                      {(trip.pickup_exceptions?.length ?? 0) > 0
-                        ? ` · ${trip.pickup_exceptions?.length} pickup gaps`
-                        : ""}
-                    </Text>
-                    <Text style={styles.link}>Open trip →</Text>
-                  </Pressable>
-                );
-              })
+                  />
+                ))}
+              </>
             )}
             <Button quiet disabled={busy} onPress={() => void load()}>
               Refresh
@@ -2168,6 +2162,21 @@ export default function App() {
           </>
         )}
       </ScrollView>
+      {footer}
+      <OptionSheet
+        title="Update trip status"
+        visible={statusOpen}
+        selected={active?.trip_run_state ?? undefined}
+        options={tripStatusChoices.map((item) => ({
+          value: item.value,
+          label: item.label,
+        }))}
+        onSelect={(state) => {
+          if (!active) return;
+          void mutate(`/crew/v1/departures/${active.id}/events`, { state });
+        }}
+        onClose={() => setStatusOpen(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -2255,7 +2264,6 @@ const styles = StyleSheet.create({
   buttonText: {
     color: "white",
     fontWeight: "700",
-    textTransform: "capitalize",
   },
   quietText: { color: "#075f59" },
   error: { color: "#b42318" },
@@ -2275,8 +2283,6 @@ const styles = StyleSheet.create({
   person: {
     borderTopColor: "#e5eeec",
     borderTopWidth: 1,
-    flexDirection: "row",
-    alignItems: "center",
     gap: 10,
     paddingTop: 12,
   },
@@ -2308,6 +2314,27 @@ const styles = StyleSheet.create({
   },
   legalLink: { color: "#087b72", fontWeight: "700" },
   version: { color: "#8aa0a4", fontSize: 12, textAlign: "center" },
+  flex: { flex: 1 },
+  select: {
+    alignItems: "center",
+    backgroundColor: "#f3f7f6",
+    borderColor: "#cbdad7",
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  selectLabel: { color: "#667b7f", fontSize: 13, fontWeight: "700" },
+  selectValue: { color: "#17353a", fontSize: 16, fontWeight: "800" },
+  signDock: {
+    backgroundColor: "white",
+    borderTopColor: "#dce7e4",
+    borderTopWidth: 1,
+    gap: 10,
+    padding: 16,
+  },
   scannerScreen: { flex: 1, backgroundColor: "#061f23" },
   camera: { flex: 1 },
   scannerOverlay: {

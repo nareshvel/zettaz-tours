@@ -15,7 +15,6 @@ import {
   ListFilter,
   Plus,
   Ship,
-  Trash2,
   UserRound,
   X,
 } from "lucide-react";
@@ -34,7 +33,6 @@ import {
   Field,
   Loading,
   Notice,
-  Status,
   TenantDateInput,
 } from "./common";
 
@@ -459,6 +457,11 @@ export function CatalogAssignmentsPanel({
 
   const [from, to] = rangeBounds(range, today, customFrom, customTo);
   const plannerWeekEnd = sundayOf(plannerWeekStart);
+  // Current week: hide Mon–yesterday. Past/future weeks keep the full Mon–Sun grid.
+  const plannerRangeFrom =
+    plannerWeekStart < today && plannerWeekEnd >= today
+      ? today
+      : plannerWeekStart;
 
   const departures = useResource<{ items: Departure[] }>(
     canAssign
@@ -469,7 +472,7 @@ export function CatalogAssignmentsPanel({
   );
   const plannerDepartures = useResource<{ items: Departure[] }>(
     canAssign && plannerOpen
-      ? `staff/v1/workspace/departures?from=${plannerWeekStart}&to=${plannerWeekEnd}&limit=100${
+      ? `staff/v1/workspace/departures?from=${plannerRangeFrom}&to=${plannerWeekEnd}&limit=100${
           productId ? `&productId=${productId}` : ""
         }`
       : null,
@@ -489,8 +492,18 @@ export function CatalogAssignmentsPanel({
 
   const boardDepartures = useMemo(() => {
     const items = departures.data?.items ?? [];
-    return [...items].sort((a, b) => a.starts_at.localeCompare(b.starts_at));
-  }, [departures.data]);
+    return [...items]
+      .filter((departure) => {
+        const day = localDateFromInstant(
+          departure.starts_at,
+          session.tenant.timezone,
+        );
+        // API date bounds are UTC midnight; keep only trips whose tenant-local
+        // calendar day falls in the selected range (no leftover past days).
+        return day >= from && day <= to;
+      })
+      .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+  }, [departures.data, from, to, session.tenant.timezone]);
 
   const boardAssignments = useMemo(() => {
     const list = assignments.data ?? [];
@@ -517,23 +530,37 @@ export function CatalogAssignmentsPanel({
         departure.starts_at,
         session.tenant.timezone,
       );
-      const bucket = map.get(day) ?? [];
+      if (day < from || day > to) continue;
+      const bucket = map.get(day);
+      if (!bucket) continue;
       bucket.push(departure);
-      map.set(day, bucket);
     }
     return map;
   }, [boardDepartures, from, to, session.tenant.timezone]);
 
   const plannerDayDepartures = useMemo(() => {
     const items = plannerDepartures.data?.items ?? [];
-    return [...items].sort((a, b) => a.starts_at.localeCompare(b.starts_at));
-  }, [plannerDepartures.data]);
+    return [...items]
+      .filter((departure) => {
+        const day = localDateFromInstant(
+          departure.starts_at,
+          session.tenant.timezone,
+        );
+        return day >= plannerRangeFrom && day <= plannerWeekEnd;
+      })
+      .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+  }, [
+    plannerDepartures.data,
+    plannerRangeFrom,
+    plannerWeekEnd,
+    session.tenant.timezone,
+  ]);
 
   const plannerAssignmentsByDeparture = useMemo(() => {
     const map = new Map<string, Assignment[]>();
     for (const item of assignments.data ?? []) {
       if (
-        item.local_date < plannerWeekStart ||
+        item.local_date < plannerRangeFrom ||
         item.local_date > plannerWeekEnd
       ) {
         continue;
@@ -543,11 +570,11 @@ export function CatalogAssignmentsPanel({
       map.set(item.departure_id, bucket);
     }
     return map;
-  }, [assignments.data, plannerWeekStart, plannerWeekEnd]);
+  }, [assignments.data, plannerRangeFrom, plannerWeekEnd]);
 
   const plannerDays = useMemo(
-    () => daysInRange(plannerWeekStart, plannerWeekEnd),
-    [plannerWeekStart, plannerWeekEnd],
+    () => daysInRange(plannerRangeFrom, plannerWeekEnd),
+    [plannerRangeFrom, plannerWeekEnd],
   );
 
   const scheduledProducts = products.filter(
@@ -847,47 +874,46 @@ export function CatalogAssignmentsPanel({
                         </p>
                       ) : (
                         <ul className="catalog-assignment-chips">
-                          {assigned.map((item) => (
-                            <li key={item.id}>
-                              <span
-                                className="catalog-assignment-chip-icon"
-                                aria-hidden
-                              >
-                                {item.crew_actor_id ? (
-                                  <UserRound size={14} />
-                                ) : (
-                                  <Ship size={14} />
-                                )}
-                              </span>
-                              <div>
-                                <strong>
-                                  {item.crew_name
-                                    ? item.crew_name
-                                    : item.resource_name}
-                                </strong>
-                                <small>
-                                  {label(item.assignment_role)}
-                                  {item.crew_actor_id ? " · Staff" : " · Fleet"}
-                                  {item.override_reason ? " · Override" : ""}
-                                </small>
-                              </div>
-                              <Status
-                                state={
-                                  item.override_reason ? "expiring" : "active"
+                          {assigned.map((item) => {
+                            const name = item.crew_name
+                              ? item.crew_name
+                              : item.resource_name;
+                            const kind = item.crew_actor_id ? "Staff" : "Fleet";
+                            const role = label(item.assignment_role);
+                            const title = [
+                              name,
+                              role,
+                              kind,
+                              item.override_reason ? "Override" : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ");
+                            return (
+                              <li
+                                key={item.id}
+                                className={
+                                  "catalog-assignment-badge" +
+                                  (item.crew_actor_id
+                                    ? " is-staff"
+                                    : " is-fleet") +
+                                  (item.override_reason ? " is-override" : "")
                                 }
-                              />
-                              <div className="row-actions">
+                                title={title}
+                              >
+                                <span className="catalog-assignment-badge-name">
+                                  {name}
+                                </span>
                                 <button
                                   type="button"
-                                  className="icon-button danger"
-                                  aria-label={`Remove ${item.assignment_role}`}
+                                  className="catalog-assignment-badge-remove"
+                                  aria-label={`Remove ${name} (${role})`}
                                   onClick={() => setPendingDelete(item)}
                                 >
-                                  <Trash2 size={15} />
+                                  <X size={12} />
                                 </button>
-                              </div>
-                            </li>
-                          ))}
+                              </li>
+                            );
+                          })}
                         </ul>
                       )}
                     </article>
@@ -907,7 +933,7 @@ export function CatalogAssignmentsPanel({
             setPlannerError(null);
             save.clear();
           }}
-          weekStart={plannerWeekStart}
+          weekStart={plannerRangeFrom}
           weekEnd={plannerWeekEnd}
           days={plannerDays}
           departures={plannerDayDepartures}
@@ -1122,9 +1148,9 @@ function AssignmentPlannerSheet({
         departure.starts_at,
         session.tenant.timezone,
       );
-      const bucket = map.get(day) ?? [];
+      const bucket = map.get(day);
+      if (!bucket) continue;
       bucket.push(departure);
-      map.set(day, bucket);
     }
     return map;
   }, [days, departures, session.tenant.timezone]);
@@ -1492,25 +1518,38 @@ function AssignmentPlannerSheet({
                                 </small>
                                 {assigned.length > 0 && (
                                   <ul className="assignment-planner-tour-chips">
-                                    {assigned.map((item) => (
-                                      <li key={item.id}>
-                                        <span>
-                                          {item.crew_name || item.resource_name}{" "}
-                                          · {label(item.assignment_role)}
-                                        </span>
-                                        <button
-                                          type="button"
-                                          className="icon-button danger"
-                                          aria-label="Remove assignment"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            onRemoveAssignment(item);
-                                          }}
+                                    {assigned.map((item) => {
+                                      const name =
+                                        item.crew_name || item.resource_name;
+                                      const role = label(item.assignment_role);
+                                      return (
+                                        <li
+                                          key={item.id}
+                                          className={
+                                            "catalog-assignment-badge" +
+                                            (item.crew_actor_id
+                                              ? " is-staff"
+                                              : " is-fleet")
+                                          }
+                                          title={`${name} · ${role}`}
                                         >
-                                          <Trash2 size={13} />
-                                        </button>
-                                      </li>
-                                    ))}
+                                          <span className="catalog-assignment-badge-name">
+                                            {name}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            className="catalog-assignment-badge-remove"
+                                            aria-label={`Remove ${name}`}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              onRemoveAssignment(item);
+                                            }}
+                                          >
+                                            <X size={12} />
+                                          </button>
+                                        </li>
+                                      );
+                                    })}
                                   </ul>
                                 )}
                               </article>

@@ -167,8 +167,8 @@ export class WorkspaceController {
       CASE WHEN d.starts_at<=clock_timestamp() THEN 0 ELSE GREATEST(0,d.capacity-d.committed-d.overbooked-COALESCE((SELECT SUM(h.seats) FROM holds h WHERE h.tenant_id=d.tenant_id AND h.departure_id=d.id AND NOT h.consumed AND h.expires_at>clock_timestamp()),0))::int END AS available
       FROM departures d JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id
       WHERE d.tenant_id=$1 AND ($2::uuid IS NULL OR d.id>$2) AND p.name ILIKE $3
-      AND ($10::uuid IS NOT NULL OR $6::date IS NULL OR d.starts_at >= $6::date)
-      AND ($10::uuid IS NOT NULL OR $7::date IS NULL OR d.starts_at < ($7::date + interval '1 day'))
+      AND ($10::uuid IS NOT NULL OR $6::date IS NULL OR d.local_date >= $6::date)
+      AND ($10::uuid IS NOT NULL OR $7::date IS NULL OR d.local_date <= $7::date)
       AND ($10::uuid IS NOT NULL OR $8::uuid IS NULL OR d.product_id=$8)
       AND ($10::uuid IS NOT NULL OR $9::text IS NULL OR p.availability_mode=$9)
       AND ($10::uuid IS NULL OR d.id=$10)

@@ -1600,6 +1600,7 @@ export function ProductDetail({
   session: Session;
   productId: string;
 }) {
+  const router = useRouter();
   const product = useResource<Product>(`admin/v1/products/${productId}`);
   const rules = useResource<AvailabilityRule[]>("admin/v1/availability-rules");
   const mutation = useMutation();
@@ -1614,7 +1615,6 @@ export function ProductDetail({
   const [confirmationMode, setConfirmationMode] = useState("instant");
   const [categories, setCategories] = useState<CategoryDraft[]>([]);
   const [periods, setPeriods] = useState<PeriodDraft[]>([]);
-  const [saved, setSaved] = useState("");
   const [error, setError] = useState("");
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [coverBusy, setCoverBusy] = useState(false);
@@ -1666,7 +1666,6 @@ export function ProductDetail({
   async function save(e: React.FormEvent) {
     e.preventDefault();
     if (!product.data) return;
-    setSaved("");
     setError("");
     try {
       const result = await mutation.run(
@@ -1692,10 +1691,7 @@ export function ProductDetail({
         "PATCH",
       );
       if (result) {
-        setSaved(
-          "Product saved. New bookings use these rates; confirmed prices stay frozen.",
-        );
-        product.reload();
+        router.push("/catalog");
       }
     } catch (err) {
       setError((err as Error).message);
@@ -2150,10 +2146,8 @@ export function ProductDetail({
                     </Empty>
                   )}
                 </section>
-                {(error || mutation.error || saved) && (
-                  <Notice error={Boolean(error || mutation.error)}>
-                    {error || mutation.error || saved}
-                  </Notice>
+                {(error || mutation.error) && (
+                  <Notice error={true}>{error || mutation.error}</Notice>
                 )}
                 <div className="editor-actions-bar">
                   <Link

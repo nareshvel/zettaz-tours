@@ -7,7 +7,6 @@ import {
   Alert,
   AppState,
   Linking,
-  Modal,
   Pressable,
   RefreshControl,
   SafeAreaView,
@@ -43,6 +42,7 @@ import {
 } from "./src/offline";
 import {
   allAboardLabel,
+  assignedToPickups,
   attributionPassenger,
   checkinLabel,
   clearanceLabel,
@@ -71,9 +71,11 @@ import {
 } from "./src/tablet";
 import {
   OptionSheet,
+  SignatureInk,
   TabBar,
   TodayStrip,
   TripCard,
+  TripTimer,
   stayChoiceLabel,
   stayChoices,
   todayRoleHint,
@@ -104,12 +106,6 @@ type Profile = {
 
 function roleLabel(role: string) {
   return role.replace(/_/g, " ");
-}
-
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  const letters = (parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "");
-  return (letters || "?").toUpperCase();
 }
 
 function Button({
@@ -172,7 +168,6 @@ export default function App() {
   const [recoverySent, setRecoverySent] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [rosterQuery, setRosterQuery] = useState("");
   const [startOpen, setStartOpen] = useState(false);
@@ -232,7 +227,6 @@ export default function App() {
     setTrips([]);
     setActive(null);
     setProfile(null);
-    setMenuOpen(false);
     setShowProfile(false);
     setPaying(null);
     setBoard(null);
@@ -647,7 +641,6 @@ export default function App() {
   async function signOut() {
     if ((await queuedCount()) > 0) {
       setShowProfile(true);
-      setMenuOpen(false);
       setQueueItems(await listCommands());
       setQueueOpen(true);
       setError(
@@ -963,6 +956,8 @@ export default function App() {
     setShowProfile(false);
     setActive(null);
     setFromBoard(false);
+    setStartOpen(false);
+    setRosterQuery("");
     setDock(tab === "board" ? "board" : "trips");
   }
   const footer = (
@@ -979,7 +974,13 @@ export default function App() {
         <Text style={styles.eyebrow}>
           {offlineMode ? "OFFLINE CREW" : "CONNECTED CREW"}
         </Text>
-        <Text style={styles.title} numberOfLines={1}>
+        <Text
+          style={[
+            styles.title,
+            active && !showProfile ? styles.titleTrip : null,
+          ]}
+          numberOfLines={2}
+        >
           {showProfile
             ? "My profile"
             : active
@@ -989,57 +990,6 @@ export default function App() {
                 : "Today"}
         </Text>
       </View>
-      <View style={styles.headerActions}>
-        <Pressable
-          accessibilityLabel="Account menu"
-          onPress={() => setMenuOpen(true)}
-          style={styles.avatar}
-        >
-          <Text style={styles.avatarText}>
-            {initials(profile?.actorName ?? "")}
-          </Text>
-        </Pressable>
-      </View>
-      <Modal
-        transparent
-        animationType="fade"
-        visible={menuOpen}
-        onRequestClose={() => setMenuOpen(false)}
-      >
-        <Pressable
-          style={styles.menuBackdrop}
-          onPress={() => setMenuOpen(false)}
-        >
-          <View style={styles.menuSheet}>
-            <Text style={styles.cardTitle}>
-              {profile?.actorName ?? "Account"}
-            </Text>
-            <Text style={styles.muted}>{profile?.actorEmail ?? ""}</Text>
-            <Pressable
-              style={styles.menuItem}
-              onPress={() => {
-                setMenuOpen(false);
-                setShowProfile(true);
-                setActive(null);
-                setSigning(null);
-                setScanning(false);
-                void refreshQueue();
-              }}
-            >
-              <Text style={styles.menuItemText}>My profile</Text>
-            </Pressable>
-            <Pressable
-              style={styles.menuItem}
-              onPress={() => {
-                setMenuOpen(false);
-                void signOut();
-              }}
-            >
-              <Text style={styles.menuItemDanger}>Sign out</Text>
-            </Pressable>
-          </View>
-        </Pressable>
-      </Modal>
     </View>
   );
 
@@ -1409,18 +1359,11 @@ export default function App() {
                 Sign here with your finger
               </Text>
             ) : (
-              signaturePoints.map((point, index) => (
-                <View
-                  key={index}
-                  style={[
-                    styles.signaturePoint,
-                    {
-                      left: point.x * padSize.width - 2,
-                      top: point.y * padSize.height - 2,
-                    },
-                  ]}
-                />
-              ))
+              <SignatureInk
+                points={signaturePoints}
+                width={padSize.width}
+                height={padSize.height}
+              />
             )}
           </View>
           <View style={styles.rowActions}>
@@ -1708,6 +1651,25 @@ export default function App() {
               </Button>
             </View>
           ) : null}
+          <Button
+            quiet
+            onPress={() =>
+              Alert.alert(
+                "Sign out?",
+                "You will need your staff email and password to sign in again.",
+                [
+                  { text: "Cancel", style: "cancel" },
+                  {
+                    text: "Sign out",
+                    style: "destructive",
+                    onPress: () => void signOut(),
+                  },
+                ],
+              )
+            }
+          >
+            Sign out
+          </Button>
           <Text style={styles.version}>Version {APP_VERSION}</Text>
         </ScrollView>
         {footer}
@@ -1769,55 +1731,63 @@ export default function App() {
           <ActivityIndicator />
         ) : active ? (
           <>
-            <Button
-              quiet
-              onPress={() => {
-                setActive(null);
-                setRosterQuery("");
-                setStartOpen(false);
-                setStartReason("");
-                if (fromBoard) {
-                  setDock("board");
-                  setFromBoard(false);
-                }
-              }}
-            >
-              {fromBoard ? "Back to board" : "Back to trips"}
-            </Button>
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>
-                {new Date(active.starts_at).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </Text>
+              <View style={styles.timeRow}>
+                <Text style={styles.tripClock}>
+                  {new Date(active.starts_at).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </Text>
+                <TripTimer startsAt={active.starts_at} />
+              </View>
+              <View style={styles.countsRow}>
+                <View style={styles.countPill}>
+                  <Text style={styles.countValue}>
+                    {active.boarded_guests ?? 0}
+                  </Text>
+                  <Text style={styles.countLabel}>Boarded</Text>
+                </View>
+                <View style={styles.countPill}>
+                  <Text style={styles.countValue}>
+                    {active.boarding_pending ?? 0}
+                  </Text>
+                  <Text style={styles.countLabel}>Pending</Text>
+                </View>
+                <View style={styles.countPill}>
+                  <Text style={styles.countValue}>
+                    {active.no_show_guests ?? 0}
+                  </Text>
+                  <Text style={styles.countLabel}>No-show</Text>
+                </View>
+              </View>
               <Text style={styles.muted}>
-                {active.assignment_roles.join(" · ")}
-                {active.trip_run_state
-                  ? ` · ${active.trip_run_state.replace(/_/g, " ")}`
+                {active.guests.reduce(
+                  (sum, guest) => sum + guest.party_size,
+                  0,
+                )}{" "}
+                guests
+                {active.guests.filter(
+                  (guest) => guest.boarding_clearance === "due",
+                ).length
+                  ? ` · ${active.guests.filter((guest) => guest.boarding_clearance === "due").length} balance due`
                   : ""}
+                {cruiseAboard ? ` · all aboard ${cruiseAboard}` : ""}
                 {active.operational_status &&
                 active.operational_status !== "open"
                   ? ` · ${active.operational_status.replace(/_/g, " ")}`
                   : ""}
               </Text>
-              {cruiseAboard ? (
-                <Text style={styles.muted}>All aboard {cruiseAboard}</Text>
-              ) : null}
-              <Text style={styles.muted}>
-                {active.boarded_guests ?? 0} boarded ·{" "}
-                {active.boarding_pending ?? 0} pending ·{" "}
-                {active.no_show_guests ?? 0} no-show
-              </Text>
               {canEvents ? (
                 <Pressable
-                  style={styles.select}
+                  style={styles.statusChip}
                   onPress={() => setStatusOpen(true)}
                 >
-                  <Text style={styles.selectLabel}>Trip status</Text>
-                  <Text style={styles.selectValue}>
+                  <View style={styles.statusDot} />
+                  <Text style={styles.statusChipText}>
                     {tripStatusLabel(active.trip_run_state)}
                   </Text>
+                  <Text style={styles.statusChipHint}>Change</Text>
                 </Pressable>
               ) : null}
               {!tripStarted(active) ? (
@@ -1879,9 +1849,11 @@ export default function App() {
                 </Text>
               )}
             </View>
-            {active.pickup_stops?.length || active.pickup_exceptions?.length ? (
+            {assignedToPickups(active.assignment_roles) &&
+            (active.pickup_stops?.length ||
+              active.pickup_exceptions?.length) ? (
               <View style={styles.card}>
-                <Text style={styles.section}>PICKUPS</Text>
+                <Text style={styles.section}>YOUR PICKUP RUN</Text>
                 {(active.pickup_stops ?? []).map((stop) => (
                   <View key={`${stop.booking_id}-${stop.sequence}`}>
                     <Text style={styles.personName}>
@@ -2235,6 +2207,7 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
   title: { color: "#17353a", fontSize: 28, fontWeight: "800" },
+  titleTrip: { fontSize: 20, lineHeight: 26 },
   section: {
     color: "#607477",
     fontSize: 12,
@@ -2328,6 +2301,41 @@ const styles = StyleSheet.create({
   },
   selectLabel: { color: "#667b7f", fontSize: 13, fontWeight: "700" },
   selectValue: { color: "#17353a", fontSize: 16, fontWeight: "800" },
+  timeRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+    justifyContent: "space-between",
+  },
+  tripClock: { color: "#17353a", fontSize: 22, fontWeight: "800" },
+  countsRow: { flexDirection: "row", gap: 8 },
+  countPill: {
+    backgroundColor: "#f3f7f6",
+    borderRadius: 12,
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  countValue: { color: "#17353a", fontSize: 18, fontWeight: "800" },
+  countLabel: { color: "#667b7f", fontSize: 11, fontWeight: "700" },
+  statusChip: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: "#e8f4f1",
+    borderRadius: 999,
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  statusDot: {
+    backgroundColor: "#087b72",
+    borderRadius: 4,
+    height: 8,
+    width: 8,
+  },
+  statusChipText: { color: "#075f59", fontSize: 14, fontWeight: "800" },
+  statusChipHint: { color: "#087b72", fontSize: 12, fontWeight: "700" },
   signDock: {
     backgroundColor: "white",
     borderTopColor: "#dce7e4",

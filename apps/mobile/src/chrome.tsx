@@ -1,6 +1,7 @@
 import { Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
 import { WEB } from "./config";
-import { type Trip } from "./field";
+import { tripCountdown, type Trip } from "./field";
 
 export function productCoverUri(coverPath?: string | null) {
   if (!coverPath) return null;
@@ -164,15 +165,22 @@ export function TripCard({
   onPress: () => void;
 }) {
   const cover = productCoverUri(trip.cover_path);
+  const [coverFailed, setCoverFailed] = useState(false);
   const due = trip.guests.filter(
     (guest) => guest.boarding_clearance === "due",
   ).length;
   const guests = trip.guests.reduce((sum, item) => sum + item.party_size, 0);
   const gaps = trip.pickup_exceptions?.length ?? 0;
+  const showPhoto = Boolean(cover) && !coverFailed;
   return (
     <Pressable style={styles.tripCard} onPress={onPress}>
-      {cover ? (
-        <Image source={{ uri: cover }} style={styles.tripCover} />
+      {showPhoto ? (
+        <Image
+          source={{ uri: cover! }}
+          style={styles.tripCover}
+          resizeMode="cover"
+          onError={() => setCoverFailed(true)}
+        />
       ) : (
         <View style={styles.tripCoverFallback}>
           <Text style={styles.tripCoverLetter}>
@@ -203,6 +211,69 @@ export function TripCard({
         </Text>
       </View>
     </Pressable>
+  );
+}
+
+export function TripTimer({ startsAt }: { startsAt: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, [startsAt]);
+  const clock = tripCountdown(startsAt, now);
+  return (
+    <View style={[styles.timer, clock.overdue ? styles.timerOverdue : null]}>
+      <Text
+        style={[
+          styles.timerText,
+          clock.overdue ? styles.timerTextOverdue : null,
+        ]}
+      >
+        {clock.label}
+      </Text>
+    </View>
+  );
+}
+
+export function SignatureInk({
+  points,
+  width,
+  height,
+}: {
+  points: { x: number; y: number }[];
+  width: number;
+  height: number;
+}) {
+  if (width < 2 || height < 2 || points.length < 2) return null;
+  return (
+    <>
+      {points.slice(1).map((point, index) => {
+        const prev = points[index]!;
+        const x1 = prev.x * width;
+        const y1 = prev.y * height;
+        const x2 = point.x * width;
+        const y2 = point.y * height;
+        const length = Math.hypot(x2 - x1, y2 - y1);
+        if (length < 0.5) return null;
+        const angle = Math.atan2(y2 - y1, x2 - x1);
+        return (
+          <View
+            key={index}
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              left: (x1 + x2) / 2 - length / 2,
+              top: (y1 + y2) / 2 - 1.5,
+              width: length,
+              height: 3,
+              backgroundColor: "#17353a",
+              borderRadius: 2,
+              transform: [{ rotate: `${angle}rad` }],
+            }}
+          />
+        );
+      })}
+    </>
   );
 }
 
@@ -299,12 +370,12 @@ const styles = StyleSheet.create({
     minHeight: 108,
     overflow: "hidden",
   },
-  tripCover: { height: "100%", minHeight: 108, width: 108 },
+  tripCover: { height: 108, width: 108 },
   tripCoverFallback: {
     alignItems: "center",
     backgroundColor: "#0e4f4a",
+    height: 108,
     justifyContent: "center",
-    minHeight: 108,
     width: 108,
   },
   tripCoverLetter: { color: "white", fontSize: 28, fontWeight: "800" },
@@ -324,4 +395,13 @@ const styles = StyleSheet.create({
   stripValue: { color: "#17353a", fontSize: 20, fontWeight: "800" },
   stripWarn: { color: "#b42318" },
   stripLabel: { color: "#667b7f", fontSize: 11, fontWeight: "700" },
+  timer: {
+    backgroundColor: "#e8f4f1",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  timerOverdue: { backgroundColor: "#fde8e6" },
+  timerText: { color: "#087b72", fontSize: 12, fontWeight: "800" },
+  timerTextOverdue: { color: "#b42318" },
 });

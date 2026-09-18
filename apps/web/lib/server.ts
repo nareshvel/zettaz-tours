@@ -79,6 +79,15 @@ export async function upstream(
     },
   });
 }
+
+/** Allowlisted catalog/logo files. Native Image cannot send the workspace cookie. */
+export async function fetchPublicUpload(relativePath: string) {
+  return fetch(apiBase() + "/uploads/" + relativePath, {
+    redirect: "error",
+    cache: "no-store",
+    signal: AbortSignal.timeout(15000),
+  });
+}
 export function unavailable() {
   return Response.json(
     {

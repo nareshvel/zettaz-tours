@@ -225,6 +225,31 @@ export function tripStarted(trip: Trip) {
   );
 }
 
+export function assignedToPickups(roles: string[]) {
+  return roles.some((role) =>
+    /driver|skipper|pickup/i.test(role.replace(/[_/]/g, " ")),
+  );
+}
+
+export function tripCountdown(startsAt: string, now = Date.now()) {
+  const start = new Date(startsAt).getTime();
+  if (!Number.isFinite(start)) return { label: "—", overdue: false };
+  const diff = start - now;
+  const abs = Math.abs(diff);
+  const mins = Math.round(abs / 60000);
+  if (mins < 1)
+    return {
+      label: diff >= 0 ? "Starting" : "Just started",
+      overdue: diff < 0,
+    };
+  const hours = Math.floor(mins / 60);
+  const rest = mins % 60;
+  const clock = hours > 0 ? `${hours}h ${rest}m` : `${mins}m`;
+  return diff >= 0
+    ? { label: `${clock} left`, overdue: false }
+    : { label: `${clock} ago`, overdue: true };
+}
+
 const checkinLabels: Record<string, string> = {
   not_arrived: "Not arrived",
   arrived: "Arrived",

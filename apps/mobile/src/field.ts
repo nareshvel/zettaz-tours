@@ -171,7 +171,12 @@ export type BoardItem = {
   cover_path?: string | null;
   categories?: PartyCategory[];
   capacity: number;
+  capacity_adult?: number;
+  capacity_child?: number | null;
   committed: number;
+  available?: number;
+  available_adults?: number;
+  available_children?: number | null;
   confirmed_guests: number;
   boarded_guests: number;
   boarding_pending: number;
@@ -239,7 +244,17 @@ export const FALLBACK_CATEGORIES: PartyCategory[] = [
 ];
 
 export function occupancyLabel(item: BoardItem) {
-  return `${item.committed}/${item.capacity} seats · ${item.confirmed_guests} guests`;
+  const available =
+    item.available ?? Math.max(0, item.capacity - item.committed);
+  const availableAdults = item.available_adults ?? available;
+  const availableChildren = item.available_children ?? null;
+  let remaining = `${available} occupancy · ${availableAdults} adult place${availableAdults === 1 ? "" : "s"} left`;
+  if (available <= 0) remaining = "Sold out";
+  else if (availableAdults <= 0 && available > 0)
+    remaining = `${available} occupancy left · sold out for adults`;
+  else if (availableChildren != null && availableChildren <= 0)
+    remaining = `${availableAdults} adult place${availableAdults === 1 ? "" : "s"} left · no child places`;
+  return `${item.committed}/${item.capacity} · ${remaining} · ${item.confirmed_guests} guests`;
 }
 
 export function operationalLabel(status?: string) {

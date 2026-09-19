@@ -17,6 +17,7 @@ import {
   id,
   Quote,
 } from "../../../packages/shared/src/contracts";
+import { resolveOccupancyClass } from "../../../packages/shared/src/occupancy";
 import { Database, record, Tx } from "./database";
 import { Access, CurrentActor, keySchema, parse } from "./http";
 import { tenant } from "./tenant";
@@ -75,20 +76,40 @@ export class InventoryService {
     const {
       rows: [r],
     } = await tx.query(
-      `SELECT d.capacity,d.committed,d.overbooked,d.starts_at,d.operational_status,
-      GREATEST(0,d.capacity-d.committed-d.overbooked-COALESCE((SELECT SUM(h.seats) FROM holds h WHERE h.tenant_id=d.tenant_id AND h.departure_id=d.id AND NOT h.consumed AND h.expires_at>clock_timestamp()),0))::int AS available
-      FROM departures d WHERE d.tenant_id=$1 AND d.id=$2`,
+      `SELECT d.capacity,d.capacity_adult,d.capacity_child,d.committed,d.overbooked,
+      d.committed_adults,d.overbooked_adults,d.committed_children,d.overbooked_children,
+      d.starts_at,d.operational_status,
+      GREATEST(0,d.capacity-d.committed-d.overbooked-COALESCE(h.seats,0))::int AS available,
+      GREATEST(0,d.capacity_adult-d.committed_adults-d.overbooked_adults-COALESCE(h.adults,0))::int AS available_adults,
+      CASE WHEN d.capacity_child IS NULL THEN NULL
+           ELSE GREATEST(0,d.capacity_child-d.committed_children-d.overbooked_children-COALESCE(h.children,0))::int
+      END AS available_children
+      FROM departures d
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM(seats),0)::int AS seats,
+               COALESCE(SUM(adult_seats),0)::int AS adults,
+               COALESCE(SUM(child_seats),0)::int AS children
+          FROM holds
+         WHERE tenant_id=d.tenant_id AND departure_id=d.id
+           AND NOT consumed AND expires_at>clock_timestamp()
+      ) h ON true
+      WHERE d.tenant_id=$1 AND d.id=$2`,
       [actor.tenantId, departureId],
     );
     if (!r) throw new NotFoundException();
     const pastStart = new Date(r.starts_at).getTime() <= Date.now();
+    const closed =
+      r.operational_status !== "open" ||
+      (pastStart && !options?.allowAfterSchedule);
     return {
       ...r,
-      available:
-        r.operational_status !== "open" ||
-        (pastStart && !options?.allowAfterSchedule)
-          ? 0
-          : r.available,
+      available: closed ? 0 : r.available,
+      available_adults: closed ? 0 : r.available_adults,
+      available_children: closed
+        ? r.available_children == null
+          ? null
+          : 0
+        : r.available_children,
     };
   }
   async hold(tx: Tx, actor: Actor, holdId: string) {
@@ -111,6 +132,8 @@ export class InventoryService {
     const dep = await this.departure(tx, actor, departureId);
     const product = await this.catalog.definition(tx, actor, dep.product_id);
     let seats = 0;
+    let adultSeats = 0;
+    let childSeats = 0;
     const lines: Quote["lines"] = [];
     for (const [category, quantity] of Object.entries(party)) {
       const definition = product.definition.categories.find(
@@ -126,7 +149,10 @@ export class InventoryService {
           r.endDate >= dep.local_day,
       );
       if (!rate) throw new BadRequestException("No applicable seasonal rate");
-      seats += definition.countsTowardCapacity ? quantity : 0;
+      const occupancyClass = resolveOccupancyClass(definition);
+      if (definition.countsTowardCapacity) seats += quantity;
+      if (occupancyClass === "adult") adultSeats += quantity;
+      if (occupancyClass === "child") childSeats += quantity;
       lines.push({
         category,
         quantity,
@@ -181,7 +207,58 @@ export class InventoryService {
       quote.totalMinor > 1_000_000_000_000
     )
       throw new BadRequestException("Booking amount exceeds supported range");
-    return { quote, seats };
+    return { quote, seats, adultSeats, childSeats };
+  }
+  ordinaryFits(
+    free: {
+      available: number;
+      available_adults: number;
+      available_children: number | null;
+    },
+    seats: number,
+    adultSeats: number,
+    childSeats: number,
+  ) {
+    if (seats > free.available) return false;
+    if (adultSeats > free.available_adults) return false;
+    if (free.available_children != null && childSeats > free.available_children)
+      return false;
+    return true;
+  }
+  async adjustPools(
+    tx: Tx,
+    actor: Actor,
+    departureId: string,
+    pool: "committed" | "overbooked",
+    seats: number,
+    adultSeats: number,
+    childSeats: number,
+    options?: { ordinaryCheck?: boolean; startGuard?: string },
+  ) {
+    const startGuard = options?.startGuard ?? "";
+    if (pool === "overbooked") {
+      const { rowCount } = await tx.query(
+        `UPDATE departures
+            SET overbooked=overbooked+$3,
+                overbooked_adults=overbooked_adults+$4,
+                overbooked_children=overbooked_children+$5
+          WHERE tenant_id=$1 AND id=$2${startGuard}`,
+        [actor.tenantId, departureId, seats, adultSeats, childSeats],
+      );
+      return rowCount;
+    }
+    const check = options?.ordinaryCheck
+      ? ` AND committed+$3<=capacity AND committed_adults+$4<=capacity_adult AND (capacity_child IS NULL OR committed_children+$5<=capacity_child)`
+      : "";
+    const { rowCount } = await tx.query(
+      `UPDATE departures
+          SET committed=committed+$3,
+              committed_adults=committed_adults+$4,
+              committed_children=committed_children+$5
+        WHERE tenant_id=$1 AND id=$2${check}${startGuard}`,
+      [actor.tenantId, departureId, seats, adultSeats, childSeats],
+    );
+    return rowCount;
   }
   create(
     actor: Actor,
@@ -218,7 +295,7 @@ export class InventoryService {
         throw new ConflictException("Departure has already started");
       if (dep.operational_status !== "open")
         throw new ConflictException("Departure is not available for sale");
-      const { quote, seats } = await this.price(
+      const { quote, seats, adultSeats, childSeats } = await this.price(
         tx,
         actor,
         data.departureId,
@@ -227,14 +304,14 @@ export class InventoryService {
       const free = await this.availability(tx, actor, data.departureId, {
         allowAfterSchedule: options?.allowAfterSchedule,
       });
-      if (seats > free.available)
+      if (!this.ordinaryFits(free, seats, adultSeats, childSeats))
         throw new ConflictException("Insufficient seats");
       const holdId = randomUUID();
       const {
         rows: [hold],
       } = await tx.query(
-        `INSERT INTO holds(tenant_id,id,departure_id,actor_id,party,seats,quote,expires_at)
-        VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp()+$8*interval '1 second') RETURNING expires_at`,
+        `INSERT INTO holds(tenant_id,id,departure_id,actor_id,party,seats,adult_seats,child_seats,quote,expires_at)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,clock_timestamp()+$10*interval '1 second') RETURNING expires_at`,
         [
           actor.tenantId,
           holdId,
@@ -242,6 +319,8 @@ export class InventoryService {
           actor.actorId,
           data.party,
           seats,
+          adultSeats,
+          childSeats,
           quote,
           settings.config.holdSeconds,
         ],
@@ -281,14 +360,16 @@ export class InventoryService {
         throw new ConflictException("Departure has already started");
       if (dep.operational_status !== "open")
         throw new ConflictException("Departure is not available for sale");
-      const { quote, seats } = await this.price(
+      const { quote, seats, adultSeats, childSeats } = await this.price(
         tx,
         actor,
         data.departureId,
         data.party,
       );
+      if ((settings.config.overbookPolicy ?? "authorized") === "off")
+        throw new ConflictException("Overbooking is turned off for this tenant");
       const free = await this.availability(tx, actor, data.departureId);
-      if (seats <= free.available)
+      if (this.ordinaryFits(free, seats, adultSeats, childSeats))
         throw new BadRequestException(
           "Ordinary capacity is available; create a standard hold",
         );
@@ -296,8 +377,8 @@ export class InventoryService {
       const {
         rows: [hold],
       } = await tx.query(
-        `INSERT INTO holds(tenant_id,id,departure_id,actor_id,party,seats,quote,expires_at,overbook_authorized_by,overbook_reason)
-         VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp()+$8*interval '1 second',$4,$9) RETURNING expires_at`,
+        `INSERT INTO holds(tenant_id,id,departure_id,actor_id,party,seats,adult_seats,child_seats,quote,expires_at,overbook_authorized_by,overbook_reason)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,clock_timestamp()+$10*interval '1 second',$4,$11) RETURNING expires_at`,
         [
           actor.tenantId,
           holdId,
@@ -305,6 +386,8 @@ export class InventoryService {
           actor.actorId,
           data.party,
           seats,
+          adultSeats,
+          childSeats,
           quote,
           settings.config.holdSeconds,
           data.reason,
@@ -384,15 +467,16 @@ export class InventoryService {
     const startGuard = options?.allowAfterSchedule
       ? ""
       : " AND starts_at>clock_timestamp()";
-    const { rowCount } = authorized
-      ? await tx.query(
-          `UPDATE departures SET overbooked=overbooked+$3 WHERE tenant_id=$1 AND id=$2${startGuard}`,
-          [actor.tenantId, hold.departure_id, hold.seats],
-        )
-      : await tx.query(
-          `UPDATE departures SET committed=committed+$3 WHERE tenant_id=$1 AND id=$2 AND committed+$3<=capacity${startGuard}`,
-          [actor.tenantId, hold.departure_id, hold.seats],
-        );
+    const rowCount = await this.adjustPools(
+      tx,
+      actor,
+      hold.departure_id,
+      authorized ? "overbooked" : "committed",
+      hold.seats,
+      Number(hold.adult_seats ?? 0),
+      Number(hold.child_seats ?? 0),
+      { ordinaryCheck: !authorized, startGuard },
+    );
     if (!rowCount) throw new ConflictException("Departure unavailable");
     await tx.query(
       "UPDATE holds SET consumed=true WHERE tenant_id=$1 AND id=$2",

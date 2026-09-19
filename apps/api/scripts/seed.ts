@@ -234,6 +234,7 @@ function config(currency: string) {
     taxBasisPoints: 1500,
     allowUnresolvedPickup: false,
     allowAmendmentBalance: true,
+    overbookPolicy: "authorized" as const,
     manualPaymentMethods: [
       "cash",
       "card",

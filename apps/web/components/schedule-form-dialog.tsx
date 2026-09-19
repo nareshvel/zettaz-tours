@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { AvailabilityRule, Product, Session } from "@/lib/types";
-import { modeLabel, weekdayLabels } from "@/lib/types";
+import { occupancyCaption, modeLabel, weekdayLabels } from "@/lib/types";
 import { money, priceFromMinor, useMutation, useResource } from "@/lib/client";
 import { Field, FormDialog, Notice, TenantDateInput } from "./common";
 
@@ -124,6 +124,12 @@ export function ScheduleFormDialog({
     [end, setEnd] = useState(() => shiftDay(today, 89)),
     [times, setTimes] = useState<string[]>(["09:00"]),
     [capacity, setCapacity] = useState(""),
+    [adultCapacity, setAdultCapacity] = useState(""),
+    [childCapacity, setChildCapacity] = useState(""),
+    [fleetUnits, setFleetUnits] = useState("1"),
+    [adultPerUnit, setAdultPerUnit] = useState(""),
+    [occupancyPerUnit, setOccupancyPerUnit] = useState(""),
+    [childPerUnit, setChildPerUnit] = useState(""),
     [selectedDays, setSelectedDays] = useState<Set<string>>(
       () =>
         new Set(
@@ -141,6 +147,30 @@ export function ScheduleFormDialog({
       setEnd(rule.end_date);
       setTimes(rule.times.length ? rule.times : ["09:00"]);
       setCapacity(rule.capacity != null ? String(rule.capacity) : "");
+      setAdultCapacity(
+        rule.capacity_adult != null
+          ? String(rule.capacity_adult)
+          : rule.capacity != null
+            ? String(rule.capacity)
+            : "",
+      );
+      setChildCapacity(
+        rule.capacity_child != null ? String(rule.capacity_child) : "",
+      );
+      setFleetUnits("1");
+      setOccupancyPerUnit(
+        rule.capacity != null ? String(rule.capacity) : "",
+      );
+      setAdultPerUnit(
+        rule.capacity_adult != null
+          ? String(rule.capacity_adult)
+          : rule.capacity != null
+            ? String(rule.capacity)
+            : "",
+      );
+      setChildPerUnit(
+        rule.capacity_child != null ? String(rule.capacity_child) : "",
+      );
       setSelectedDays(selectedDaysFromRule(rule));
       setMonthCursor(rule.start_date.slice(0, 7));
       return;
@@ -151,6 +181,12 @@ export function ScheduleFormDialog({
     setEnd(shiftDay(today, 89));
     setTimes(["09:00"]);
     setCapacity("");
+    setAdultCapacity("");
+    setChildCapacity("");
+    setFleetUnits("1");
+    setAdultPerUnit("");
+    setOccupancyPerUnit("");
+    setChildPerUnit("");
     setSelectedDays(
       new Set(paintWeekdays(today, shiftDay(today, 89), [1, 2, 3, 4, 5, 6, 7])),
     );
@@ -216,7 +252,50 @@ export function ScheduleFormDialog({
     return left.every((value, index) => value === right[index]);
   }
 
+  function occupancyPayload() {
+    return {
+      capacity: Number(capacity),
+      capacityAdult: Number(adultCapacity),
+      capacityChild: childCapacity === "" ? null : Number(childCapacity),
+    };
+  }
+
+  function applyFleetHelper(next?: {
+    fleetUnits?: string;
+    adultPerUnit?: string;
+    occupancyPerUnit?: string;
+    childPerUnit?: string;
+  }) {
+    const units = Math.max(1, Number(next?.fleetUnits ?? fleetUnits) || 1);
+    const adultEach = next?.adultPerUnit ?? adultPerUnit;
+    const occupancyEach = next?.occupancyPerUnit ?? occupancyPerUnit;
+    const childEach = next?.childPerUnit ?? childPerUnit;
+    if (!adultEach && !occupancyEach && !childEach) return;
+    const adult =
+      adultEach !== "" ? Number(adultEach) * units : Number.NaN;
+    const child =
+      childEach === "" ? null : Number(childEach) * units;
+    const occupancy =
+      occupancyEach !== ""
+        ? Number(occupancyEach) * units
+        : Number.isFinite(adult) && child != null
+          ? adult + child
+          : Number.isFinite(adult)
+            ? adult
+            : child != null
+              ? child
+              : Number.NaN;
+    if (Number.isFinite(occupancy) && occupancy > 0)
+      setCapacity(String(occupancy));
+    if (Number.isFinite(adult) && adult > 0) setAdultCapacity(String(adult));
+    if (childEach !== "")
+      setChildCapacity(
+        child == null || !Number.isFinite(child) ? "" : String(child),
+      );
+  }
+
   async function submit() {
+    const occupancy = occupancyPayload();
     if (isEdit) {
       if (!rule?.version || !name.trim() || editDisabled) return;
       const { weekdays, blackoutDates } = deriveWeekdaysAndBlackouts(
@@ -234,7 +313,9 @@ export function ScheduleFormDialog({
           startDate: start,
           endDate: end,
           localTimes: uniqueTimes,
-          capacity: Number(capacity),
+          capacity: occupancy.capacity,
+          capacityAdult: occupancy.capacityAdult,
+          capacityChild: occupancy.capacityChild,
           weekdays,
           blackoutDates,
         },
@@ -255,7 +336,9 @@ export function ScheduleFormDialog({
       startDate: start,
       endDate: end,
       localTimes: uniqueTimes,
-      capacity: Number(capacity),
+      capacity: occupancy.capacity,
+      capacityAdult: occupancy.capacityAdult,
+      capacityChild: occupancy.capacityChild,
       weekdays,
       blackoutDates,
     });
@@ -270,6 +353,8 @@ export function ScheduleFormDialog({
     rule.start_date === start &&
     rule.end_date === end &&
     String(rule.capacity ?? "") === capacity &&
+    String(rule.capacity_adult ?? rule.capacity ?? "") === adultCapacity &&
+    String(rule.capacity_child ?? "") === childCapacity &&
     sameList(rule.times, uniqueTimes) &&
     sameList([...originalDays].sort(), [...selectedDays].sort());
   const createDisabled =
@@ -277,6 +362,7 @@ export function ScheduleFormDialog({
     !name.trim() ||
     !product ||
     !capacity ||
+    !adultCapacity ||
     !uniqueTimes.length ||
     !operatingDays.length ||
     spanDays > 365;
@@ -284,6 +370,7 @@ export function ScheduleFormDialog({
     mutation.busy ||
     !name.trim() ||
     !capacity ||
+    !adultCapacity ||
     !uniqueTimes.length ||
     !operatingDays.length ||
     spanDays > 365 ||
@@ -311,14 +398,15 @@ export function ScheduleFormDialog({
     <FormDialog
       open={open}
       title={isEdit ? "Edit schedule" : "Add schedule"}
-      description={
+      tip={
         isEdit
           ? "Changes update this rule and regenerate upcoming empty departures. Departures with active bookings or holds are protected."
-          : "Name the rule, pick the tour and seats, then paint the days it runs."
+          : "Name the rule, pick the tour and occupancy, then paint the days it runs."
       }
       className="schedule-form-dialog"
       busy={mutation.busy}
       error={mutation.error}
+      onErrorDismiss={mutation.clear}
       submitLabel={
         mutation.busy
           ? isEdit
@@ -332,16 +420,16 @@ export function ScheduleFormDialog({
       onClose={onClose}
       onSubmit={submit}
     >
-      <Field label="Schedule name">
-        <input
-          required
-          maxLength={120}
-          placeholder="e.g. Morning shared"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-      </Field>
-      <div className="form-grid schedule-modal-pair">
+      <div className="schedule-name-tour">
+        <Field label="Schedule name">
+          <input
+            required
+            maxLength={120}
+            placeholder="e.g. Morning shared"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </Field>
         <Field label="Tour">
           {isEdit ? (
             <input readOnly disabled value={tourLabel} />
@@ -353,6 +441,8 @@ export function ScheduleFormDialog({
               onChange={(e) => {
                 setProduct(e.target.value);
                 setCapacity("");
+                setAdultCapacity("");
+                setChildCapacity("");
               }}
             >
               <option value="">Choose a tour</option>
@@ -364,23 +454,6 @@ export function ScheduleFormDialog({
               ))}
             </select>
           )}
-        </Field>
-        <Field
-          label="Seat capacity"
-          hint={
-            isEdit
-              ? "Applies to upcoming empty departures. Cannot go below seats already sold."
-              : "Suggested from an existing schedule—confirm before saving."
-          }
-        >
-          <input
-            type="number"
-            required
-            min={1}
-            max={10000}
-            value={capacity}
-            onChange={(e) => setCapacity(e.target.value)}
-          />
         </Field>
       </div>
       {!isEdit && selected && (
@@ -399,6 +472,123 @@ export function ScheduleFormDialog({
       {isEdit && rule?.option_name ? (
         <p className="muted schedule-tour-meta">{rule.option_name}</p>
       ) : null}
+      <div className="schedule-fleet-grid">
+        <Field
+          label="Units on this run"
+          tip="Tuk-tuks, boats, buses, jetskis, kayaks, or any other unit you run together. Fills occupancy totals below (units × per unit). Example: 18 tuk-tuks × 4 adults + 2 children → 72 / 108 / 36. You can still edit those totals. Fleet assignments stay separate."
+        >
+          <input
+            type="number"
+            min={1}
+            max={500}
+            value={fleetUnits}
+            onChange={(e) => {
+              const value = e.target.value;
+              setFleetUnits(value);
+              applyFleetHelper({ fleetUnits: value });
+            }}
+          />
+        </Field>
+        <Field
+          label="Occupancy / unit"
+          tip="All counting guests on one unit. Multiplied into Maximum occupancy. If left blank, occupancy is adults + children per unit."
+        >
+          <input
+            type="number"
+            min={1}
+            max={1000}
+            value={occupancyPerUnit}
+            onChange={(e) => {
+              const value = e.target.value;
+              setOccupancyPerUnit(value);
+              applyFleetHelper({ occupancyPerUnit: value });
+            }}
+          />
+        </Field>
+        <Field
+          label="Adults / unit"
+          tip="Adult places on one unit. Multiplied into Adult capacity below."
+        >
+          <input
+            type="number"
+            min={1}
+            max={1000}
+            value={adultPerUnit}
+            onChange={(e) => {
+              const value = e.target.value;
+              setAdultPerUnit(value);
+              applyFleetHelper({ adultPerUnit: value });
+            }}
+          />
+        </Field>
+        <Field
+          label="Child seats / unit"
+          tip="Leave blank for glass-bottom leftover occupancy. Set when child seats cannot replace adult seats; fills Child capacity below."
+        >
+          <input
+            type="number"
+            min={0}
+            max={1000}
+            value={childPerUnit}
+            onChange={(e) => {
+              const value = e.target.value;
+              setChildPerUnit(value);
+              applyFleetHelper({ childPerUnit: value });
+            }}
+          />
+        </Field>
+      </div>
+      <div className="schedule-occupancy-grid">
+        <Field
+          label="Maximum occupancy"
+          tip={
+            isEdit
+              ? "All counting guests. Cannot go below places already sold. Filled from the units row; change if needed."
+              : "Adults plus children who count toward capacity. Filled from the units row; change if this run is different."
+          }
+        >
+          <input
+            type="number"
+            required
+            min={1}
+            max={10000}
+            value={capacity}
+            onChange={(e) => setCapacity(e.target.value)}
+          />
+        </Field>
+        <Field
+          label="Adult capacity"
+          tip="Hard ceiling on adult-class guests. Extra occupancy may still be children. Filled from the units row; change if this run is different."
+        >
+          <input
+            type="number"
+            required
+            min={1}
+            max={10000}
+            value={adultCapacity}
+            onChange={(e) => setAdultCapacity(e.target.value)}
+          />
+        </Field>
+        <Field
+          label="Child capacity (optional)"
+          tip="Leave blank if children may fill leftover occupancy (glass-bottom style). Set a number when child seats cannot replace adult seats."
+        >
+          <input
+            type="number"
+            min={0}
+            max={10000}
+            value={childCapacity}
+            onChange={(e) => setChildCapacity(e.target.value)}
+          />
+        </Field>
+      </div>
+      <p className="muted">
+        {occupancyCaption({
+          capacity: Number(capacity) || null,
+          capacityAdult: Number(adultCapacity) || null,
+          capacityChild: childCapacity === "" ? null : Number(childCapacity),
+        })}
+      </p>
       <SectionLabel>Dates & times</SectionLabel>
       <div className="schedule-modal-dates">
         <TenantDateInput

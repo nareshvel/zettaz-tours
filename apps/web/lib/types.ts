@@ -3,7 +3,16 @@ import type {
   ProductInput,
   Quote,
 } from "../../../packages/shared/src/contracts";
+import {
+  occupancyCaption,
+  occupancyRemainingCopy,
+} from "../../../packages/shared/src/occupancy";
 export type { TenantConfig, ProductInput, Quote };
+export {
+  occupancyCaption,
+  occupancyRemainingCopy,
+  defaultOccupancyClass,
+} from "../../../packages/shared/src/occupancy";
 export {
   EMERGENCY_RELATIONSHIP_OPTIONS,
   EMERGENCY_RELATIONSHIP_OTHER,
@@ -71,6 +80,8 @@ export type AvailabilityRule = {
   end_date: string;
   weekdays: number[];
   capacity: number | null;
+  capacity_adult?: number | null;
+  capacity_child?: number | null;
   timezone: string;
   minimum_notice_minutes: number;
   cutoff_minutes: number;
@@ -85,6 +96,8 @@ export type AvailabilityRule = {
     id: string;
     starts_at: string;
     capacity: number;
+    capacity_adult?: number;
+    capacity_child?: number | null;
     committed: number;
     available: number;
     status: string;
@@ -140,15 +153,72 @@ export type Departure = {
   duration_minutes: number | null;
   starts_at: string;
   capacity: number;
+  capacity_adult?: number;
+  capacity_child?: number | null;
   committed: number;
+  committed_adults?: number;
+  committed_children?: number;
   overbooked?: number;
   held?: number;
   available: number;
+  available_adults?: number;
+  available_children?: number | null;
   status?: string;
   operational_status?: "open" | "weather_hold" | "closed";
   operational_version?: number;
   categories: ProductInput["categories"];
 };
+export function occupancyLabel(input: {
+  capacity?: number | null;
+  capacity_adult?: number | null;
+  capacity_child?: number | null;
+}) {
+  return occupancyCaption({
+    capacity: input.capacity,
+    capacityAdult: input.capacity_adult,
+    capacityChild: input.capacity_child,
+  });
+}
+export function occupancyFillCopy(input: {
+  committed: number;
+  capacity: number;
+  held?: number;
+}) {
+  const held = input.held ?? 0;
+  return `${input.committed} of ${input.capacity} occupancy${held > 0 ? ` · ${held} held` : ""}`;
+}
+
+export function occupancyPressure(input: {
+  committed: number;
+  capacity: number;
+  available?: number;
+  available_adults?: number;
+}) {
+  if (input.capacity <= 0) return "open" as const;
+  if (input.available != null && input.available <= 0) return "full" as const;
+  if (
+    input.available_adults != null &&
+    input.available_adults <= 0 &&
+    (input.available ?? 1) > 0
+  )
+    return "tight" as const;
+  const share = input.committed / input.capacity;
+  if (share >= 1) return "full" as const;
+  if (share >= 0.8) return "tight" as const;
+  if (share >= 0.5) return "filling" as const;
+  return "open" as const;
+}
+export function remainingPlacesCopy(input: {
+  available: number;
+  available_adults?: number;
+  available_children?: number | null;
+}) {
+  return occupancyRemainingCopy({
+    available: input.available,
+    availableAdults: input.available_adults ?? input.available,
+    availableChildren: input.available_children ?? null,
+  });
+}
 export type Reservation = {
   id: string;
   departure_id: string;
@@ -370,6 +440,11 @@ export type DispatchRow = {
   id: string;
   starts_at: string;
   capacity: number;
+  capacity_adult?: number;
+  capacity_child?: number | null;
+  available: number;
+  available_adults?: number;
+  available_children?: number | null;
   committed: number;
   product_name: string;
   confirmed_bookings: number;

@@ -159,12 +159,16 @@ export class WorkspaceController {
     const q = parse(departureQuerySchema, raw);
     return this.db.transaction(actor, async (tx) => {
       const { rows } = await tx.query(
-        `SELECT d.id,d.product_id,d.starts_at,d.capacity,d.status,d.operational_status,d.operational_version,(d.committed+d.overbooked)::int AS committed,d.overbooked,p.name AS product_name,
+        `SELECT d.id,d.product_id,d.starts_at,d.capacity,d.capacity_adult,d.capacity_child,d.status,d.operational_status,d.operational_version,(d.committed+d.overbooked)::int AS committed,d.overbooked,p.name AS product_name,
       p.availability_mode,p.product_kind,
       p.definition->>'optionName' AS option_name,p.definition->'categories' AS categories,
       NULLIF(p.definition->>'durationMinutes','')::int AS duration_minutes,
       COALESCE((SELECT SUM(h.seats) FROM holds h WHERE h.tenant_id=d.tenant_id AND h.departure_id=d.id AND NOT h.consumed AND h.expires_at>clock_timestamp()),0)::int AS held,
-      CASE WHEN d.starts_at<=clock_timestamp() THEN 0 ELSE GREATEST(0,d.capacity-d.committed-d.overbooked-COALESCE((SELECT SUM(h.seats) FROM holds h WHERE h.tenant_id=d.tenant_id AND h.departure_id=d.id AND NOT h.consumed AND h.expires_at>clock_timestamp()),0))::int END AS available
+      (d.committed_adults+d.overbooked_adults)::int AS committed_adults,
+      (d.committed_children+d.overbooked_children)::int AS committed_children,
+      CASE WHEN d.starts_at<=clock_timestamp() THEN 0 ELSE GREATEST(0,d.capacity-d.committed-d.overbooked-COALESCE((SELECT SUM(h.seats) FROM holds h WHERE h.tenant_id=d.tenant_id AND h.departure_id=d.id AND NOT h.consumed AND h.expires_at>clock_timestamp()),0))::int END AS available,
+      CASE WHEN d.starts_at<=clock_timestamp() THEN 0 ELSE GREATEST(0,d.capacity_adult-d.committed_adults-d.overbooked_adults-COALESCE((SELECT SUM(h.adult_seats) FROM holds h WHERE h.tenant_id=d.tenant_id AND h.departure_id=d.id AND NOT h.consumed AND h.expires_at>clock_timestamp()),0))::int END AS available_adults,
+      CASE WHEN d.capacity_child IS NULL THEN NULL WHEN d.starts_at<=clock_timestamp() THEN 0 ELSE GREATEST(0,d.capacity_child-d.committed_children-d.overbooked_children-COALESCE((SELECT SUM(h.child_seats) FROM holds h WHERE h.tenant_id=d.tenant_id AND h.departure_id=d.id AND NOT h.consumed AND h.expires_at>clock_timestamp()),0))::int END AS available_children
       FROM departures d JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id
       WHERE d.tenant_id=$1 AND ($2::uuid IS NULL OR d.id>$2) AND p.name ILIKE $3
       AND ($10::uuid IS NOT NULL OR $6::date IS NULL OR d.local_date >= $6::date)
@@ -172,7 +176,8 @@ export class WorkspaceController {
       AND ($10::uuid IS NOT NULL OR $8::uuid IS NULL OR d.product_id=$8)
       AND ($10::uuid IS NOT NULL OR $9::text IS NULL OR p.availability_mode=$9)
       AND ($10::uuid IS NULL OR d.id=$10)
-      ORDER BY CASE WHEN $5='upcoming' THEN d.starts_at END,d.id LIMIT $4`,
+      ORDER BY CASE WHEN $5='upcoming' THEN d.starts_at END ASC,
+      CASE WHEN $5<>'upcoming' THEN d.starts_at END DESC,d.id LIMIT $4`,
         [
           actor.tenantId,
           q.cursor ?? null,
@@ -550,7 +555,7 @@ export class WorkspaceController {
 
       // ── Timeline: the next three operating days ──────────────────────────
       const { rows: timeline } = await tx.query(
-        `SELECT d.id,d.starts_at,d.local_date::text AS local_date,d.capacity,
+        `SELECT d.id,d.starts_at,d.local_date::text AS local_date,d.capacity,d.capacity_adult,d.capacity_child,
            (d.committed+d.overbooked)::int AS committed,d.operational_status,
            p.name AS product_name,
            EXISTS(SELECT 1 FROM departure_assignments a
@@ -626,7 +631,7 @@ export class WorkspaceController {
       // and nothing else on the page surfaces it. Today is excluded: by the
       // morning of departure the decision has already been made.
       const { rows: quiet } = await tx.query(
-        `SELECT d.id,d.starts_at,d.local_date::text AS local_date,d.capacity,
+        `SELECT d.id,d.starts_at,d.local_date::text AS local_date,d.capacity,d.capacity_adult,d.capacity_child,
            (d.committed+d.overbooked)::int AS committed,
            (d.local_date - $2::date)::int AS days_out,
            p.name AS product_name

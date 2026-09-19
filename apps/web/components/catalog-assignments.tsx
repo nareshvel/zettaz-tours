@@ -856,7 +856,7 @@ export function CatalogAssignmentsPanel({
                               session.tenant.timezone,
                             )}
                             {" · "}
-                            {departure.committed}/{departure.capacity} seats
+                            {departure.committed}/{departure.capacity} occupancy
                           </p>
                         </div>
                         <button

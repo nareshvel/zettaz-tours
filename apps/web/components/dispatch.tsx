@@ -21,6 +21,7 @@ import type {
   RebookingPreview,
   Session,
 } from "@/lib/types";
+import { occupancyFillCopy, occupancyPressure, remainingPlacesCopy } from "@/lib/types";
 import {
   dateTime,
   downloadApiFile,
@@ -44,13 +45,13 @@ import {
 } from "./common";
 import { StartTripButton } from "./start-trip";
 
-function fillPressure(committed: number, capacity: number) {
-  if (capacity <= 0) return "open" as const;
-  const share = committed / capacity;
-  if (share >= 1) return "full" as const;
-  if (share >= 0.8) return "tight" as const;
-  if (share >= 0.5) return "filling" as const;
-  return "open" as const;
+function fillPressure(d: {
+  committed: number;
+  capacity: number;
+  available?: number;
+  available_adults?: number;
+}) {
+  return occupancyPressure(d);
 }
 
 const localDay = (zone: string) =>
@@ -217,7 +218,7 @@ export function OperationsBoard({ session }: { session: Session }) {
               <article
                 className={
                   "panel dispatch-card is-" +
-                  fillPressure(d.committed, d.capacity)
+                  fillPressure(d)
                 }
                 key={d.id}
               >
@@ -242,7 +243,7 @@ export function OperationsBoard({ session }: { session: Session }) {
                 <div
                   className={
                     "capacity-meter is-" +
-                    fillPressure(d.committed, d.capacity)
+                    fillPressure(d)
                   }
                 >
                   <span
@@ -254,7 +255,8 @@ export function OperationsBoard({ session }: { session: Session }) {
                     }}
                   />
                   <small>
-                    {d.committed} of {d.capacity} seats
+                    {occupancyFillCopy(d)}
+                    {d.available != null ? ` · ${remainingPlacesCopy(d)}` : ""}
                   </small>
                 </div>
                 <div className="dispatch-metrics">

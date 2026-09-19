@@ -473,11 +473,11 @@ export function BookBoard({
         <Text style={styles.muted}>No open trips to sell on this date.</Text>
       ) : (
         open.map((item) => {
-          const remaining = Math.max(0, item.capacity - item.committed);
+          const remaining = Math.max(0, item.available ?? item.capacity - item.committed);
           return (
             <View style={styles.card} key={item.id}>
               <TourRow item={item} />
-              <Text style={styles.muted}>{remaining} seats left</Text>
+              <Text style={styles.muted}>{occupancyLabel(item)}</Text>
               <View style={[styles.actions, styles.actionsEnd]}>
                 <Action
                   disabled={busy || remaining < 1}

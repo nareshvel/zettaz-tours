@@ -46,6 +46,8 @@ export const configSchema = z
     taxInclusive: z.boolean().default(false),
     allowUnresolvedPickup: z.boolean(),
     allowAmendmentBalance: z.boolean().default(false),
+    /** authorized: reasoned overbook with inventory.overbook. off: sold-out stays sold-out. */
+    overbookPolicy: z.enum(["authorized", "off"]).default("authorized"),
     manualPaymentMethods: z.array(slug).min(1).max(20),
     bookingSources: z.array(slug).min(1).max(50),
     documentStorage: z
@@ -393,7 +395,14 @@ export const productSchema = z
     confirmationMode: z.enum(["instant", "request"]).default("instant"),
     categories: z
       .array(
-        z.object({ slug, label, countsTowardCapacity: z.boolean() }).strict(),
+        z
+          .object({
+            slug,
+            label,
+            countsTowardCapacity: z.boolean(),
+            occupancyClass: z.enum(["adult", "child", "none"]).optional(),
+          })
+          .strict(),
       )
       .min(1)
       .max(10),
@@ -431,9 +440,29 @@ export const availabilityRuleUpdateSchema = z
     weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7).optional(),
     localTimes: z.array(localTime).min(1).max(12).optional(),
     capacity: z.number().int().min(1).max(10000).optional(),
+    capacityAdult: z.number().int().min(1).max(10000).optional(),
+    capacityChild: z.number().int().min(0).max(10000).nullable().optional(),
     blackoutDates: z.array(day).max(366).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.capacity == null) return;
+    const adult = value.capacityAdult ?? value.capacity;
+    if (adult > value.capacity) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Adult capacity cannot exceed maximum occupancy",
+        path: ["capacityAdult"],
+      });
+    }
+    if (value.capacityChild != null && value.capacityChild > value.capacity) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Child capacity cannot exceed maximum occupancy",
+        path: ["capacityChild"],
+      });
+    }
+  });
 export const scheduleSchema = z
   .object({
     productId: id,
@@ -443,9 +472,28 @@ export const scheduleSchema = z
     weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7),
     localTimes: z.array(localTime).min(1).max(12),
     capacity: z.number().int().min(1).max(10000),
+    capacityAdult: z.number().int().min(1).max(10000).optional(),
+    capacityChild: z.number().int().min(0).max(10000).nullable().optional(),
     blackoutDates: z.array(day).max(366),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    const adult = value.capacityAdult ?? value.capacity;
+    if (adult > value.capacity) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Adult capacity cannot exceed maximum occupancy",
+        path: ["capacityAdult"],
+      });
+    }
+    if (value.capacityChild != null && value.capacityChild > value.capacity) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Child capacity cannot exceed maximum occupancy",
+        path: ["capacityChild"],
+      });
+    }
+  });
 export const partySchema = z
   .record(slug, z.number().int().min(0).max(1000))
   .refine(

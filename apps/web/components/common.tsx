@@ -86,12 +86,15 @@ export function Field({
   label: caption,
   children,
   hint,
+  tip,
   error,
   required,
 }: {
   label: string;
   children: React.ReactNode;
   hint?: string;
+  /** Longer guidance behind a clickable (?) — use instead of hint for copy. */
+  tip?: string;
   error?: string;
   required?: boolean;
 }) {
@@ -100,6 +103,7 @@ export function Field({
       <span>
         {caption}
         {required && <i aria-hidden="true"> *</i>}
+        {tip ? <InfoTip label={caption}>{tip}</InfoTip> : null}
       </span>
       {children}
       {error ? (
@@ -135,6 +139,24 @@ export function InfoTip({
 }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
+  const markerRef = useRef<HTMLButtonElement>(null);
+  const [panelStyle, setPanelStyle] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+  useLayoutEffect(() => {
+    if (!open || !markerRef.current) {
+      setPanelStyle(null);
+      return;
+    }
+    const rect = markerRef.current.getBoundingClientRect();
+    const maxWidth = Math.min(320, window.innerWidth - 24);
+    let left = rect.left;
+    if (left + maxWidth > window.innerWidth - 12) {
+      left = Math.max(12, window.innerWidth - maxWidth - 12);
+    }
+    setPanelStyle({ top: rect.bottom + 8, left });
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     const close = (event: Event) => {
@@ -160,7 +182,9 @@ export function InfoTip({
   return (
     <span className="info-tip" onClick={(event) => event.stopPropagation()}>
       <button
+        ref={markerRef}
         type="button"
+        tabIndex={-1}
         className="info-tip-marker"
         aria-label={`About ${caption}`}
         aria-expanded={open}
@@ -169,11 +193,20 @@ export function InfoTip({
       >
         ?
       </button>
-      {open && (
-        <span className="info-tip-panel" id={panelId} role="note">
-          {children}
-        </span>
-      )}
+      {open &&
+        panelStyle &&
+        createPortal(
+          <span
+            className="info-tip-panel is-fixed"
+            id={panelId}
+            role="note"
+            style={panelStyle}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {children}
+          </span>,
+          document.body,
+        )}
     </span>
   );
 }
@@ -190,7 +223,7 @@ export function InfoTip({
 export function Toast({
   message,
   tone = "error",
-  duration = 6000,
+  duration,
   onDismiss,
 }: {
   message: string | null | undefined;
@@ -200,15 +233,23 @@ export function Toast({
   onDismiss: () => void;
 }) {
   const [mounted, setMounted] = useState(false);
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const hold =
+    duration ??
+    Math.min(12000, Math.max(6000, (message?.length ?? 0) * 45));
   useEffect(() => setMounted(true), []);
   useEffect(() => {
-    if (!message) return;
-    const timer = window.setTimeout(onDismiss, duration);
+    setDismissed(null);
+  }, [message]);
+  useEffect(() => {
+    if (!message || dismissed === message) return;
+    const timer = window.setTimeout(() => {
+      setDismissed(message);
+      onDismiss();
+    }, hold);
     return () => window.clearTimeout(timer);
-    // onDismiss is a stable clear() in practice; keying on the message means a
-    // new message restarts the clock rather than inheriting the old one.
-  }, [message, duration]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!mounted || !message) return null;
+  }, [message, hold, dismissed]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!mounted || !message || dismissed === message) return null;
   return createPortal(
     <div
       className={`toast ${tone}`}
@@ -216,7 +257,14 @@ export function Toast({
       aria-live={tone === "error" ? "assertive" : "polite"}
     >
       <span>{message}</span>
-      <button type="button" aria-label="Dismiss" onClick={onDismiss}>
+      <button
+        type="button"
+        aria-label="Dismiss"
+        onClick={() => {
+          setDismissed(message);
+          onDismiss();
+        }}
+      >
         <X size={15} />
       </button>
     </div>,
@@ -375,9 +423,16 @@ export function ConfirmDialog({
             </Field>
           )}
           {(error || localError) && !reasonRequired && (
-            <Notice error>{error || localError}</Notice>
+            <Toast
+              message={error || localError}
+              onDismiss={() => {
+                setLocalError("");
+              }}
+            />
           )}
-          {error && reasonRequired && <Notice error>{error}</Notice>}
+          {error && reasonRequired && (
+            <Toast message={error} onDismiss={() => undefined} />
+          )}
           <div className="confirm-dialog-actions">
             <button
               type="button"
@@ -415,12 +470,16 @@ export function FormDialog({
   cancelLabel = "Cancel",
   submitDisabled = false,
   className,
+  tip,
   onSubmit,
   onClose,
+  onErrorDismiss,
 }: {
   open: boolean;
   title: string;
   description?: string;
+  /** Longer modal guidance behind a (?) next to the title. */
+  tip?: string;
   children: React.ReactNode;
   /** Content rendered below Cancel / Submit (e.g. existing records). */
   afterActions?: React.ReactNode;
@@ -432,6 +491,7 @@ export function FormDialog({
   className?: string;
   onSubmit: () => void | Promise<void>;
   onClose: () => void;
+  onErrorDismiss?: () => void;
 }) {
   const titleId = useId();
 
@@ -447,71 +507,76 @@ export function FormDialog({
   if (!open) return null;
   if (typeof document === "undefined") return null;
 
-  return createPortal(
-    <div className="confirm-dialog-root" role="presentation">
-      <div className="confirm-dialog-scrim" aria-hidden="true" />
-      <form
-        className={
-          "panel confirm-dialog-sheet form-dialog-sheet" +
-          (className ? ` ${className}` : "")
-        }
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        onSubmit={(event) => {
-          event.preventDefault();
-          // See the note in ConfirmDialog: portaled events bubble through the
-          // React tree, so without this an ancestor form also submits.
-          event.stopPropagation();
-          void onSubmit();
-        }}
-      >
-        <header className="confirm-dialog-head">
-          <div>
-            <h2 id={titleId}>{title}</h2>
-            {description ? (
-              <div className="muted confirm-dialog-desc">{description}</div>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Close"
-            disabled={busy}
-            onClick={onClose}
+  return (
+    <>
+      {createPortal(
+        <div className="confirm-dialog-root" role="presentation">
+          <div className="confirm-dialog-scrim" aria-hidden="true" />
+          <form
+            className={
+              "panel confirm-dialog-sheet form-dialog-sheet" +
+              (className ? ` ${className}` : "")
+            }
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            onSubmit={(event) => {
+              event.preventDefault();
+              // See the note in ConfirmDialog: portaled events bubble through the
+              // React tree, so without this an ancestor form also submits.
+              event.stopPropagation();
+              void onSubmit();
+            }}
           >
-            <X size={18} />
-          </button>
-        </header>
-        <div className="confirm-dialog-body">
-          <div className="confirm-dialog-fields">
-            {children}
-            {error && <Notice error>{error}</Notice>}
-          </div>
-          <div className="confirm-dialog-actions">
-            <button
-              type="button"
-              className="button secondary"
-              disabled={busy}
-              onClick={onClose}
-            >
-              {cancelLabel}
-            </button>
-            <button
-              type="submit"
-              className="button"
-              disabled={busy || submitDisabled}
-            >
-              {busy ? "Working…" : submitLabel}
-            </button>
-          </div>
-          {afterActions ? (
-            <div className="confirm-dialog-after">{afterActions}</div>
-          ) : null}
-        </div>
-      </form>
-    </div>,
-    document.body,
+            <header className="confirm-dialog-head">
+              <div>
+                <h2 id={titleId}>
+                  {title}
+                  {tip ? <InfoTip label={title}>{tip}</InfoTip> : null}
+                </h2>
+                {description ? (
+                  <div className="muted confirm-dialog-desc">{description}</div>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Close"
+                disabled={busy}
+                onClick={onClose}
+              >
+                <X size={18} />
+              </button>
+            </header>
+            <div className="confirm-dialog-body">
+              <div className="confirm-dialog-fields">{children}</div>
+              <div className="confirm-dialog-actions">
+                <button
+                  type="button"
+                  className="button secondary"
+                  disabled={busy}
+                  onClick={onClose}
+                >
+                  {cancelLabel}
+                </button>
+                <button
+                  type="submit"
+                  className="button"
+                  disabled={busy || submitDisabled}
+                >
+                  {busy ? "Working…" : submitLabel}
+                </button>
+              </div>
+              {afterActions ? (
+                <div className="confirm-dialog-after">{afterActions}</div>
+              ) : null}
+            </div>
+          </form>
+        </div>,
+        document.body,
+      )}
+      <Toast message={error} onDismiss={() => onErrorDismiss?.()} />
+    </>
   );
 }
 

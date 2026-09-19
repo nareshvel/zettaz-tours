@@ -36,6 +36,7 @@ import {
   availabilityModes,
   EMERGENCY_RELATIONSHIP_OPTIONS,
   EMERGENCY_RELATIONSHIP_OTHER,
+  remainingPlacesCopy,
 } from "@/lib/types";
 import {
   bookingSourceLabel,
@@ -1796,8 +1797,8 @@ export function NewReservation({
                         {category.countsTowardCapacity === undefined ? null : (
                           <small>
                             {category.countsTowardCapacity
-                              ? "Uses seat capacity"
-                              : "Does not use seat capacity"}
+                              ? "Counts toward occupancy"
+                              : "Does not count toward occupancy"}
                           </small>
                         )}
                       </div>
@@ -1839,9 +1840,7 @@ export function NewReservation({
                         session.tenant.config.dateFormat,
                         session.tenant.config.timeFormat,
                       )}
-                      {` · ${departure.available} seat${
-                        departure.available === 1 ? "" : "s"
-                      } left`}
+                      {` · ${remainingPlacesCopy(departure)}`}
                     </p>
                   </div>
                   <button
@@ -2108,7 +2107,10 @@ export function NewReservation({
                                       "availability-pill" +
                                       (departed
                                         ? " departed"
-                                        : item.available <= 3
+                                        : item.available_adults != null &&
+                                            item.available_adults <= 0
+                                          ? " limited"
+                                          : item.available <= 3
                                           ? " limited"
                                           : "")
                                     }
@@ -2116,9 +2118,7 @@ export function NewReservation({
                                     <Users size={14} />
                                     {departed
                                       ? "Departed"
-                                      : item.available > 0
-                                        ? `${item.available} left`
-                                        : "Sold out"}
+                                      : remainingPlacesCopy(item)}
                                   </span>
                                   {departureId === item.id && (
                                     <Check size={18} aria-hidden="true" />
@@ -2159,9 +2159,9 @@ export function NewReservation({
                       <div>
                         <strong>{category.label}</strong>
                         <small>
-                          {category.countsTowardCapacity
-                            ? "Uses seat capacity"
-                            : "Does not use seat capacity"}
+                            {category.countsTowardCapacity
+                              ? "Counts toward occupancy"
+                              : "Does not count toward occupancy"}
                         </small>
                       </div>
                       <div className="party-stepper-controls">

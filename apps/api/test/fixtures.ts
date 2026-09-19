@@ -18,6 +18,7 @@ export const mockConfig: TenantConfig = {
   taxInclusive: false,
   allowUnresolvedPickup: false,
   allowAmendmentBalance: true,
+  overbookPolicy: "authorized",
   manualPaymentMethods: [
     "cash",
     "card",

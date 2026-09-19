@@ -1056,6 +1056,116 @@ test("authorized overbooking requires its permission and an audited reason", asy
   assert.equal(audit[0].reason, "Mock owner approved operational exception");
 });
 
+test("nested occupancy: glass-bottom hull plus partitioned tuk-tuk child cap", async () => {
+  const glass = await departure(a.token, 12, { capacityAdult: 10 });
+  assert.equal(
+    (
+      await post("/staff/v1/holds", a.token, {
+        departureId: glass.departureId,
+        party: { adult: 11 },
+      })
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await post("/staff/v1/holds", a.token, {
+        departureId: glass.departureId,
+        party: { adult: 10, child: 3 },
+      })
+    ).status,
+    409,
+  );
+  const mixed = await post("/staff/v1/holds", a.token, {
+    departureId: glass.departureId,
+    party: { adult: 9, child: 3 },
+  });
+  assert.equal(mixed.status, 201, JSON.stringify(mixed.body));
+  const glassAvail = await get(
+    `/staff/v1/departures/${glass.departureId}/availability`,
+    a.token,
+  );
+  assert.equal(glassAvail.status, 200);
+  assert.equal(glassAvail.body.available, 0);
+  assert.equal(glassAvail.body.available_adults, 1);
+
+  const hull = await departure(a.token, 12, { capacityAdult: 10 });
+  assert.equal(
+    (
+      await post("/staff/v1/holds", a.token, {
+        departureId: hull.departureId,
+        party: { adult: 10, child: 2 },
+      })
+    ).status,
+    201,
+  );
+
+  const tuktuk = await departure(a.token, 108, {
+    capacityAdult: 72,
+    capacityChild: 36,
+  });
+  const fleet = await post("/staff/v1/holds", a.token, {
+    departureId: tuktuk.departureId,
+    party: { adult: 72, child: 36 },
+  });
+  assert.equal(fleet.status, 201, JSON.stringify(fleet.body));
+  assert.equal(
+    (
+      await post("/staff/v1/holds", a.token, {
+        departureId: tuktuk.departureId,
+        party: { adult: 1 },
+      })
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await post("/staff/v1/holds", a.token, {
+        departureId: tuktuk.departureId,
+        party: { child: 1 },
+      })
+    ).status,
+    409,
+  );
+  const leftover = await departure(a.token, 108, {
+    capacityAdult: 72,
+    capacityChild: 36,
+  });
+  assert.equal(
+    (
+      await post("/staff/v1/holds", a.token, {
+        departureId: leftover.departureId,
+        party: { adult: 71, child: 37 },
+      })
+    ).status,
+    409,
+  );
+});
+
+test("tenant overbookPolicy off rejects authorized overbook holds", async () => {
+  const demo = await setupTenant(`mock-overbook-off-${randomUUID().slice(0, 8)}`, {
+    ...mockConfig,
+    overbookPolicy: "off",
+  });
+  const dep = await departure(demo.token, 1);
+  const first = await heldBooking(dep.departureId, demo.token);
+  await pay(first.bookingId, 10000, demo.token);
+  assert.equal(
+    (
+      await post(`/staff/v1/bookings/${first.bookingId}/confirm`, demo.token, {
+        version: 1,
+      })
+    ).status,
+    201,
+  );
+  const overbook = await post("/staff/v1/overbook-holds", demo.token, {
+    departureId: dep.departureId,
+    party: { adult: 1 },
+    reason: "Would exceed the last ordinary seat",
+  });
+  assert.equal(overbook.status, 409, JSON.stringify(overbook.body));
+});
+
 test("duplicate concurrent hold key returns a single hold and changed payload conflicts", async () => {
   const dep = await departure(),
     k = key();

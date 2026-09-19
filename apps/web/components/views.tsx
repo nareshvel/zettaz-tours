@@ -27,6 +27,7 @@ import type {
   Audit,
   Page,
 } from "@/lib/types";
+import { occupancyFillCopy, occupancyLabel, occupancyPressure, remainingPlacesCopy } from "@/lib/types";
 import {
   bookingSourceLabel,
   dateTime,
@@ -50,6 +51,7 @@ import {
   SearchBox,
   Status,
   TenantDateInput,
+  Toggle,
 } from "./common";
 import { BoardingPaymentModal } from "./boarding-payment";
 import { BoardingWaiverModal } from "./boarding-waiver";
@@ -72,6 +74,8 @@ type BriefingDeparture = {
   starts_at: string;
   local_date: string;
   capacity: number;
+  capacity_adult?: number;
+  capacity_child?: number | null;
   committed: number;
   operational_status: "open" | "weather_hold" | "closed";
   product_name: string;
@@ -108,6 +112,8 @@ type Briefing = {
     starts_at: string;
     local_date: string;
     capacity: number;
+    capacity_adult?: number;
+    capacity_child?: number | null;
     committed: number;
     days_out: number;
     product_name: string;
@@ -606,14 +612,102 @@ function TodayStrip({
   );
 }
 
-/** Seat-fill pressure for departure lists — visual cue, not a chart. */
-function fillPressure(committed: number, capacity: number) {
-  if (capacity <= 0) return "open" as const;
-  const share = committed / capacity;
-  if (share >= 1) return "full" as const;
-  if (share >= 0.8) return "tight" as const;
-  if (share >= 0.5) return "filling" as const;
-  return "open" as const;
+function occupancyTracks(d: Departure) {
+  const adultCap = d.capacity_adult ?? d.capacity;
+  const childCap = d.capacity_child;
+  const nested = adultCap !== d.capacity;
+  const partitioned = childCap != null;
+  const tracks: {
+    key: string;
+    label: string;
+    committed: number;
+    capacity: number;
+    available?: number | null;
+  }[] = [
+    {
+      key: "occupancy",
+      label: "Occupancy",
+      committed: d.committed,
+      capacity: d.capacity,
+      available: d.available,
+    },
+  ];
+  if (nested || partitioned) {
+    tracks.push({
+      key: "adults",
+      label: "Adults",
+      committed: d.committed_adults ?? Math.min(d.committed, adultCap),
+      capacity: adultCap,
+      available: d.available_adults,
+    });
+  }
+  if (partitioned) {
+    tracks.push({
+      key: "children",
+      label: "Children",
+      committed: d.committed_children ?? 0,
+      capacity: childCap,
+      available: d.available_children,
+    });
+  }
+  return tracks;
+}
+
+function OccupancyMeters({
+  departure,
+  compact,
+}: {
+  departure: Departure;
+  compact?: boolean;
+}) {
+  const tracks = occupancyTracks(departure);
+  return (
+    <div
+      className={
+        "occupancy-meters" +
+        (compact ? " is-compact" : "") +
+        (tracks.length > 1 ? " is-split" : "")
+      }
+    >
+      {tracks.map((track) => {
+        const pressure = occupancyPressure({
+          committed: track.committed,
+          capacity: track.capacity,
+          available: track.available ?? undefined,
+        });
+        return (
+          <div key={track.key} className={"capacity-meter is-" + pressure}>
+            <span
+              style={{
+                width: `${Math.min(
+                  100,
+                  track.capacity ? (track.committed / track.capacity) * 100 : 0,
+                )}%`,
+              }}
+            />
+            <small>
+              {track.committed} of {track.capacity} {track.label.toLowerCase()}
+            </small>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Occupancy-fill pressure for departure lists — visual cue, not a chart. */
+function fillPressure(
+  committed: number,
+  capacity: number,
+  available?: number,
+  availableAdults?: number,
+) {
+  return occupancyPressure({
+    committed,
+    capacity,
+    available,
+    available_adults: availableAdults,
+  });
 }
 
 /** A ratio against a limit is a meter, never a chart. */
@@ -680,10 +774,11 @@ function QuietDepartures({
                         ? Math.round((item.committed / item.capacity) * 100)
                         : 0
                     }
-                    label={`${item.committed} of ${item.capacity} seats`}
+                    label={`${item.committed} of ${item.capacity} occupancy`}
                   />
                   <small>
-                    {item.committed}/{item.capacity} seats ·{" "}
+                    {item.committed}/{item.capacity} ·{" "}
+                    {occupancyLabel(item)} ·{" "}
                     {localDayLabel(
                       item.local_date,
                       session.tenant.config.locale,
@@ -765,10 +860,10 @@ function Timeline({
                             ? Math.round((item.committed / item.capacity) * 100)
                             : 0
                         }
-                        label={`${item.committed} of ${item.capacity} seats`}
+                        label={`${item.committed} of ${item.capacity} occupancy`}
                       />
                       <small>
-                        {item.committed}/{item.capacity} seats
+                        {item.committed}/{item.capacity} · {occupancyLabel(item)}
                       </small>
                     </span>
                   </div>
@@ -1533,12 +1628,13 @@ export function Departures({ session }: { session: Session }) {
   const weekStart = mondayOf(today);
   const weekEnd = sundayOf(today);
   const [productId, setProductId] = useState(""),
-    [range, setRange] = useState<DateRangePreset>("today"),
+    [range, setRange] = useState<DateRangePreset>("week"),
     [customFrom, setCustomFrom] = useState(today),
     [customTo, setCustomTo] = useState(shiftDay(today, 13)),
     [filtersOpen, setFiltersOpen] = useState(false),
     [view, setView] = useState<"agenda" | "week" | "list">("agenda"),
-    [selectedId, setSelectedId] = useState<string | null>(null);
+    [selectedId, setSelectedId] = useState<string | null>(null),
+    [excludePast, setExcludePast] = useState(true);
   const filterRef = useRef<HTMLDivElement>(null);
   const [from, to] = rangeBounds(range, today, customFrom, customTo);
   const products = useResource<Product[]>("admin/v1/products");
@@ -1546,7 +1642,7 @@ export function Departures({ session }: { session: Session }) {
     "staff/v1/workspace/departures",
     "",
     {
-      view: "upcoming",
+      view: to && to < today ? "records" : "upcoming",
       from,
       to,
       ...(productId ? { productId } : {}),
@@ -1574,9 +1670,16 @@ export function Departures({ session }: { session: Session }) {
       document.removeEventListener("keydown", onKey);
     };
   }, [filtersOpen]);
-  const booked = list.items.reduce((sum, item) => sum + item.committed, 0);
-  const held = list.items.reduce((sum, item) => sum + (item.held ?? 0), 0);
-  const days = list.items.reduce<Record<string, Departure[]>>(
+  const lookingAtPast = range === "past" || range === "last_month";
+  const hidingPast = excludePast && !lookingAtPast;
+  const visibleItems = hidingPast
+    ? list.items.filter(
+        (item) => new Date(item.starts_at).getTime() > Date.now(),
+      )
+    : list.items;
+  const booked = visibleItems.reduce((sum, item) => sum + item.committed, 0);
+  const held = visibleItems.reduce((sum, item) => sum + (item.held ?? 0), 0);
+  const days = visibleItems.reduce<Record<string, Departure[]>>(
     (result, item) => {
       const day = tenantDay(session.tenant.timezone, new Date(item.starts_at));
       (result[day] ??= []).push(item);
@@ -1584,12 +1687,16 @@ export function Departures({ session }: { session: Session }) {
     },
     {},
   );
-  const filterCount = (productId ? 1 : 0) + (range === "today" ? 0 : 1);
+  const filterCount =
+    (productId ? 1 : 0) +
+    (range === "week" ? 0 : 1) +
+    (hidingPast ? 1 : 0);
   function resetView() {
     setProductId("");
-    setRange("today");
+    setRange("week");
     setCustomFrom(today);
     setCustomTo(shiftDay(today, 13));
+    setExcludePast(true);
     setFiltersOpen(false);
   }
   function selectRange(next: DateRangePreset) {
@@ -1620,7 +1727,11 @@ export function Departures({ session }: { session: Session }) {
         ? "This week"
         : range === "month"
           ? "This month"
-          : "Custom range";
+          : range === "last_month"
+            ? "Last month"
+            : range === "past"
+              ? "All past"
+              : "Custom range";
   return (
     <>
       <Heading
@@ -1630,23 +1741,23 @@ export function Departures({ session }: { session: Session }) {
       <div className="catalog-metrics departure-metrics">
         <div>
           <strong>
-            {list.busy && !list.items.length ? "—" : list.items.length}
+            {list.busy && !visibleItems.length ? "—" : visibleItems.length}
           </strong>
           <span>Departures in view</span>
         </div>
         <div>
-          <strong>{list.busy && !list.items.length ? "—" : booked}</strong>
+          <strong>{list.busy && !visibleItems.length ? "—" : booked}</strong>
           <span>Guests booked</span>
         </div>
         <div>
-          <strong>{list.busy && !list.items.length ? "—" : held}</strong>
+          <strong>{list.busy && !visibleItems.length ? "—" : held}</strong>
           <span>Seats held</span>
         </div>
         <div>
           <strong>
-            {list.busy && !list.items.length
+            {list.busy && !visibleItems.length
               ? "—"
-              : list.items.filter((d) => d.available === 0).length}
+              : visibleItems.filter((d) => d.available === 0).length}
           </strong>
           <span>Sold out</span>
         </div>
@@ -1699,6 +1810,7 @@ export function Departures({ session }: { session: Session }) {
                     <span>
                       {rangeLabel}
                       {productId ? " · 1 product" : ""}
+                      {hidingPast ? " · excluding past" : ""}
                     </span>
                   </div>
                   <label className="compact-control">
@@ -1731,6 +1843,8 @@ export function Departures({ session }: { session: Session }) {
                           ["today", "Today"],
                           ["week", "This week"],
                           ["month", "This month"],
+                          ["last_month", "Last month"],
+                          ["past", "All past"],
                           ["custom", "Custom range"],
                         ] as const
                       ).map(([value, caption]) => (
@@ -1778,9 +1892,24 @@ export function Departures({ session }: { session: Session }) {
                         ? today
                         : range === "week"
                           ? `${weekStart} – ${weekEnd}`
-                          : `${monthBounds(today)[0]} – ${monthBounds(today)[1]}`}
+                          : range === "last_month"
+                            ? `${lastMonthBounds(today)[0]} – ${lastMonthBounds(today)[1]}`
+                            : range === "past"
+                              ? `Through ${shiftDay(today, -1)}`
+                              : `${monthBounds(today)[0]} – ${monthBounds(today)[1]}`}
                     </p>
                   )}
+                  <Toggle
+                    label="Exclude past / completed"
+                    description={
+                      lookingAtPast
+                        ? "This date range is already in the past."
+                        : "Hide trips that have already started."
+                    }
+                    checked={hidingPast}
+                    disabled={lookingAtPast}
+                    onChange={setExcludePast}
+                  />
                   <div className="filter-popover-actions">
                     <button
                       type="button"
@@ -1815,10 +1944,18 @@ export function Departures({ session }: { session: Session }) {
         {list.error && <Notice error>{list.error}</Notice>}
         {list.busy && !list.items.length ? (
           <Loading />
-        ) : !list.items.length ? (
-          <Empty title="No departures in this range">
+        ) : !visibleItems.length ? (
+          <Empty
+            title={
+              hidingPast && list.items.length
+                ? "No remaining departures"
+                : "No departures in this range"
+            }
+          >
             <p>
-              Try another date range or product, or add availability in Catalog.
+              {hidingPast && list.items.length
+                ? "Turn off Exclude past / completed to see trips that have already started."
+                : "Try another date range or product, or add availability in Catalog."}
             </p>
             <div className="button-row">
               <button
@@ -1869,7 +2006,12 @@ export function Departures({ session }: { session: Session }) {
                         <span>{items.length}</span>
                       </header>
                       {items.map((d) => {
-                        const pressure = fillPressure(d.committed, d.capacity);
+                        const pressure = fillPressure(
+                          d.committed,
+                          d.capacity,
+                          d.available,
+                          d.available_adults,
+                        );
                         return (
                           <Link
                             href={`/departures/${d.id}/manifest`}
@@ -1887,8 +2029,10 @@ export function Departures({ session }: { session: Session }) {
                             <span>
                               <strong>{d.product_name}</strong>
                               <small>
-                                {d.committed}/{d.capacity}
-                                {d.available === 0 ? " · Sold out" : ""}
+                                {occupancyFillCopy(d)}
+                                {d.available === 0
+                                  ? " · Sold out"
+                                  : ` · ${remainingPlacesCopy(d)}`}
                               </small>
                             </span>
                           </Link>
@@ -1919,9 +2063,17 @@ export function Departures({ session }: { session: Session }) {
                   </span>
                 </header>
                 {departures.map((d) => {
-                  const pressure = fillPressure(d.committed, d.capacity);
+                  const pressure = fillPressure(
+                    d.committed,
+                    d.capacity,
+                    d.available,
+                    d.available_adults,
+                  );
                   const opsStatus = d.operational_status ?? "open";
+                  const departed =
+                    new Date(d.starts_at).getTime() <= Date.now();
                   const sellable =
+                    !departed &&
                     d.available > 0 &&
                     opsStatus === "open" &&
                     (d.status ?? "scheduled") === "scheduled";
@@ -1966,25 +2118,7 @@ export function Departures({ session }: { session: Session }) {
                                 : ""}
                           </small>
                         </div>
-                        <div className={"capacity-meter is-" + pressure}>
-                          <span
-                            style={{
-                              width: `${Math.min(
-                                100,
-                                d.capacity
-                                  ? (d.committed / d.capacity) * 100
-                                  : 0,
-                              )}%`,
-                            }}
-                          />
-                          <small>
-                            {d.committed} of {d.capacity} booked
-                            {(d.held ?? 0) > 0 ? ` · ${d.held} held` : ""}
-                            {!sellable && d.available === 0
-                              ? " · Sold out"
-                              : ""}
-                          </small>
-                        </div>
+                        <OccupancyMeters departure={d} />
                       </button>
                       <div className="departure-agenda-actions">
                         {canManifest && (
@@ -2005,9 +2139,11 @@ export function Departures({ session }: { session: Session }) {
                             </Link>
                           ) : (
                             <span className="departure-full">
-                              {opsStatus !== "open"
-                                ? label(opsStatus)
-                                : "Fully booked"}
+                              {departed
+                                ? "Departed"
+                                : opsStatus !== "open"
+                                  ? label(opsStatus)
+                                  : "Fully booked"}
                             </span>
                           ))}
                       </div>
@@ -2015,11 +2151,13 @@ export function Departures({ session }: { session: Session }) {
                         <div className="departure-agenda-detail">
                           <div className="departure-agenda-detail-copy">
                             <strong>
-                              {sellable
-                                ? `${d.available} seat${d.available === 1 ? "" : "s"} left`
-                                : opsStatus !== "open"
-                                  ? label(opsStatus)
-                                  : "No seats left"}
+                              {departed
+                                ? "Departed"
+                                : sellable
+                                  ? remainingPlacesCopy(d)
+                                  : opsStatus !== "open"
+                                    ? label(opsStatus)
+                                    : remainingPlacesCopy(d)}
                             </strong>
                             <p>
                               {d.committed} booked
@@ -2027,7 +2165,7 @@ export function Departures({ session }: { session: Session }) {
                                 ? ` · ${d.held} on hold`
                                 : ""}
                               {" · "}
-                              {d.capacity} capacity
+                              {occupancyLabel(d)}
                             </p>
                           </div>
                           <div className="departure-agenda-detail-actions">
@@ -2066,10 +2204,18 @@ export function Departures({ session }: { session: Session }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {list.items.map((d) => {
-                    const pressure = fillPressure(d.committed, d.capacity);
+                  {visibleItems.map((d) => {
+                    const pressure = fillPressure(
+                      d.committed,
+                      d.capacity,
+                      d.available,
+                      d.available_adults,
+                    );
                     const opsStatus = d.operational_status ?? "open";
+                    const departed =
+                      new Date(d.starts_at).getTime() <= Date.now();
                     const sellable =
+                      !departed &&
                       d.available > 0 &&
                       opsStatus === "open" &&
                       (d.status ?? "scheduled") === "scheduled";
@@ -2090,9 +2236,7 @@ export function Departures({ session }: { session: Session }) {
                           )}
                         </td>
                         <td>
-                          <span className={"seat-fill is-" + pressure}>
-                            {d.committed} / {d.capacity}
-                          </span>
+                          <OccupancyMeters departure={d} compact />
                         </td>
                         <td>{d.held ?? 0}</td>
                         <td>
@@ -2100,8 +2244,8 @@ export function Departures({ session }: { session: Session }) {
                             {!sellable
                               ? opsStatus !== "open"
                                 ? label(opsStatus)
-                                : "Sold out"
-                              : d.available}
+                                : remainingPlacesCopy(d)
+                              : remainingPlacesCopy(d)}
                           </span>
                         </td>
                         <td>
@@ -2123,7 +2267,9 @@ export function Departures({ session }: { session: Session }) {
                                   Book
                                 </Link>
                               ) : (
-                                <span className="muted">Fully booked</span>
+                                <span className="muted">
+                                  {departed ? "Departed" : "Fully booked"}
+                                </span>
                               ))}
                           </div>
                         </td>
@@ -2134,7 +2280,7 @@ export function Departures({ session }: { session: Session }) {
               </table>
             </div>
             <div className="reservation-cards departure-cards">
-              {list.items.map((d) => (
+              {visibleItems.map((d) => (
                 <Link
                   className="reservation-card"
                   href={`/departures/${d.id}/manifest`}
@@ -2147,9 +2293,11 @@ export function Departures({ session }: { session: Session }) {
                     </div>
                     <Status
                       state={
-                        d.available === 0
-                          ? "sold_out"
-                          : (d.status ?? "scheduled")
+                        new Date(d.starts_at).getTime() <= Date.now()
+                          ? "departed"
+                          : d.available === 0
+                            ? "sold_out"
+                            : (d.status ?? "scheduled")
                       }
                     />
                   </div>
@@ -2162,16 +2310,13 @@ export function Departures({ session }: { session: Session }) {
                         session.tenant.config.timeFormat,
                       )}
                     </span>
-                    <small>
-                      {d.committed} of {d.capacity} booked
-                      {(d.held ?? 0) > 0 ? ` · ${d.held} held` : ""}
-                    </small>
+                    <OccupancyMeters departure={d} compact />
                   </div>
                   <div className="reservation-card-foot">
                     <span>
                       {d.available === 0
-                        ? "Sold out"
-                        : `${d.available} available`}
+                        ? remainingPlacesCopy(d)
+                        : remainingPlacesCopy(d)}
                     </span>
                     <ChevronRight size={18} aria-hidden="true" />
                   </div>

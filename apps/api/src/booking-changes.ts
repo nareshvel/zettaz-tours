@@ -140,7 +140,12 @@ export class BookingChangeService {
           throw new ConflictException("Target departure has already started");
         const priced = commercialChange
           ? await this.inventory.price(tx, actor, data.departureId, data.party)
-          : { quote: hold.quote as Quote, seats: hold.seats as number };
+          : {
+              quote: hold.quote as Quote,
+              seats: hold.seats as number,
+              adultSeats: Number(hold.adult_seats ?? hold.seats),
+              childSeats: Number(hold.child_seats ?? 0),
+            };
         if (priced.quote.currency !== hold.quote.currency)
           throw new ConflictException(
             "Cross-currency amendment is not supported",
@@ -306,39 +311,74 @@ export class BookingChangeService {
         let holdId = booking.hold_id;
         const before = { ...booking, party: old.party, quote: old.quote };
         if (booking.state === "confirmed") {
-          const available =
-            free.available +
-            (booking.departure_id === q.input.departureId ? old.seats : 0);
-          if (q.seats > available)
+          const same = booking.departure_id === q.input.departureId;
+          const priced = await this.inventory.price(
+            tx,
+            actor,
+            q.input.departureId,
+            q.input.party,
+          );
+          const remaining = {
+            available: free.available + (same ? old.seats : 0),
+            available_adults:
+              free.available_adults +
+              (same ? Number(old.adult_seats ?? old.seats) : 0),
+            available_children:
+              free.available_children == null
+                ? null
+                : free.available_children +
+                  (same ? Number(old.child_seats ?? 0) : 0),
+          };
+          const retainOverbook =
+            same && Boolean(old.overbook_authorized_by);
+          if (
+            !retainOverbook &&
+            !this.inventory.ordinaryFits(
+              remaining,
+              priced.seats,
+              priced.adultSeats,
+              priced.childSeats,
+            )
+          )
             throw new ConflictException(
               "Insufficient seats; original booking is unchanged",
             );
           const sourcePool = old.overbook_authorized_by
             ? "overbooked"
             : "committed";
-          const retainOverbook =
-            booking.departure_id === q.input.departureId &&
-            Boolean(old.overbook_authorized_by);
           const targetPool = retainOverbook ? "overbooked" : "committed";
-          await tx.query(
-            `UPDATE departures SET ${sourcePool}=${sourcePool}-$3 WHERE tenant_id=$1 AND id=$2`,
-            [actor.tenantId, booking.departure_id, old.seats],
+          await this.inventory.adjustPools(
+            tx,
+            actor,
+            booking.departure_id,
+            sourcePool,
+            -old.seats,
+            -Number(old.adult_seats ?? old.seats),
+            -Number(old.child_seats ?? 0),
           );
-          await tx.query(
-            `UPDATE departures SET ${targetPool}=${targetPool}+$3 WHERE tenant_id=$1 AND id=$2`,
-            [actor.tenantId, q.input.departureId, q.seats],
+          await this.inventory.adjustPools(
+            tx,
+            actor,
+            q.input.departureId,
+            targetPool,
+            priced.seats,
+            priced.adultSeats,
+            priced.childSeats,
+            { ordinaryCheck: targetPool === "committed" },
           );
           holdId = randomUUID();
           await tx.query(
-            `INSERT INTO holds(tenant_id,id,departure_id,actor_id,party,seats,quote,expires_at,consumed,overbook_authorized_by,overbook_reason)
-             VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp(),true,$8,$9)`,
+            `INSERT INTO holds(tenant_id,id,departure_id,actor_id,party,seats,adult_seats,child_seats,quote,expires_at,consumed,overbook_authorized_by,overbook_reason)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,clock_timestamp(),true,$10,$11)`,
             [
               actor.tenantId,
               holdId,
               q.input.departureId,
               actor.actorId,
               q.input.party,
-              q.seats,
+              priced.seats,
+              priced.adultSeats,
+              priced.childSeats,
               q.quote,
               retainOverbook ? old.overbook_authorized_by : null,
               retainOverbook ? old.overbook_reason : null,
@@ -526,9 +566,14 @@ export class BookingChangeService {
         const hold = await this.editable(tx, actor, booking);
         if (booking.state === "confirmed") {
           const pool = hold.overbook_authorized_by ? "overbooked" : "committed";
-          await tx.query(
-            `UPDATE departures SET ${pool}=${pool}-$3 WHERE tenant_id=$1 AND id=$2`,
-            [actor.tenantId, booking.departure_id, hold.seats],
+          await this.inventory.adjustPools(
+            tx,
+            actor,
+            booking.departure_id,
+            pool,
+            -hold.seats,
+            -Number(hold.adult_seats ?? hold.seats),
+            -Number(hold.child_seats ?? 0),
           );
           await record(
             tx,

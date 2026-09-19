@@ -56,6 +56,7 @@ import {
   clearanceLabel,
   formatMoney,
   guestMatchesQuery,
+  occupancyLabel,
   nextPassengerAction,
   paymentMethodLabel,
   pickupLabel,
@@ -2590,7 +2591,7 @@ export default function App() {
         }
         subtitle={
           walkUpItem
-            ? `${walkUpItem.product_name} · ${Math.max(0, walkUpItem.capacity - walkUpItem.committed)} seats left`
+            ? `${walkUpItem.product_name} · ${occupancyLabel(walkUpItem)}`
             : undefined
         }
         onClose={() => {

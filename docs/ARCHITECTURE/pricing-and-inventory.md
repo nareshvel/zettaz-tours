@@ -58,6 +58,20 @@ Departure: 09:00 shared coastal tour. Seat capacity 18. Requirement: one 18-seat
 
 Unauthorized overbooking is confirming 19 seats against capacity 18 with no override. That is a launch-blocking defect. Confirming 19 with an authorized, reasoned audit event is allowed and is not a success-metric failure.
 
+## Nested adult / child occupancy
+
+Shared-tour capacity is **not** two independent adult and child pools.
+
+- `capacity` is maximum occupancy (all counting guests).
+- `capacity_adult` is the adult-class ceiling and must be ≤ occupancy.
+- `capacity_child` is optional. Null means leftover occupancy may be children (nested / glass-bottom). A number is a partitioned child ceiling (tuk-tuk benches).
+
+A party fits ordinary inventory only if counting guests ≤ remaining occupancy **and** adults ≤ remaining adult places **and** (when set) children ≤ remaining child places. Overbooking, when the tenant policy is `authorized`, still requires permission and a reason; policy `off` rejects overbook holds.
+
+**Glass-bottom:** 10 adults · 12 occupancy. Ten adults plus two children fit; an eleventh adult does not.
+
+**Tuk-tuk run:** operator math at schedule time, not fleet auto-count. Eighteen vehicles × 4 adults + 2 children → 72 adults · 36 children · 108 occupancy.
+
 ## Fleet size vs seat capacity (open revisit)
 
 Operators often confuse **how many vehicles they own** with **how many seats a departure can sell**.

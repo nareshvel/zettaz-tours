@@ -99,6 +99,7 @@ import {
   AssignmentsFilterButton,
   type AssignmentListFilters,
 } from "./catalog-assignments";
+import { defaultOccupancyClass, occupancyCaption, occupancyFillCopy } from "@/lib/types";
 import { PickupLocationsSettings } from "./pickup-locations";
 import { PrintersSettings } from "./printers-settings";
 import { WaiverSettings } from "./waiver-settings";
@@ -613,6 +614,7 @@ type CategoryDraft = {
   slug: string;
   label: string;
   countsTowardCapacity: boolean;
+  occupancyClass: "adult" | "child" | "none";
 };
 type PeriodDraft = {
   id: string;
@@ -627,13 +629,14 @@ function periodId() {
   return crypto.randomUUID();
 }
 const starterCategories: CategoryDraft[] = [
-  { id: "adult", slug: "adult", label: "Adult", countsTowardCapacity: true },
-  { id: "child", slug: "child", label: "Child", countsTowardCapacity: true },
+  { id: "adult", slug: "adult", label: "Adult", countsTowardCapacity: true, occupancyClass: "adult" },
+  { id: "child", slug: "child", label: "Child", countsTowardCapacity: true, occupancyClass: "child" },
   {
     id: "infant",
     slug: "infant",
     label: "Infant",
     countsTowardCapacity: false,
+    occupancyClass: "none",
   },
 ];
 function slugify(value: string) {
@@ -670,10 +673,11 @@ function emptyAmounts(
   );
 }
 function sanitizeCategories(categories: CategoryDraft[]) {
-  return categories.map(({ slug, label, countsTowardCapacity }) => ({
+  return categories.map(({ slug, label, countsTowardCapacity, occupancyClass }) => ({
     slug,
     label,
     countsTowardCapacity,
+    occupancyClass,
   }));
 }
 function periodsFromRates(
@@ -756,6 +760,9 @@ function PricingEditor({
   const [catLabel, setCatLabel] = useState("");
   const [catSlug, setCatSlug] = useState("");
   const [catSeats, setCatSeats] = useState(true);
+  const [catOccupancy, setCatOccupancy] = useState<"adult" | "child" | "none">(
+    "adult",
+  );
   const [catRate, setCatRate] = useState("");
   const [periodStart, setPeriodStart] = useState(today);
   const [periodEnd, setPeriodEnd] = useState(() => shiftDay(today, 364));
@@ -768,6 +775,7 @@ function PricingEditor({
     setCatLabel("");
     setCatSlug("");
     setCatSeats(true);
+    setCatOccupancy("adult");
     setCatRate(zeroAmount(currency));
     setModalError("");
     setCategoryModal({ mode: "add" });
@@ -777,6 +785,10 @@ function PricingEditor({
     setCatLabel(category.label);
     setCatSlug(category.slug);
     setCatSeats(category.countsTowardCapacity);
+    setCatOccupancy(
+      category.occupancyClass ??
+        defaultOccupancyClass(category.slug, category.countsTowardCapacity),
+    );
     const sample = periods[0]?.amounts[category.slug];
     setCatRate(sample ?? zeroAmount(currency));
     setModalError("");
@@ -806,6 +818,7 @@ function PricingEditor({
         label: labelValue,
         slug: slugValue,
         countsTowardCapacity: catSeats,
+        occupancyClass: catSeats ? catOccupancy : "none",
       };
       const nextCategories = [...categories, added];
       onCategories(nextCategories);
@@ -839,6 +852,7 @@ function PricingEditor({
               label: labelValue,
               slug: slugValue,
               countsTowardCapacity: catSeats,
+              occupancyClass: catSeats ? catOccupancy : "none",
             }
           : category,
       );
@@ -989,7 +1003,7 @@ function PricingEditor({
             <tr>
               <th>Label</th>
               <th>Identifier</th>
-              <th>Seats</th>
+              <th>Occupancy</th>
               <th>Default rate</th>
               <th>
                 <span className="visually-hidden">Actions</span>
@@ -1003,7 +1017,14 @@ function PricingEditor({
                 <td>
                   <code>{category.slug || "—"}</code>
                 </td>
-                <td>{category.countsTowardCapacity ? "Yes" : "No"}</td>
+                <td>
+                  {category.occupancyClass === "child"
+                    ? "Child slot"
+                    : category.occupancyClass === "none" ||
+                        !category.countsTowardCapacity
+                      ? "Does not occupy"
+                      : "Adult slot"}
+                </td>
                 <td>
                   {periods[0]?.amounts[category.slug]
                     ? `${periods[0].amounts[category.slug]} ${currency}`
@@ -1152,10 +1173,29 @@ function PricingEditor({
         </Field>
         <Toggle
           className="toggle-inline"
-          label="Counts toward seats"
+          label="Counts toward occupancy"
           checked={catSeats}
-          onChange={setCatSeats}
+          onChange={(checked) => {
+            setCatSeats(checked);
+            setCatOccupancy(checked ? "adult" : "none");
+          }}
         />
+        {catSeats ? (
+          <Field
+            label="Occupancy class"
+            hint="Adult slots have a separate ceiling. Child slots fill leftover occupancy, or a reserved child cap when the schedule sets one."
+          >
+            <select
+              value={catOccupancy === "none" ? "adult" : catOccupancy}
+              onChange={(e) =>
+                setCatOccupancy(e.target.value as "adult" | "child")
+              }
+            >
+              <option value="adult">Adult slot</option>
+              <option value="child">Child slot</option>
+            </select>
+          </Field>
+        ) : null}
         <Field label={`Default rate (${currency})`}>
           <input
             required
@@ -1632,6 +1672,9 @@ export function ProductDetail({
       slug: category.slug,
       label: category.label,
       countsTowardCapacity: category.countsTowardCapacity,
+      occupancyClass:
+        category.occupancyClass ??
+        defaultOccupancyClass(category.slug, category.countsTowardCapacity),
     }));
     setName(product.data.customer_title ?? product.data.name);
     setDescription(product.data.description ?? definition.description ?? "");
@@ -2628,8 +2671,14 @@ export function AvailabilityDetail({
               <span>Start times</span>
             </div>
             <div>
-              <strong>{rule.data.capacity ?? "—"}</strong>
-              <span>Seat capacity</span>
+              <strong>
+                {occupancyCaption({
+                  capacity: rule.data.capacity,
+                  capacityAdult: rule.data.capacity_adult,
+                  capacityChild: rule.data.capacity_child,
+                })}
+              </strong>
+              <span>Occupancy</span>
             </div>
             <div>
               <strong>{rule.data.upcoming_departures}</strong>
@@ -2716,7 +2765,7 @@ export function AvailabilityDetail({
                               key={departure.id}
                               href={`/departures/${departure.id}/manifest`}
                               className="rule-day-slot"
-                              title={`${clockFromInstant(departure.starts_at, timezone, locale)} · ${departure.committed}/${departure.capacity}`}
+                              title={`${clockFromInstant(departure.starts_at, timezone, locale)} · ${occupancyFillCopy(departure)}`}
                             >
                               <strong>
                                 {clockFromInstant(
@@ -2726,7 +2775,7 @@ export function AvailabilityDetail({
                                 )}
                               </strong>
                               <span>
-                                {departure.committed}/{departure.capacity}
+                                {occupancyFillCopy(departure)}
                               </span>
                             </Link>
                           ))}
@@ -3352,6 +3401,17 @@ export function Settings({
                   checked={config.allowUnresolvedPickup}
                   onChange={(checked) =>
                     setConfig({ ...config, allowUnresolvedPickup: checked })
+                  }
+                />
+                <Toggle
+                  label="Allow authorized overbooking"
+                  description="Owner and operations manager can still sell past adult or occupancy limits with a written reason. Turn off to keep sold-out trips sold-out."
+                  checked={(config.overbookPolicy ?? "authorized") !== "off"}
+                  onChange={(checked) =>
+                    setConfig({
+                      ...config,
+                      overbookPolicy: checked ? "authorized" : "off",
+                    })
                   }
                 />
 

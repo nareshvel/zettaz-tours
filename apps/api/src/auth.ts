@@ -297,6 +297,7 @@ export class AuthController {
       taxInclusive: false,
       allowUnresolvedPickup: false,
       allowAmendmentBalance: true,
+      overbookPolicy: "authorized" as const,
       manualPaymentMethods: ["cash", "card", "online", "bank_transfer"],
       bookingSources: ["phone", "walk_in", "website", "partner_reseller"],
       documentStorage: {

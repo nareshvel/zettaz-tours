@@ -61,7 +61,7 @@ URL query `tab=availability` remains accepted as an alias that opens **Schedules
 Replaces the full-page form. Field order:
 
 1. **Schedule name** (required) — distinguishes multiple rules on one product (“Morning shared”, “Sunset”).
-2. Row: **Tour** (dropdown; locked when opened from a product) | **Seat capacity**.
+2. Row: **Tour**. **Units on this run** helper (tuk-tuk, boat, bus, jetski, kayak, etc.) then **Maximum occupancy** | **Adult capacity** | optional **Child capacity**. Does not assign fleet.
 3. **Dates & times:** Start date | End date | first start time; **+** adds more local start times (stored on `availability_rule_times`).
 4. **Operating days:** weekday presets paint a **month calendar** bounded by start/end; clicking days toggles them off/on. No separate “closed dates” list in the UI. Persist as `weekdays` + blackout/`availability_exceptions` under the hood (or equivalent).
 5. Primary CTA shows live count: create **dates × times** departures.

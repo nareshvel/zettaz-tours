@@ -33,6 +33,7 @@ import {
 import { Database, record, Tx } from "./database";
 import { LimitsService } from "./limits";
 import { Access, CurrentActor, keySchema, parse } from "./http";
+import { resolveOccupancyClass } from "../../../packages/shared/src/occupancy";
 import { tenant } from "./tenant";
 
 type UploadedCover = {
@@ -66,6 +67,7 @@ LEFT JOIN departures d ON d.tenant_id=o.tenant_id AND d.option_id=o.id`;
 const ruleSelect = `
 SELECT ar.id,ar.name,ar.version,ar.mode,ar.status,to_char(ar.start_date,'YYYY-MM-DD') start_date,
        to_char(ar.end_date,'YYYY-MM-DD') end_date,ar.weekdays,ar.capacity,
+       ar.capacity_adult,ar.capacity_child,
        ar.timezone,ar.minimum_notice_minutes,ar.cutoff_minutes,p.id product_id,
        p.name product_name,p.availability_mode product_availability_mode,
        o.customer_title option_name,
@@ -80,6 +82,22 @@ FROM availability_rules ar
 JOIN product_options o ON o.tenant_id=ar.tenant_id AND o.id=ar.option_id
 JOIN products p ON p.tenant_id=o.tenant_id AND p.id=o.product_id`;
 
+export function occupancyFields(
+  capacity: number,
+  capacityAdult?: number,
+  capacityChild?: number | null,
+) {
+  const adult = capacityAdult ?? capacity;
+  if (adult > capacity)
+    throw new BadRequestException(
+      "Adult capacity cannot exceed maximum occupancy",
+    );
+  if (capacityChild != null && capacityChild > capacity)
+    throw new BadRequestException(
+      "Child capacity cannot exceed maximum occupancy",
+    );
+  return { capacityAdult: adult, capacityChild: capacityChild ?? null };
+}
 export function validDay(value: string) {
   const d = DateTime.fromISO(value, { zone: "UTC" });
   if (!d.isValid || d.toISODate() !== value)
@@ -163,8 +181,8 @@ export class CatalogService {
       for (const [sortOrder, category] of data.categories.entries()) {
         const unitId = randomUUID();
         await tx.query(
-          `INSERT INTO passenger_units(tenant_id,id,option_id,code,label,counts_toward_capacity,sort_order)
-           VALUES($1,$2,$3,$4,$5,$6,$7)`,
+          `INSERT INTO passenger_units(tenant_id,id,option_id,code,label,counts_toward_capacity,occupancy_class,sort_order)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
           [
             actor.tenantId,
             unitId,
@@ -172,6 +190,7 @@ export class CatalogService {
             category.slug,
             category.label,
             category.countsTowardCapacity,
+            resolveOccupancyClass(category),
             sortOrder,
           ],
         );
@@ -227,11 +246,16 @@ export class CatalogService {
         data.productId,
         { ...data, localTimes },
       ]);
+      const occupancy = occupancyFields(
+        data.capacity,
+        data.capacityAdult,
+        data.capacityChild,
+      );
       const ruleId = randomUUID();
       await tx.query(
         `INSERT INTO availability_rules
-           (tenant_id,id,option_id,schedule_id,mode,start_date,end_date,weekdays,capacity,timezone,name)
-         VALUES($1,$2,$3,$4,'fixed_departure',$5,$6,$7,$8,$9,$10)`,
+           (tenant_id,id,option_id,schedule_id,mode,start_date,end_date,weekdays,capacity,capacity_adult,capacity_child,timezone,name)
+         VALUES($1,$2,$3,$4,'fixed_departure',$5,$6,$7,$8,$9,$10,$11,$12)`,
         [
           actor.tenantId,
           ruleId,
@@ -241,6 +265,8 @@ export class CatalogService {
           data.endDate,
           data.weekdays,
           data.capacity,
+          occupancy.capacityAdult,
+          occupancy.capacityChild,
           settings.timezone,
           data.name,
         ],
@@ -280,8 +306,8 @@ export class CatalogService {
             startsAt = zoned.toUTC().toISO()!;
           await tx.query(
             `INSERT INTO departures
-               (tenant_id,id,product_id,schedule_id,starts_at,local_date,capacity,option_id,availability_rule_id,ends_at)
-             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$5::timestamptz + make_interval(mins => $10))`,
+               (tenant_id,id,product_id,schedule_id,starts_at,local_date,capacity,capacity_adult,capacity_child,option_id,availability_rule_id,ends_at)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$5::timestamptz + make_interval(mins => $12))`,
             [
               actor.tenantId,
               departureId,
@@ -290,6 +316,8 @@ export class CatalogService {
               startsAt,
               localDate,
               data.capacity,
+              occupancy.capacityAdult,
+              occupancy.capacityChild,
               option.id,
               ruleId,
               option.duration_minutes,
@@ -414,11 +442,12 @@ export class CatalogService {
       for (const [sortOrder, category] of data.categories.entries()) {
         await tx.query(
           `INSERT INTO passenger_units
-             (tenant_id,id,option_id,code,label,counts_toward_capacity,sort_order,active)
-           VALUES($1,$2,$3,$4,$5,$6,$7,true)
+             (tenant_id,id,option_id,code,label,counts_toward_capacity,occupancy_class,sort_order,active)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,true)
            ON CONFLICT (tenant_id,option_id,code) DO UPDATE
              SET label=EXCLUDED.label,
                  counts_toward_capacity=EXCLUDED.counts_toward_capacity,
+                 occupancy_class=EXCLUDED.occupancy_class,
                  sort_order=EXCLUDED.sort_order,
                  active=true`,
           [
@@ -428,6 +457,7 @@ export class CatalogService {
             category.slug,
             category.label,
             category.countsTowardCapacity,
+            resolveOccupancyClass(category),
             sortOrder,
           ],
         );
@@ -592,6 +622,8 @@ export class CatalogService {
       data.weekdays ||
       data.localTimes ||
       data.capacity != null ||
+      data.capacityAdult != null ||
+      data.capacityChild !== undefined ||
       data.blackoutDates,
     );
     if (data.startDate) validDay(data.startDate);
@@ -613,7 +645,7 @@ export class CatalogService {
           `SELECT ar.id,ar.name,ar.status,ar.version,ar.schedule_id,ar.option_id,
                   to_char(ar.start_date,'YYYY-MM-DD') start_date,
                   to_char(ar.end_date,'YYYY-MM-DD') end_date,
-                  ar.weekdays,ar.capacity,ar.timezone,p.id product_id,
+                  ar.weekdays,ar.capacity,ar.capacity_adult,ar.capacity_child,ar.timezone,p.id product_id,
                   o.duration_minutes
              FROM availability_rules ar
              JOIN product_options o ON o.tenant_id=ar.tenant_id AND o.id=ar.option_id
@@ -671,6 +703,13 @@ export class CatalogService {
           data.weekdays ?? (before.weekdays as number[])
         ).map(Number);
         const nextCapacity = data.capacity ?? before.capacity;
+        const occupancy = occupancyFields(
+          nextCapacity,
+          data.capacityAdult ?? before.capacity_adult ?? nextCapacity,
+          data.capacityChild !== undefined
+            ? data.capacityChild
+            : (before.capacity_child ?? null),
+        );
         const nextTimes =
           localTimes ??
           currentTimes.map((row: { local_time: string }) => row.local_time);
@@ -728,8 +767,10 @@ export class CatalogService {
             );
 
           const { rows: existing } = await tx.query(
-            `SELECT d.id,d.starts_at,d.local_date,d.capacity,d.status,d.operational_status,
+            `SELECT d.id,d.starts_at,d.local_date,d.capacity,d.capacity_adult,d.capacity_child,d.status,d.operational_status,
                     (d.committed+d.overbooked)::int AS sold,
+                    (d.committed_adults+d.overbooked_adults)::int AS sold_adults,
+                    (d.committed_children+d.overbooked_children)::int AS sold_children,
                     EXISTS (
                       SELECT 1 FROM bookings b
                        WHERE b.tenant_id=d.tenant_id AND b.departure_id=d.id
@@ -777,11 +818,14 @@ export class CatalogService {
             (dep) =>
               desired.has(new Date(dep.starts_at).toISOString()) &&
               dep.status === "scheduled" &&
-              Number(dep.sold) > nextCapacity,
+              (Number(dep.sold) > nextCapacity ||
+                Number(dep.sold_adults) > occupancy.capacityAdult ||
+                (occupancy.capacityChild != null &&
+                  Number(dep.sold_children) > occupancy.capacityChild)),
           );
           if (blockedCapacity.length)
             throw new BadRequestException(
-              `Cannot lower seat capacity to ${nextCapacity}: ${blockedCapacity.length} upcoming departure(s) already have more committed seats.`,
+              `Cannot lower occupancy: ${blockedCapacity.length} upcoming departure(s) already have more sold places than the new adult/occupancy limits.`,
             );
 
           for (const slot of desired.values()) {
@@ -793,25 +837,38 @@ export class CatalogService {
               ) {
                 await tx.query(
                   `UPDATE departures
-                      SET status='scheduled',operational_status='open',capacity=$3,
-                          local_date=$4
+                      SET status='scheduled',operational_status='open',
+                          capacity=$3,capacity_adult=$4,capacity_child=$5,
+                          local_date=$6
                     WHERE tenant_id=$1 AND id=$2`,
                   [
                     actor.tenantId,
                     existingDep.id,
                     nextCapacity,
+                    occupancy.capacityAdult,
+                    occupancy.capacityChild,
                     slot.localDate,
                   ],
                 );
                 revived += 1;
                 continue;
               }
-              if (Number(existingDep.capacity) !== nextCapacity) {
+              if (
+                Number(existingDep.capacity) !== nextCapacity ||
+                Number(existingDep.capacity_adult) !== occupancy.capacityAdult ||
+                (existingDep.capacity_child ?? null) !== occupancy.capacityChild
+              ) {
                 await tx.query(
                   `UPDATE departures
-                      SET capacity=$3
+                      SET capacity=$3,capacity_adult=$4,capacity_child=$5
                     WHERE tenant_id=$1 AND id=$2`,
-                  [actor.tenantId, existingDep.id, nextCapacity],
+                  [
+                    actor.tenantId,
+                    existingDep.id,
+                    nextCapacity,
+                    occupancy.capacityAdult,
+                    occupancy.capacityChild,
+                  ],
                 );
                 capacityUpdated += 1;
               }
@@ -820,8 +877,8 @@ export class CatalogService {
             const departureId = randomUUID();
             await tx.query(
               `INSERT INTO departures
-                 (tenant_id,id,product_id,schedule_id,starts_at,local_date,capacity,option_id,availability_rule_id,ends_at)
-               VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$5::timestamptz + make_interval(mins => $10))`,
+                 (tenant_id,id,product_id,schedule_id,starts_at,local_date,capacity,capacity_adult,capacity_child,option_id,availability_rule_id,ends_at)
+               VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$5::timestamptz + make_interval(mins => $12))`,
               [
                 actor.tenantId,
                 departureId,
@@ -830,6 +887,8 @@ export class CatalogService {
                 slot.startsAt,
                 slot.localDate,
                 nextCapacity,
+                occupancy.capacityAdult,
+                occupancy.capacityChild,
                 before.option_id,
                 ruleId,
                 before.duration_minutes,
@@ -879,6 +938,8 @@ export class CatalogService {
                 weekdays: nextWeekdays,
                 localTimes: nextTimes,
                 capacity: nextCapacity,
+                capacityAdult: occupancy.capacityAdult,
+                capacityChild: occupancy.capacityChild,
                 blackoutDates: nextBlackouts,
               },
             ],
@@ -895,13 +956,15 @@ export class CatalogService {
                   end_date=$7,
                   weekdays=$8,
                   capacity=$9,
+                  capacity_adult=$10,
+                  capacity_child=$11,
                   version=version+1,
                   updated_at=clock_timestamp()
             WHERE tenant_id=$1 AND id=$2 AND version=$4
           RETURNING id,name,status,version,
                     to_char(start_date,'YYYY-MM-DD') start_date,
                     to_char(end_date,'YYYY-MM-DD') end_date,
-                    weekdays,capacity`,
+                    weekdays,capacity,capacity_adult,capacity_child`,
           [
             actor.tenantId,
             ruleId,
@@ -912,6 +975,8 @@ export class CatalogService {
             nextEnd,
             nextWeekdays,
             nextCapacity,
+            occupancy.capacityAdult,
+            occupancy.capacityChild,
           ],
         );
         if (!row)
@@ -1072,7 +1137,9 @@ export class CatalogController {
       );
       if (!row) throw new NotFoundException();
       const { rows: departures } = await tx.query(
-        `SELECT d.id,d.starts_at,d.capacity,d.status,(d.committed+d.overbooked)::int AS committed,
+        `SELECT d.id,d.starts_at,d.capacity,d.capacity_adult,d.capacity_child,d.status,
+                (d.committed+d.overbooked)::int AS committed,
+                d.committed_adults+d.overbooked_adults AS committed_adults,
                 GREATEST(0,d.capacity-d.committed-d.overbooked-COALESCE((
                   SELECT SUM(h.seats) FROM holds h
                   WHERE h.tenant_id=d.tenant_id AND h.departure_id=d.id

@@ -4,9 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, ListFilter, Pause, Pencil, Play } from "lucide-react";
 import type { AvailabilityRule, Product, Session } from "@/lib/types";
-import { weekdayLabels } from "@/lib/types";
+import { occupancyLabel, weekdayLabels } from "@/lib/types";
 import { formatMediumDateRange, useMutation } from "@/lib/client";
-import { Empty, Loading, Notice, Status, TenantDateInput } from "./common";
+import { Empty, Loading, Notice, Status, TenantDateInput, Toast } from "./common";
 import { ScheduleFormDialog } from "./schedule-form-dialog";
 
 export type ScheduleRange = "any" | "week" | "month" | "custom";
@@ -455,7 +455,7 @@ export function CatalogSchedulesPanel({
         </div>
       ) : null}
 
-      {mutation.error ? <Notice error>{mutation.error}</Notice> : null}
+      <Toast message={mutation.error} onDismiss={mutation.clear} />
 
       {filtered.length ? (
         <>
@@ -468,7 +468,7 @@ export function CatalogSchedulesPanel({
                   <th>Period</th>
                   <th>Times</th>
                   <th>Days</th>
-                  <th>Seats</th>
+                  <th>Occupancy</th>
                   <th>Status</th>
                   <th>Upcoming</th>
                   <th>
@@ -506,7 +506,7 @@ export function CatalogSchedulesPanel({
                         .map((day) => weekdayLabels[day - 1])
                         .join(" · ")}
                     </td>
-                    <td>{rule.capacity ?? "—"}</td>
+                    <td>{occupancyLabel(rule)}</td>
                     <td>
                       <Status state={rule.status} />
                     </td>
@@ -599,8 +599,8 @@ export function CatalogSchedulesPanel({
                     </dd>
                   </div>
                   <div>
-                    <dt>Seats</dt>
-                    <dd>{rule.capacity ?? "—"}</dd>
+                    <dt>Occupancy</dt>
+                    <dd>{occupancyLabel(rule)}</dd>
                   </div>
                   <div>
                     <dt>Upcoming</dt>

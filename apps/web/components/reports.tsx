@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   BarChart3,
   CalendarDays,
+  ChevronDown,
   Landmark,
 } from "lucide-react";
 import type { Session } from "@/lib/types";
@@ -49,6 +50,7 @@ type ReportRange =
   | "week"
   | "month"
   | "last_month"
+  | "year"
   | "custom";
 
 function tenantDay(timezone: string, date = new Date()) {
@@ -90,6 +92,11 @@ function previousMonthBounds(day: string): [string, string] {
   return monthBounds(`${prev[0]}-${String(prev[1]).padStart(2, "0")}-01`);
 }
 
+function yearBounds(day: string): [string, string] {
+  const year = day.slice(0, 4);
+  return [`${year}-01-01`, `${year}-12-31`];
+}
+
 function rangeBounds(
   range: ReportRange,
   today: string,
@@ -101,6 +108,7 @@ function rangeBounds(
   if (range === "week") return [mondayOf(today), sundayOf(today)];
   if (range === "month") return monthBounds(today);
   if (range === "last_month") return previousMonthBounds(today);
+  if (range === "year") return yearBounds(today);
   return [customFrom, customTo];
 }
 
@@ -111,6 +119,8 @@ export function Reports({ session }: { session: Session }) {
   const [preset, setPreset] = useState<ReportRange>("week");
   const [customFrom, setCustomFrom] = useState(weekStart);
   const [customTo, setCustomTo] = useState(weekEnd);
+  const [rangeOpen, setRangeOpen] = useState(false);
+  const rangeRef = useRef<HTMLDivElement>(null);
 
   const [from, to] = rangeBounds(preset, today, customFrom, customTo);
   const report = useResource<Report>(
@@ -121,11 +131,34 @@ export function Reports({ session }: { session: Session }) {
 
   function selectPreset(next: ReportRange) {
     setPreset(next);
+    setRangeOpen(false);
     if (next === "custom") {
       setCustomFrom(from);
       setCustomTo(to);
     }
   }
+
+  useEffect(() => {
+    if (!rangeOpen) return;
+    function onPointer(event: MouseEvent) {
+      if (
+        rangeRef.current &&
+        !rangeRef.current.contains(event.target as Node) &&
+        !document.getElementById("tdp-popup")?.contains(event.target as Node)
+      ) {
+        setRangeOpen(false);
+      }
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setRangeOpen(false);
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [rangeOpen]);
 
   const rangeHint = formatMediumDateRange(from, to, locale);
 
@@ -135,8 +168,11 @@ export function Reports({ session }: { session: Session }) {
     { value: "week", caption: "This week" },
     { value: "month", caption: "This month" },
     { value: "last_month", caption: "Last month" },
+    { value: "year", caption: "This year" },
     { value: "custom", caption: "Custom" },
   ];
+  const presetLabel =
+    presets.find((item) => item.value === preset)?.caption ?? "This week";
 
   return (
     <>
@@ -166,6 +202,45 @@ export function Reports({ session }: { session: Session }) {
               {item.caption}
             </button>
           ))}
+        </div>
+        <div className="filter-menu report-filter-menu" ref={rangeRef}>
+          <button
+            type="button"
+            className={
+              "button secondary catalog-add-btn" +
+              (rangeOpen ? " active-filter" : "")
+            }
+            aria-label="Report date range"
+            aria-expanded={rangeOpen}
+            aria-haspopup="listbox"
+            onClick={() => setRangeOpen((open) => !open)}
+          >
+            <span className="button-label">{presetLabel}</span>
+            <ChevronDown size={16} aria-hidden="true" />
+          </button>
+          {rangeOpen && (
+            <div
+              className="filter-popover"
+              role="listbox"
+              aria-label="Report date range"
+            >
+              {presets.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  role="option"
+                  aria-selected={preset === item.value}
+                  className={
+                    "filter-range-option" +
+                    (preset === item.value ? " selected" : "")
+                  }
+                  onClick={() => selectPreset(item.value)}
+                >
+                  {item.caption}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
       {preset === "custom" && (

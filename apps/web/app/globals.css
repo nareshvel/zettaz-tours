@@ -10768,14 +10768,20 @@ a.briefing-tile:hover {
   line-height: 1.4;
 }
 .report-filter-menu {
+  display: none;
   flex: none;
   position: relative;
 }
-.report-filter-menu .filter-range-options {
-  grid-template-columns: 1fr 1fr;
+.report-filter-menu .filter-popover {
+  left: 0;
+  right: auto;
+  width: min(16rem, calc(100vw - 32px));
+  padding: 8px;
+  gap: 6px;
 }
 .report-range-bar {
   margin: 0 0 16px;
+  display: flex;
 }
 .report-preset-chips {
   display: flex;
@@ -10896,6 +10902,19 @@ a.briefing-tile:hover {
 @media (max-width: 720px) {
   .metric-grid {
     grid-template-columns: 1fr 1fr;
+  }
+  .report-preset-chips {
+    display: none;
+  }
+  .report-range-bar {
+    justify-content: flex-end;
+  }
+  .report-filter-menu {
+    display: block;
+  }
+  .report-filter-menu .filter-popover {
+    left: auto;
+    right: 0;
   }
   .report-metrics .metric-card {
     min-height: 0;

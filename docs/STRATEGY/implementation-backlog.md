@@ -70,12 +70,12 @@ Each location must have a name, address or directions, latitude/longitude when s
 
 **Shipped (14 September 2026):** Settings → Pickup locations Add/Edit uses Leaflet + Esri World Street Map tiles and Esri World Geocoding to center on tenant city/country (no API key). Click-to-place sets lat/lng. Google Places, Directions, OSM.org volunteer tiles, and CARTO keyless CDN are not used.
 
-Live staff/vehicle GPS, breadcrumbs and ETAs remain Track B pending privacy, consent, battery, retention and local legal decisions, as required by the launch contract.
+Live staff/vehicle GPS, breadcrumbs and ETAs remain Track B pending privacy, consent, battery, retention and local legal decisions, as required by the launch contract. If GPS is ever reopened, use [crew-gps-later.md](crew-gps-later.md) (Connecteam-informed stamps / fences / trails). Do not start from this paragraph.
 
 ## Outstanding product decisions
 
 - Stripe merchant eligibility, responsibility/fee terms, webhook setup, refunds/disputes, and card-present eligibility.
 - Rock's approved XCD-to-USD rate source and rounding rule for applying local tender to USD balances.
 - Tenant-one configuration workbook: products, locations, resources, routes and partners.
-- Privacy, retention and consent policy before live GPS is enabled.
+- Privacy, retention and consent policy before live GPS is enabled. Expansion sketch: [crew-gps-later.md](crew-gps-later.md).
 - Final legal waiver wording and accounting chart mapping.

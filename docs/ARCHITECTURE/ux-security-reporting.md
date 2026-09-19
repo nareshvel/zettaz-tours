@@ -66,7 +66,7 @@ Sample tenant wording: [waiver-content.md](../CLIENTS/rock-adventures/waiver-con
 - Hosted/tokenized payment components. Raw card data stays outside Zettaz systems.
 - Least-privilege cloud identities, secret manager, key rotation, separate production/non-production credentials.
 - Signed webhooks, replay protection, allowlists where practical, full integration audit logs.
-- Configurable retention/anonymization for customer, waiver, GPS, and incident data. Legal/insurance review by operating country.
+- Configurable retention/anonymization for customer, waiver, GPS, and incident data. Legal/insurance review by operating country. Crew GPS expansion (held): [crew-gps-later.md](../STRATEGY/crew-gps-later.md).
 - Automated backups, point-in-time restore, tested recovery, tenant export.
 - Target 99.9% monthly availability after stabilization. Graceful degradation if OTA, messaging, or payment providers fail.
 - Security logs must omit card data, waiver signatures, secrets, and unnecessary passenger/medical information.

@@ -71,7 +71,7 @@ Stripe Connect live checkout, XCD→USD rate, MFA/TOTP, WP payload apply, printe
 | Item | Why later |
 | --- | --- |
 | Offline **hardening** beyond the 24h lease (conflict UI polish, media resume at scale) | Delivery E07 after cutover |
-| GPS breadcrumbs / live ETAs | Privacy, battery, legal open |
+| GPS breadcrumbs / live ETAs | Privacy, battery, legal open. Optional expansion only: [crew-gps-later.md](crew-gps-later.md) |
 | Card-present / Stripe Terminal | Merchant eligibility evidence |
 | Guest-facing kiosk polish / consumer app | Non-goal / Track B |
 | White-label second binary | E16 |
@@ -194,7 +194,7 @@ Calendar is **from owner acceptance of this file**, not from chat history. Indic
 | --- | --- | --- |
 | Kiosk lock (guest-facing tablet) | Phase 2–3 stable | Engineering 19 Sep — PIN exit, scan/waiver only. Evidence: [crew-app-phase-5-evidence.md](../TESTING/crew-app-phase-5-evidence.md). Device pass + EAS still owner. |
 | Card-present | Stripe Terminal eligibility | Do not start |
-| GPS / ETAs | Privacy + legal write-up | Do not start |
+| GPS / ETAs | Privacy + legal write-up | Do not start. Held expansion: [crew-gps-later.md](crew-gps-later.md) |
 | Push | Product decision | Do not start |
 | Offline hardening / media resume at scale | After first season | Do not start |
 | White-label Crew binary | E16 | Do not start |

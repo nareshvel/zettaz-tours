@@ -114,8 +114,9 @@ Remaining in this group: owner visual on General & branding, Taxes & commercial,
 ## Held — do not start unless owner reopens
 
 - **Finance money in/out later** — expense payments, guest/partner cash on Overview, bank registers: [finance-money-in-out-later.md](../STRATEGY/finance-money-in-out-later.md). Do not start until the owner names a phase.
+- **Crew GPS later** — Connecteam-informed stamps / fences / trails: [crew-gps-later.md](../STRATEGY/crew-gps-later.md). Do not start until the owner reopens that file.
 - Dependency-blocked Track A: Stripe eligibility, XCD→USD rate, Rock printers, Rock waiver legal text, WP payload / import ID reconciliation
-- Track B: public checkout, reseller portal, GPS/ETAs, OTA cert, rich analytics — [launch-contract.md](../STRATEGY/launch-contract.md)
+- Track B: public checkout, reseller portal, GPS/ETAs, OTA cert, rich analytics — [launch-contract.md](../STRATEGY/launch-contract.md). GPS possible expansion (held): [crew-gps-later.md](../STRATEGY/crew-gps-later.md).
 
 ---
 

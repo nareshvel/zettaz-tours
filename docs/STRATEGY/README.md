@@ -12,3 +12,4 @@ Product direction and delivery. Do not put implementation specs here.
 | [implementation-backlog.md](implementation-backlog.md) | Current ordered execution plan and completion boundaries |
 | [ui-waiver-launch-task-list.md](ui-waiver-launch-task-list.md) | Page-by-page responsive review and departure waiver/offline delivery plan |
 | [finance-money-in-out-later.md](finance-money-in-out-later.md) | Held later: expense payments, guest/partner cash strip, bank registers |
+| [crew-gps-later.md](crew-gps-later.md) | Held later: Crew GPS stamps / fences / trails (Connecteam study; do not start) |

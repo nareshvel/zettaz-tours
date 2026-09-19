@@ -57,7 +57,7 @@ Do not wait for Viator or GetYourGuide certification to replace the spreadsheet.
 | Private charter quote workflow | Charters are request → quote → hold a resource → confirm. Do not fake them as zero-capacity shared tours. Out of Track A unless promoted in writing. |
 | Transfer time-window engine | Same: different inventory primitive. Out of Track A unless promoted. |
 | WhatsApp Business bot | Staff-assisted capture with conversation/reference. Not an automated channel at launch. |
-| GPS breadcrumbs / live ETAs | Privacy, battery, and legal review are open. |
+| GPS breadcrumbs / live ETAs | Privacy, battery, and legal review are open. Optional later model (stamps / fences / trails; do not start): [crew-gps-later.md](crew-gps-later.md). |
 | Self-serve tenant billing, white-label, second-tenant onboarding | Second operator, not Rock Adventures go-live. |
 | Full general ledger, payroll, public marketplace, automatic route optimization, native consumer app | Unchanged non-goals from v1.1. |
 

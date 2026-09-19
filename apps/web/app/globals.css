@@ -4153,6 +4153,23 @@ td small {
   align-items: center;
   padding: 8px 12px;
   border-top: 1px solid var(--line);
+  border-left: 3px solid transparent;
+  background: white;
+}
+.departure-agenda-row.is-filling {
+  border-left-color: #c9a24a;
+}
+.departure-agenda-row.is-tight {
+  border-left-color: #d0893a;
+}
+.departure-agenda-row.is-full {
+  border-left-color: color-mix(in srgb, var(--danger) 75%, #8a4a4a);
+}
+.departure-agenda-row.is-held {
+  background: color-mix(in srgb, var(--surface, #f7f9f9) 88%, white);
+}
+.departure-agenda-row.is-selected {
+  background: color-mix(in srgb, var(--accent) 6%, white);
 }
 .departure-agenda-main {
   display: grid;
@@ -4163,6 +4180,20 @@ td small {
   padding: 8px;
   color: inherit;
   text-decoration: none;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+  width: 100%;
+  font: inherit;
+}
+.departure-agenda-main:hover {
+  background: color-mix(in srgb, var(--line) 35%, transparent);
+}
+.departure-agenda-main:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .departure-agenda-main > div {
   display: flex;
@@ -4171,8 +4202,58 @@ td small {
 .departure-agenda small {
   color: var(--muted);
 }
+.departure-agenda-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 .departure-book {
   min-height: 44px;
+}
+.departure-full {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.departure-agenda-detail {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 8px 8px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+  background: color-mix(in srgb, var(--accent) 5%, white);
+}
+.departure-agenda-detail-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.departure-agenda-detail-copy strong {
+  font-size: 14px;
+}
+.departure-agenda-detail-copy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.departure-agenda-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
 }
 .capacity-meter > span {
   display: block;
@@ -4184,6 +4265,48 @@ td small {
 }
 .capacity-meter {
   background: color-mix(in srgb, var(--line) 80%, white) 0 0/100% 7px no-repeat;
+}
+.capacity-meter.is-filling > span,
+.briefing-meter.is-filling > i {
+  background: #c9a24a;
+}
+.capacity-meter.is-tight > span,
+.briefing-meter.is-tight > i {
+  background: #d0893a;
+}
+.capacity-meter.is-full > span,
+.briefing-meter.is-full > i {
+  background: color-mix(in srgb, var(--danger) 80%, #8a4a4a);
+}
+.seat-fill.is-filling {
+  color: #8a6a1f;
+}
+.seat-fill.is-tight {
+  color: #9a5a1a;
+}
+.seat-fill.is-full {
+  color: var(--danger);
+}
+.calendar-departure.is-filling {
+  background: color-mix(in srgb, #c9a24a 12%, white);
+}
+.calendar-departure.is-tight {
+  background: color-mix(in srgb, #d0893a 14%, white);
+}
+.calendar-departure.is-full {
+  background: color-mix(in srgb, var(--danger) 10%, white);
+}
+.dispatch-card .capacity-meter {
+  margin: 0 0 12px;
+}
+.dispatch-card.is-filling {
+  box-shadow: inset 3px 0 0 #c9a24a;
+}
+.dispatch-card.is-tight {
+  box-shadow: inset 3px 0 0 #d0893a;
+}
+.dispatch-card.is-full {
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--danger) 75%, #8a4a4a);
 }
 .departure-week {
   display: grid;
@@ -4591,9 +4714,19 @@ td small {
   .departure-agenda-main .capacity-meter {
     grid-column: 1 / -1;
   }
-  .departure-book {
+  .departure-agenda-actions {
     width: 100%;
+  }
+  .departure-agenda-actions .button,
+  .departure-full {
+    flex: 1 1 auto;
     justify-content: center;
+  }
+  .departure-book {
+    width: auto;
+  }
+  .departure-agenda-detail {
+    margin: 0;
   }
   .departure-week-row {
     grid-template-columns: 1fr;

@@ -27,3 +27,4 @@ Next ADR is `010-<slug>.md`. Status line: Proposed or Accepted, plus date.
 - [016 — Rock launch payments and operating controls](016-rock-launch-operations.md) — Stripe Connect/USD, SMTP, MFA, printer enrollment, offline data, and cutover controls.
 - [017 — Development schema redesign and reset policy](017-development-schema-reset-policy.md) — permits coordinated schema replacement and demo-data reseeding before production, while retaining target invariants.
 - [018 — Print delivery and the shared print agent](018-print-delivery-and-agent.md) — server-rendered vector PDF in four paper profiles, delivered to the shared Zettaz Go agent or the browser, with every job recorded.
+- [019 — Rock public booking channel: JungleBee until Zettaz checkout](019-rock-public-booking-channel.md) — JungleBee is live web bookings for Rock; WTE assumed retired; Zettaz public checkout is Track B.

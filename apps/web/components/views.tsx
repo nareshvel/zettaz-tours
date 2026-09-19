@@ -55,7 +55,7 @@ import { BoardingPaymentModal } from "./boarding-payment";
 import { BoardingWaiverModal } from "./boarding-waiver";
 import { BoardingGateToolbar } from "./boarding-gate-toolbar";
 import { StartTripButton } from "./start-trip";
-import { DepartureOptionsMenu } from "./dispatch";
+import { DepartureOptionsMenu, OperationalStatusControl } from "./dispatch";
 
 type BriefingQueueItem = {
   kind: string;
@@ -606,11 +606,23 @@ function TodayStrip({
   );
 }
 
+/** Seat-fill pressure for departure lists — visual cue, not a chart. */
+function fillPressure(committed: number, capacity: number) {
+  if (capacity <= 0) return "open" as const;
+  const share = committed / capacity;
+  if (share >= 1) return "full" as const;
+  if (share >= 0.8) return "tight" as const;
+  if (share >= 0.5) return "filling" as const;
+  return "open" as const;
+}
+
 /** A ratio against a limit is a meter, never a chart. */
 function Meter({ share, label: caption }: { share: number; label: string }) {
+  const pressure =
+    share >= 100 ? "full" : share >= 80 ? "tight" : share >= 50 ? "filling" : "open";
   return (
     <span
-      className="briefing-meter"
+      className={"briefing-meter is-" + pressure}
       role="img"
       aria-label={`${caption}: ${share}%`}
     >
@@ -1525,7 +1537,8 @@ export function Departures({ session }: { session: Session }) {
     [customFrom, setCustomFrom] = useState(today),
     [customTo, setCustomTo] = useState(shiftDay(today, 13)),
     [filtersOpen, setFiltersOpen] = useState(false),
-    [view, setView] = useState<"agenda" | "week" | "list">("agenda");
+    [view, setView] = useState<"agenda" | "week" | "list">("agenda"),
+    [selectedId, setSelectedId] = useState<string | null>(null);
   const filterRef = useRef<HTMLDivElement>(null);
   const [from, to] = rangeBounds(range, today, customFrom, customTo);
   const products = useResource<Product[]>("admin/v1/products");
@@ -1599,6 +1612,7 @@ export function Departures({ session }: { session: Session }) {
     weeks.push(weekDays.slice(i, i + 7));
   const canBook = session.permissions.includes("bookings.write");
   const canManifest = session.permissions.includes("manifest.read");
+  const canOps = session.permissions.includes("operations.write");
   const rangeLabel =
     range === "today"
       ? "Today"
@@ -1854,29 +1868,32 @@ export function Departures({ session }: { session: Session }) {
                         </strong>
                         <span>{items.length}</span>
                       </header>
-                      {items.map((d) => (
-                        <Link
-                          href={`/departures/${d.id}/manifest`}
-                          key={d.id}
-                          className="calendar-departure"
-                        >
-                          <time>
-                            {departureClock(
-                              d.starts_at,
-                              session.tenant.timezone,
-                              session.tenant.config.locale,
-                              session.tenant.config.timeFormat,
-                            )}
-                          </time>
-                          <span>
-                            <strong>{d.product_name}</strong>
-                            <small>
-                              {d.committed}/{d.capacity}
-                              {d.available === 0 ? " · Sold out" : ""}
-                            </small>
-                          </span>
-                        </Link>
-                      ))}
+                      {items.map((d) => {
+                        const pressure = fillPressure(d.committed, d.capacity);
+                        return (
+                          <Link
+                            href={`/departures/${d.id}/manifest`}
+                            key={d.id}
+                            className={"calendar-departure is-" + pressure}
+                          >
+                            <time>
+                              {departureClock(
+                                d.starts_at,
+                                session.tenant.timezone,
+                                session.tenant.config.locale,
+                                session.tenant.config.timeFormat,
+                              )}
+                            </time>
+                            <span>
+                              <strong>{d.product_name}</strong>
+                              <small>
+                                {d.committed}/{d.capacity}
+                                {d.available === 0 ? " · Sold out" : ""}
+                              </small>
+                            </span>
+                          </Link>
+                        );
+                      })}
                     </article>
                   );
                 })}
@@ -1901,52 +1918,136 @@ export function Departures({ session }: { session: Session }) {
                     {departures.length === 1 ? "departure" : "departures"}
                   </span>
                 </header>
-                {departures.map((d) => (
-                  <article key={d.id} className="departure-agenda-row">
-                    <Link
-                      href={`/departures/${d.id}/manifest`}
-                      className="departure-agenda-main"
+                {departures.map((d) => {
+                  const pressure = fillPressure(d.committed, d.capacity);
+                  const opsStatus = d.operational_status ?? "open";
+                  const sellable =
+                    d.available > 0 &&
+                    opsStatus === "open" &&
+                    (d.status ?? "scheduled") === "scheduled";
+                  const isSelected = selectedId === d.id;
+                  const bookHref = `/reservations/new?departure=${d.id}&product=${d.product_id}&date=${tenantDay(session.tenant.timezone, new Date(d.starts_at))}&returnTo=${encodeURIComponent(`/departures/${d.id}/manifest`)}`;
+                  return (
+                    <article
+                      key={d.id}
+                      className={
+                        "departure-agenda-row is-" +
+                        pressure +
+                        (isSelected ? " is-selected" : "") +
+                        (opsStatus !== "open" ? " is-held" : "")
+                      }
                     >
-                      <time>
-                        {departureClock(
-                          d.starts_at,
-                          session.tenant.timezone,
-                          session.tenant.config.locale,
-                          session.tenant.config.timeFormat,
-                        )}
-                      </time>
-                      <div>
-                        <strong>{d.product_name}</strong>
-                        <small>
-                          {d.option_name} · {d.duration_minutes ?? "—"} min
-                          {d.status && d.status !== "scheduled"
-                            ? ` · ${label(d.status)}`
-                            : ""}
-                        </small>
-                      </div>
-                      <div className="capacity-meter">
-                        <span
-                          style={{
-                            width: `${Math.min(100, d.capacity ? (d.committed / d.capacity) * 100 : 0)}%`,
-                          }}
-                        />
-                        <small>
-                          {d.committed} of {d.capacity} booked
-                          {(d.held ?? 0) > 0 ? ` · ${d.held} held` : ""}
-                          {d.available === 0 ? " · Sold out" : ""}
-                        </small>
-                      </div>
-                    </Link>
-                    {canBook && d.available > 0 && (
-                      <Link
-                        className="button secondary departure-book"
-                        href={`/reservations/new?departure=${d.id}&product=${d.product_id}&date=${tenantDay(session.tenant.timezone, new Date(d.starts_at))}&returnTo=${encodeURIComponent(`/departures/${d.id}/manifest`)}`}
+                      <button
+                        type="button"
+                        className="departure-agenda-main"
+                        aria-pressed={isSelected}
+                        onClick={() =>
+                          setSelectedId((current) =>
+                            current === d.id ? null : d.id,
+                          )
+                        }
                       >
-                        Book
-                      </Link>
-                    )}
-                  </article>
-                ))}
+                        <time>
+                          {departureClock(
+                            d.starts_at,
+                            session.tenant.timezone,
+                            session.tenant.config.locale,
+                            session.tenant.config.timeFormat,
+                          )}
+                        </time>
+                        <div>
+                          <strong>{d.product_name}</strong>
+                          <small>
+                            {d.option_name} · {d.duration_minutes ?? "—"} min
+                            {opsStatus !== "open"
+                              ? ` · ${label(opsStatus)}`
+                              : d.status && d.status !== "scheduled"
+                                ? ` · ${label(d.status)}`
+                                : ""}
+                          </small>
+                        </div>
+                        <div className={"capacity-meter is-" + pressure}>
+                          <span
+                            style={{
+                              width: `${Math.min(
+                                100,
+                                d.capacity
+                                  ? (d.committed / d.capacity) * 100
+                                  : 0,
+                              )}%`,
+                            }}
+                          />
+                          <small>
+                            {d.committed} of {d.capacity} booked
+                            {(d.held ?? 0) > 0 ? ` · ${d.held} held` : ""}
+                            {!sellable && d.available === 0
+                              ? " · Sold out"
+                              : ""}
+                          </small>
+                        </div>
+                      </button>
+                      <div className="departure-agenda-actions">
+                        {canManifest && (
+                          <Link
+                            className="button secondary"
+                            href={`/departures/${d.id}/manifest`}
+                          >
+                            Manifest
+                          </Link>
+                        )}
+                        {canBook &&
+                          (sellable ? (
+                            <Link
+                              className="button departure-book"
+                              href={bookHref}
+                            >
+                              Book
+                            </Link>
+                          ) : (
+                            <span className="departure-full">
+                              {opsStatus !== "open"
+                                ? label(opsStatus)
+                                : "Fully booked"}
+                            </span>
+                          ))}
+                      </div>
+                      {isSelected && (
+                        <div className="departure-agenda-detail">
+                          <div className="departure-agenda-detail-copy">
+                            <strong>
+                              {sellable
+                                ? `${d.available} seat${d.available === 1 ? "" : "s"} left`
+                                : opsStatus !== "open"
+                                  ? label(opsStatus)
+                                  : "No seats left"}
+                            </strong>
+                            <p>
+                              {d.committed} booked
+                              {(d.held ?? 0) > 0
+                                ? ` · ${d.held} on hold`
+                                : ""}
+                              {" · "}
+                              {d.capacity} capacity
+                            </p>
+                          </div>
+                          <div className="departure-agenda-detail-actions">
+                            {canOps &&
+                              d.operational_version != null && (
+                                <OperationalStatusControl
+                                  departure={{
+                                    id: d.id,
+                                    operational_status: opsStatus,
+                                    operational_version: d.operational_version,
+                                  }}
+                                  reload={list.reload}
+                                />
+                              )}
+                          </div>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
               </section>
             ))}
           </div>
@@ -1965,53 +2066,70 @@ export function Departures({ session }: { session: Session }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {list.items.map((d) => (
-                    <tr key={d.id}>
-                      <td>
-                        <Link href={`/departures/${d.id}/manifest`}>
-                          <strong>{d.product_name}</strong>
-                          <small>{d.option_name}</small>
-                        </Link>
-                      </td>
-                      <td>
-                        {friendlyDateTime(
-                          d.starts_at,
-                          session.tenant.timezone,
-                          session.tenant.config.locale,
-                          session.tenant.config.timeFormat,
-                        )}
-                      </td>
-                      <td>
-                        {d.committed} / {d.capacity}
-                      </td>
-                      <td>{d.held ?? 0}</td>
-                      <td>
-                        <span className="seat-count">
-                          {d.available === 0 ? "Sold out" : d.available}
-                        </span>
-                      </td>
-                      <td>
-                        <div className="row-actions">
-                          {canManifest && (
-                            <Link
-                              className="text-link"
-                              href={`/departures/${d.id}/manifest`}
-                            >
-                              Manifest
-                            </Link>
+                  {list.items.map((d) => {
+                    const pressure = fillPressure(d.committed, d.capacity);
+                    const opsStatus = d.operational_status ?? "open";
+                    const sellable =
+                      d.available > 0 &&
+                      opsStatus === "open" &&
+                      (d.status ?? "scheduled") === "scheduled";
+                    return (
+                      <tr key={d.id} className={"is-" + pressure}>
+                        <td>
+                          <Link href={`/departures/${d.id}/manifest`}>
+                            <strong>{d.product_name}</strong>
+                            <small>{d.option_name}</small>
+                          </Link>
+                        </td>
+                        <td>
+                          {friendlyDateTime(
+                            d.starts_at,
+                            session.tenant.timezone,
+                            session.tenant.config.locale,
+                            session.tenant.config.timeFormat,
                           )}
-                          {canBook && d.available > 0 && (
-                            <Link
-                              className="text-link"
-                              href={`/reservations/new?departure=${d.id}&product=${d.product_id}&date=${tenantDay(session.tenant.timezone, new Date(d.starts_at))}&returnTo=${encodeURIComponent(`/departures/${d.id}/manifest`)}`}
-                            >
-                              Book
-                            </Link>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td>
+                          <span className={"seat-fill is-" + pressure}>
+                            {d.committed} / {d.capacity}
+                          </span>
+                        </td>
+                        <td>{d.held ?? 0}</td>
+                        <td>
+                          <span className="seat-count">
+                            {!sellable
+                              ? opsStatus !== "open"
+                                ? label(opsStatus)
+                                : "Sold out"
+                              : d.available}
+                          </span>
+                        </td>
+                        <td>
+                          <div className="row-actions">
+                            {canManifest && (
+                              <Link
+                                className="text-link"
+                                href={`/departures/${d.id}/manifest`}
+                              >
+                                Manifest
+                              </Link>
+                            )}
+                            {canBook &&
+                              (sellable ? (
+                                <Link
+                                  className="text-link"
+                                  href={`/reservations/new?departure=${d.id}&product=${d.product_id}&date=${tenantDay(session.tenant.timezone, new Date(d.starts_at))}&returnTo=${encodeURIComponent(`/departures/${d.id}/manifest`)}`}
+                                >
+                                  Book
+                                </Link>
+                              ) : (
+                                <span className="muted">Fully booked</span>
+                              ))}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

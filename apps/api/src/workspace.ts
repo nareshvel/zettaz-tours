@@ -159,7 +159,7 @@ export class WorkspaceController {
     const q = parse(departureQuerySchema, raw);
     return this.db.transaction(actor, async (tx) => {
       const { rows } = await tx.query(
-        `SELECT d.id,d.product_id,d.starts_at,d.capacity,d.status,(d.committed+d.overbooked)::int AS committed,d.overbooked,p.name AS product_name,
+        `SELECT d.id,d.product_id,d.starts_at,d.capacity,d.status,d.operational_status,d.operational_version,(d.committed+d.overbooked)::int AS committed,d.overbooked,p.name AS product_name,
       p.availability_mode,p.product_kind,
       p.definition->>'optionName' AS option_name,p.definition->'categories' AS categories,
       NULLIF(p.definition->>'durationMinutes','')::int AS duration_minutes,

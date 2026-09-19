@@ -145,6 +145,8 @@ export type Departure = {
   held?: number;
   available: number;
   status?: string;
+  operational_status?: "open" | "weather_hold" | "closed";
+  operational_version?: number;
   categories: ProductInput["categories"];
 };
 export type Reservation = {

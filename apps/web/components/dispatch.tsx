@@ -44,6 +44,15 @@ import {
 } from "./common";
 import { StartTripButton } from "./start-trip";
 
+function fillPressure(committed: number, capacity: number) {
+  if (capacity <= 0) return "open" as const;
+  const share = committed / capacity;
+  if (share >= 1) return "full" as const;
+  if (share >= 0.8) return "tight" as const;
+  if (share >= 0.5) return "filling" as const;
+  return "open" as const;
+}
+
 const localDay = (zone: string) =>
   new Intl.DateTimeFormat("en-CA", {
     timeZone: zone,
@@ -205,7 +214,13 @@ export function OperationsBoard({ session }: { session: Session }) {
               d.pickup_required === d.pickup_planned &&
               d.operational_status === "open";
             return (
-              <article className="panel dispatch-card" key={d.id}>
+              <article
+                className={
+                  "panel dispatch-card is-" +
+                  fillPressure(d.committed, d.capacity)
+                }
+                key={d.id}
+              >
                 <div className="dispatch-card-top">
                   <div>
                     <p className="eyebrow">
@@ -223,6 +238,24 @@ export function OperationsBoard({ session }: { session: Session }) {
                       <span className="status held">Pickups open</span>
                     )}
                   </div>
+                </div>
+                <div
+                  className={
+                    "capacity-meter is-" +
+                    fillPressure(d.committed, d.capacity)
+                  }
+                >
+                  <span
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        d.capacity ? (d.committed / d.capacity) * 100 : 0,
+                      )}%`,
+                    }}
+                  />
+                  <small>
+                    {d.committed} of {d.capacity} seats
+                  </small>
                 </div>
                 <div className="dispatch-metrics">
                   <div>

@@ -17,12 +17,10 @@ export async function disarmKiosk() {
 }
 
 /** Dock tablet with check-in: guest kiosk is waiver/QR only. */
-export function canStartKiosk(input: {
-  width: number;
+export function kioskRoleOk(input: {
   role?: string;
   permissions?: string[];
 }) {
-  if (input.width < TABLET_MIN_WIDTH) return false;
   const permissions = input.permissions ?? [];
   if (!permissions.includes("checkin.write")) return false;
   if (
@@ -31,6 +29,15 @@ export function canStartKiosk(input: {
   )
     return true;
   return input.role === "owner";
+}
+
+export function canStartKiosk(input: {
+  width: number;
+  role?: string;
+  permissions?: string[];
+}) {
+  if (input.width < TABLET_MIN_WIDTH) return false;
+  return kioskRoleOk(input);
 }
 
 export function KioskHome({
@@ -48,7 +55,8 @@ export function KioskHome({
       <Text style={styles.title}>{tenantName || "Zettaz Crew"}</Text>
       <Text style={styles.copy}>
         Scan the check-in code on your booking, then sign the waiver. Staff
-        tools stay locked until a crew PIN is entered.
+        tools stay locked until a crew PIN is entered. On a real iPad, turn on
+        iOS Guided Access so guests cannot switch apps.
       </Text>
       <Pressable onPress={onScan} style={styles.scan}>
         <Text style={styles.scanText}>Scan check-in code</Text>

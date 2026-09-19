@@ -93,6 +93,7 @@ import {
   canStartKiosk,
   disarmKiosk,
   kioskArmed,
+  kioskRoleOk,
   KioskHome,
 } from "./src/kiosk";
 
@@ -1107,6 +1108,10 @@ export default function App() {
       })();
     }
   }
+  const kioskRole = kioskRoleOk({
+    role: profile?.role,
+    permissions: profile?.permissions,
+  });
   const kioskAllowed = canStartKiosk({
     width,
     role: profile?.role,
@@ -1940,6 +1945,12 @@ export default function App() {
               <Button compact quiet onPress={() => void startKiosk()}>
                 Guest kiosk
               </Button>
+            ) : kioskRole ? (
+              <Text style={styles.muted}>
+                Guest kiosk is iPad dock mode. Open this account on iPad (or the
+                iPad simulator), set a PIN, then start Guest kiosk. iPhone stays
+                on assigned trips.
+              </Text>
             ) : null}
             <Button
               compact
@@ -2443,6 +2454,9 @@ export default function App() {
                   onWeather={setWeatherItem}
                   onShare={(item) => void sharePickup(item)}
                   onRefresh={() => void load()}
+                  onKiosk={
+                    kioskAllowed ? () => void startKiosk() : undefined
+                  }
                 />
             ) : showBook && dock === "book" ? (
               <BookBoard

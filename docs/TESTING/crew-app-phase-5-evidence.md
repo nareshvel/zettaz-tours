@@ -6,7 +6,9 @@
 
 ## What shipped
 
-- Tablet (≥700px) dock staff with `checkin.write` plus Day Board or walk-up booking (or owner) can open **Guest kiosk** from My profile.
+- Tablet (≥700px) dock staff with `checkin.write` plus Day Board or walk-up booking (or owner) can open **Guest kiosk** from **My profile** or **Day Board**.
+- iPhone shows why kiosk is hidden (iPad dock mode). Kiosk copy mentions iOS Guided Access on a real iPad.
+- Requires the existing device **unlock PIN** first. Kiosk is scan + waiver only: no Day Board, walk-up, Pay, roster, or sign-out.
 - Requires the existing device **unlock PIN** first. Kiosk is scan + waiver only: no Day Board, walk-up, Pay, roster, or sign-out.
 - Staff exit is **PIN only** (not biometrics). Android back stays inside kiosk until PIN.
 - Flag persisted in SecureStore so a guest cannot leave by backgrounding the app.

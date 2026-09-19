@@ -278,6 +278,7 @@ export function DayBoard({
   onWeather,
   onShare,
   onRefresh,
+  onKiosk,
 }: {
   board: BoardPayload;
   busy: boolean;
@@ -286,10 +287,16 @@ export function DayBoard({
   onWeather: (item: BoardItem) => void;
   onShare: (item: BoardItem) => void;
   onRefresh: () => void;
+  onKiosk?: () => void;
 }) {
   const compactShare = useWindowDimensions().width < TABLET_MIN_WIDTH;
   return (
     <View style={styles.stack}>
+      {onKiosk ? (
+        <Action quiet disabled={busy} onPress={onKiosk}>
+          Guest kiosk
+        </Action>
+      ) : null}
       <Text style={styles.muted}>
         {board.items.length
           ? `${board.items.length} departures · ${board.date}`

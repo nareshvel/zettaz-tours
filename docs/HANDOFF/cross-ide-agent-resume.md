@@ -43,7 +43,7 @@ See [agent-current-sprint.md](agent-current-sprint.md). Short form (19 Sep):
 2. **Do not start Phase 5** (kiosk, GPS, card-present, push, white-label).
 3. **Operations menu group closed** pending further testing.
 4. **Customers / Audit / Document library** polish (owner visual outstanding). 19 Sep admin/finance/settings polish is local (`f40fb94` plus Localization/integrations/stays). Agent polish sequence complete unless owner names a surface. Owner visual outstanding.
-5. **Hold** Subscription messaging polish. **Hold** finance money in/out later ([finance-money-in-out-later.md](../STRATEGY/finance-money-in-out-later.md)). Next web polish: Tenant settings pickup locations list tools.
+5. **Subscription messaging implemented 19 Sep.** **Hold** finance money in/out later ([finance-money-in-out-later.md](../STRATEGY/finance-money-in-out-later.md)). Owner visual is the remaining web pass.
 
 Pasteable Claude brief: [claude-handoff-2026-09-14.md](claude-handoff-2026-09-14.md).
 

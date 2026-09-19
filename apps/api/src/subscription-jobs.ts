@@ -25,7 +25,7 @@ import { sendTrialEnding, sendPaymentFailed } from "./email";
 
 const SIX_HOURS = 6 * 60 * 60 * 1000;
 const FRONTEND_URL = process.env.FRONTEND_URL ?? "https://app.zettaz.com";
-const MANAGE_URL = `${FRONTEND_URL}/profile?tab=subscription`;
+const MANAGE_URL = `${FRONTEND_URL}/profile/subscription`;
 
 // ─── Trial reminder ───────────────────────────────────────────────────────────
 

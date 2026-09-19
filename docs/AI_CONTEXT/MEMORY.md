@@ -68,7 +68,7 @@ See [../STRATEGY/delivery.md](../STRATEGY/delivery.md).
 - Partner / reseller booking source inlines organization + collection mode; Viator/GetYourGuide are partners, not sources.
 - Confirm without guest payment for partner invoice/collect modes; boarding clearance matches that policy.
 - Web manifest: balance amount badge, Pay sheet for guest remainders, Waiver action after partner-settled arrival, returnTo from departures Book → confirm.
-- Next UI focus: finish **Subscription** messaging polish (row 17 — responsive plan grid + profile embedding done 11 September 2026). Profile polish + responsive flush follow-up implemented; short owner visual passes remaining for Profile, Subscription remainder, Tenant settings, and other polished surfaces.
+- Next UI focus: **owner visual** on polished surfaces. Subscription messaging implemented 19 Sep.
 - **Nav IA (11 September 2026):** Operations group order is Day Board → Departures → Reservations → Catalog. Customers sits under Insights (read history for now). Guest check-in lives only on the Manifest; Day Board trip actions are **View / Board** + **Start trip** (weather/close/pickups moved to Manifest Options, 14 September 2026).
 - **Day Board polish (11 September 2026):** Weather hold / Close / Reopen and recovery apply use in-app `ConfirmDialog` (reason required for operational status). Plan pickups vs Print pickup list labels; locations use FormDialog add/edit and ConfirmDialog delete; print list polished. Owner acceptance recorded in `docs/TESTING/day-board-polish-evidence.md`.
 - **Reservation detail polish (11 September 2026):** Always-visible money strip; Amend/Cancel as full buttons; cancel confirm dialog; sticky amend/cancel actions; tablet single-column booking grid; denser change history. Pay/confirm/quote contracts unchanged.
@@ -92,7 +92,7 @@ See [../STRATEGY/delivery.md](../STRATEGY/delivery.md).
 - **Tenant settings polish (11 September 2026):** Aside facts, `?tab=` deep links, short mobile nav labels, sticky saves, support-access ConfirmDialog with reason. Follow-up: shared `COUNTRIES` list + country dropdown; **Currency roles** use shared `CURRENCIES` (19 Sep) — mixing booking/reporting codes does not convert guest money; exclusive tax-rate explanation. Config APIs unchanged.
 - **Departures Book lock (11 September 2026):** Book deep-links with departure/product/date; New reservation locks to that trip until Change; workspace departures accept `departureId`.
 - **Profile polish (11 September 2026):** Account shell with identity rail and Profile / Security / Subscription tabs; Subscription owner-only under profile; ConfirmDialog for sign-out-everywhere; MFA deferred. Responsive follow-up: stacked ≤1366px with flush rail/content (no panel gap), subtitle margin cleared. See `docs/TESTING/profile-polish-evidence.md`.
-- **Subscription polish (partial, 11 September 2026):** Embedded under profile for owners; plan grid responsive 4→2→1 columns (inline four-column override removed). Billing-cycle / grace messaging polish still open. See `docs/TESTING/subscription-polish-evidence.md`.
+- **Subscription polish (19 September 2026):** Embedded under profile for owners; plan grid 4→2→1; billing-cycle / failed-invoice grace / post-suspension copy. See `docs/TESTING/subscription-polish-evidence.md`.
 - **Shared countries:** `packages/shared/src/countries.ts` is the single ISO list; web re-exports `@/lib/countries`.
 - **Dev log quieting:** Nest route dumps off unless `NEST_LOG=verbose`; Next.js incoming request dumps off unless `NEXT_REQUEST_LOG=verbose`.
 

@@ -15,7 +15,7 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 1. **Crew app.** Phases 1–4 on production `cad0ed8`. EAS **preview** + **production** binaries exist. iOS **1.0.1 (2)** is on App Store Connect (`6813693098`). Android **Internal testing 2 (1.0.1)** is live. Owner still: TestFlight/Unlisted review notes, screenshots, reviewer demo user, **4.8 airplane-mode**. **Do not start Phase 5.**
 2. **Operations menu group** remains functionally complete pending testing. Do not open new Ops web feature work unless testing finds a bug.
 3. **Non-Ops:** Tenant settings Localization / Booking integrations / Guest stays toolbar / hold-minutes / support-grant timestamps committed locally. **Next:** owner visual. Push and VPS pull only when the owner asks. **Do not start** finance money-in-out later.
-4. **Hold Subscription messaging.** Hold **finance money in/out later** ([finance-money-in-out-later.md](../STRATEGY/finance-money-in-out-later.md)).
+4. **Subscription messaging reopened 19 Sep** — billing-cycle / failed-payment / grace / post-suspension copy in `apps/web/components/subscription.tsx`. Finance money-in-out later stays held.
 
 ---
 
@@ -113,7 +113,6 @@ Remaining in this group: owner visual on General & branding, Taxes & commercial,
 
 ## Held — do not start unless owner reopens
 
-- **Subscription messaging polish** (row 17) — billing-cycle / failed payment / grace / post-suspension copy in `apps/web/components/subscription.tsx`
 - **Finance money in/out later** — expense payments, guest/partner cash on Overview, bank registers: [finance-money-in-out-later.md](../STRATEGY/finance-money-in-out-later.md). Do not start until the owner names a phase.
 - Dependency-blocked Track A: Stripe eligibility, XCD→USD rate, Rock printers, Rock waiver legal text, WP payload / import ID reconciliation
 - Track B: public checkout, reseller portal, GPS/ETAs, OTA cert, rich analytics — [launch-contract.md](../STRATEGY/launch-contract.md)
@@ -141,7 +140,7 @@ Work **outside** the Operations aside group. Suggested order (adjust with owner)
 
 ### 4. Profile (account shell)
 - **Profile polish follow-up implemented 17 Sep.** Evidence: [profile-polish-evidence.md](../TESTING/profile-polish-evidence.md). Owner visual still outstanding. MFA still deferred honestly.
-- Subscription tab: **hold messaging polish**; only fix blockers if broken
+- Subscription tab: **messaging implemented 19 Sep**; owner visual outstanding. Evidence: [subscription-polish-evidence.md](../TESTING/subscription-polish-evidence.md).
 
 For each surface: verify against [ui-waiver-launch-task-list.md](../STRATEGY/ui-waiver-launch-task-list.md), fix clear UX/functional gaps in one bounded pass, write/extend `docs/TESTING/*-evidence.md`, update row status.
 

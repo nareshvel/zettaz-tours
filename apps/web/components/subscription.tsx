@@ -3,7 +3,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
-import { api } from "@/lib/client";
+import { AlertTriangle, Ban, Info } from "lucide-react";
+import { api, formatMediumDate } from "@/lib/client";
+import { Loading, Notice } from "./common";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,12 +26,35 @@ interface Plan {
   stripe_price_id_yearly: string;
 }
 
-type SubStatus =
-  "trialing" | "active" | "past_due" | "canceled" | "unpaid" | "incomplete";
+type SubKind =
+  | "trial"
+  | "active"
+  | "past_due"
+  | "cancelled"
+  | "incomplete"
+  | "unpaid";
+
+function subKind(status: string): SubKind {
+  if (status === "trial" || status === "trialing") return "trial";
+  if (status === "canceled" || status === "cancelled") return "cancelled";
+  if (status === "past_due") return "past_due";
+  if (status === "incomplete") return "incomplete";
+  if (status === "unpaid") return "unpaid";
+  return "active";
+}
+
+function statusLabel(kind: SubKind): string {
+  if (kind === "trial") return "Trial";
+  if (kind === "past_due") return "Payment failed";
+  if (kind === "cancelled") return "Cancelled";
+  if (kind === "incomplete") return "Setup incomplete";
+  if (kind === "unpaid") return "Suspended";
+  return "Active";
+}
 
 interface CurrentSubscription {
   plan_id: string;
-  status: SubStatus;
+  status: string;
   billing_cycle: "monthly" | "yearly";
   period_ends_at: string | null;
   trial_ends_at: string | null;
@@ -68,71 +93,100 @@ function daysUntil(iso: string | null): number | null {
   );
 }
 
+function when(iso: string | null): string | null {
+  if (!iso) return null;
+  return formatMediumDate(iso);
+}
+
 // ─── Status banner ────────────────────────────────────────────────────────────
 
-function StatusBanner({ current }: { current: CurrentSubscription }) {
-  const { status, trial_ends_at, period_ends_at } = current;
-  let bg = "",
-    border = "",
-    emoji = "",
-    title = "",
-    body = "";
+function StatusBanner({
+  current,
+  canManage,
+  onManage,
+  portalBusy,
+}: {
+  current: CurrentSubscription;
+  canManage: boolean;
+  onManage: () => void;
+  portalBusy: boolean;
+}) {
+  const kind = subKind(current.status);
+  const trialDate = when(current.trial_ends_at);
+  const periodDate = when(current.period_ends_at);
+  const daysLeft = daysUntil(
+    kind === "trial" ? current.trial_ends_at : current.period_ends_at,
+  );
 
-  if (status === "trialing" && trial_ends_at) {
-    const days = daysUntil(trial_ends_at);
-    if (days !== null && days <= 7) {
-      bg = "#fffbeb";
-      border = "#fbbf24";
-      emoji = "⚠️";
-      title = `Trial ends ${days <= 0 ? "today" : `in ${days} day${days === 1 ? "" : "s"}`}`;
-      body = "Subscribe now to keep access without interruption.";
-    }
-  } else if (status === "past_due") {
-    bg = "#fef2f2";
-    border = "#f87171";
-    emoji = "🔴";
-    title = "Payment overdue";
-    body = "Update your billing details to avoid service interruption.";
-  } else if (status === "canceled" || status === "unpaid") {
-    const days = daysUntil(period_ends_at);
-    bg = "#fef2f2";
-    border = "#f87171";
-    emoji = "🚫";
+  let tone: "info" | "warning" | "danger" | null = null;
+  let title = "";
+  let body = "";
+
+  if (kind === "trial") {
+    const endingSoon = daysLeft !== null && daysLeft <= 7;
+    tone = endingSoon ? "warning" : "info";
     title =
-      status === "canceled"
-        ? "Subscription cancelled"
-        : "Subscription suspended";
+      daysLeft !== null && daysLeft <= 0
+        ? "Trial ends today"
+        : endingSoon && daysLeft !== null
+          ? `Trial ends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`
+          : "You are on a free trial";
+    body = trialDate
+      ? endingSoon
+        ? `The trial lasts until ${trialDate}. Choose a plan below or add a payment method so the workspace keeps running when it ends. You are not charged until then.`
+        : `The trial lasts until ${trialDate}. You are not charged until it ends. Emails go to the owner at 7 days and 1 day before.`
+      : "You are not charged until the trial ends. Choose a plan before access stops.";
+  } else if (kind === "past_due") {
+    tone = "danger";
+    title = "Invoice payment failed";
     body =
-      days !== null && days > 0
-        ? `Access until ${new Date(period_ends_at!).toLocaleDateString()}. Choose a plan to reactivate.`
-        : "Access ended. Choose a plan below to reactivate.";
-  } else if (status === "incomplete") {
-    bg = "#fffbeb";
-    border = "#fbbf24";
-    emoji = "⚠️";
-    title = "Action required";
+      "The last invoice did not succeed. The workspace stays available for a short grace window (about three days after the failed payment). Update the card in billing. After that the subscription is cancelled and this tenant is treated as suspended.";
+  } else if (kind === "unpaid") {
+    tone = "danger";
+    title = "Workspace suspended";
     body =
-      "Subscription setup is incomplete. Finish payment to activate your plan.";
+      "Invoices stayed unpaid. Staff cannot keep operating this tenant until billing is restored. Open billing or choose a plan below.";
+  } else if (kind === "cancelled") {
+    const stillOpen = daysLeft !== null && daysLeft > 0;
+    tone = stillOpen ? "warning" : "danger";
+    title = stillOpen ? "Subscription cancelled" : "Access has ended";
+    body = stillOpen
+      ? `Access continues until ${periodDate}. After that this tenant is treated as suspended until you choose a plan again.`
+      : "This tenant is suspended. Choose a plan below to reactivate.";
+  } else if (kind === "incomplete") {
+    tone = "warning";
+    title = "Checkout did not finish";
+    body =
+      "The plan is not active yet. Complete payment to start the trial or subscription.";
+  } else if (kind === "active" && current.cancel_at_period_end) {
+    tone = "warning";
+    title = "Will not renew";
+    body = periodDate
+      ? `This subscription stays active until ${periodDate}, then it ends. Reactivate from billing if you want the next cycle.`
+      : "This subscription will not renew. Reactivate from billing to keep the plan.";
   }
 
-  if (!title) return null;
+  if (!tone || !title) return null;
+  const Icon = tone === "danger" ? Ban : tone === "warning" ? AlertTriangle : Info;
   return (
-    <div
-      style={{
-        display: "flex",
-        gap: 12,
-        alignItems: "flex-start",
-        background: bg,
-        border: `1px solid ${border}`,
-        borderRadius: 10,
-        padding: "14px 16px",
-        marginBottom: 20,
-      }}
-    >
-      <span style={{ fontSize: 16 }}>{emoji}</span>
-      <div style={{ fontSize: 13, lineHeight: 1.5 }}>
+    <div className={`subscription-status-banner ${tone}`} role="status">
+      <Icon size={18} aria-hidden />
+      <div>
         <strong>{title}. </strong>
         {body}
+        {canManage && (kind === "past_due" || kind === "unpaid" || kind === "incomplete" || (kind === "active" && current.cancel_at_period_end)) ? (
+          <>
+            {" "}
+            <button
+              type="button"
+              className="text-button"
+              disabled={portalBusy}
+              onClick={onManage}
+            >
+              {portalBusy ? "Opening billing…" : "Open billing"}
+            </button>
+          </>
+        ) : null}
       </div>
     </div>
   );
@@ -471,8 +525,9 @@ function UpgradeModal({
             planId: plan.id,
             cycle,
             successUrl:
-              window.location.origin + "/subscription?checkout=success",
-            cancelUrl: window.location.origin + "/subscription",
+              window.location.origin +
+              "/profile/subscription?checkout=success",
+            cancelUrl: window.location.origin + "/profile/subscription",
           }),
         });
         window.location.href = res.url;
@@ -763,6 +818,7 @@ export function Subscription({
   const [upgradeTarget, setUpgradeTarget] = useState<Plan | null>(null);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
   const [switchedBanner, setSwitchedBanner] = useState<string | null>(null);
+  const [portalError, setPortalError] = useState<string | null>(null);
 
   const fetchData = useCallback(() => {
     return api<SubscriptionData>("/staff/v1/workspace/subscription")
@@ -781,17 +837,16 @@ export function Subscription({
   useEffect(() => {
     if (searchParams.get("checkout") === "success") {
       setSuccessBanner(
-        "🎉 Subscription activated! Your free trial has started.",
+        "Checkout finished. The trial has started — you are not charged until it ends.",
       );
-      // Clean up the query param without a full page reload
-      const url = new URL(window.location.href);
-      url.searchParams.delete("checkout");
-      router.replace(url.pathname + url.search);
+      void fetchData();
+      router.replace("/profile/subscription");
     }
   }, [searchParams, router]);
 
   async function openBillingPortal() {
     setPortalLoading(true);
+    setPortalError(null);
     try {
       const { url } = await api<{ url: string }>(
         "/staff/v1/workspace/billing-portal",
@@ -802,7 +857,9 @@ export function Subscription({
       );
       window.location.href = url;
     } catch {
-      alert("Unable to open billing portal. Please try again.");
+      setPortalError(
+        "Billing could not be opened. Try again, or email support@zettaz.com.",
+      );
     } finally {
       setPortalLoading(false);
     }
@@ -811,7 +868,7 @@ export function Subscription({
   function handleSwitched(planName: string) {
     setUpgradeTarget(null);
     setSwitchedBanner(
-      `✅ Switched to ${planName}. Your next invoice will reflect the change.`,
+      `Switched to ${planName}. Unused time is prorated on the next invoice.`,
     );
     // Refresh subscription data so the current plan bar updates
     setLoading(true);
@@ -820,18 +877,15 @@ export function Subscription({
 
   if (loading) {
     return (
-      <div className="section-body" style={{ padding: "40px 24px" }}>
-        <div className="spinner" />
+      <div className="section-body">
+        <Loading />
       </div>
     );
   }
   if (!data) {
     return (
-      <div
-        className="section-body"
-        style={{ padding: "40px 24px", color: "var(--muted)" }}
-      >
-        Unable to load subscription data.
+      <div className="section-body">
+        <Notice error>Unable to load subscription data.</Notice>
       </div>
     );
   }
@@ -842,120 +896,53 @@ export function Subscription({
   // An "existing sub" has a live Stripe subscription (not just a free trial that was never paid)
   const isExistingSub = !!current?.stripe_subscription_id;
 
+  const kind = current ? subKind(current.status) : null;
   const statusColor =
-    current?.status === "active" || current?.status === "trialing"
+    kind === "active" || kind === "trial"
       ? "#1e6e37"
-      : current?.status === "past_due" || current?.status === "incomplete"
+      : kind === "past_due" || kind === "incomplete"
         ? "#c07000"
         : "#c0392b";
-
-  const trialEndsLabel = current?.trial_ends_at
-    ? new Date(current.trial_ends_at).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      })
-    : null;
-
-  const periodEndsLabel = (() => {
-    if (!current?.period_ends_at) return null;
-    const days = daysUntil(current.period_ends_at);
-    return (
-      new Date(current.period_ends_at).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }) + (days !== null && days >= 0 && days <= 30 ? ` (${days}d)` : "")
-    );
-  })();
+  const cycleLabel =
+    current?.billing_cycle === "yearly"
+      ? "Yearly — billed in full at the start of each year"
+      : "Monthly — invoiced each month";
+  const trialEndsLabel = when(current?.trial_ends_at ?? null);
+  const periodEndsLabel = when(current?.period_ends_at ?? null);
+  const canManage = Boolean(
+    billingReady && current?.stripe_subscription_id,
+  );
 
   return (
     <div className={embedded ? "subscription-embedded" : "section-body"}>
-      {/* Checkout success banner */}
       {successBanner && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-            background: "#f0fdf4",
-            border: "1px solid #86efac",
-            borderRadius: 10,
-            padding: "14px 18px",
-            marginBottom: 20,
-          }}
-        >
-          <span style={{ fontSize: 13, color: "#166534", fontWeight: 600 }}>
-            {successBanner}
-          </span>
-          <button
-            onClick={() => setSuccessBanner(null)}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              color: "#166534",
-              fontSize: 18,
-              lineHeight: 1,
-            }}
-          >
-            ✕
+        <Notice>
+          {successBanner}{" "}
+          <button type="button" className="text-button" onClick={() => setSuccessBanner(null)}>
+            Dismiss
           </button>
-        </div>
+        </Notice>
       )}
-
-      {/* Plan-switch success banner */}
       {switchedBanner && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-            background: "#f0fdf4",
-            border: "1px solid #86efac",
-            borderRadius: 10,
-            padding: "14px 18px",
-            marginBottom: 20,
-          }}
-        >
-          <span style={{ fontSize: 13, color: "#166534", fontWeight: 600 }}>
-            {switchedBanner}
-          </span>
-          <button
-            onClick={() => setSwitchedBanner(null)}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              color: "#166534",
-              fontSize: 18,
-              lineHeight: 1,
-            }}
-          >
-            ✕
+        <Notice>
+          {switchedBanner}{" "}
+          <button type="button" className="text-button" onClick={() => setSwitchedBanner(null)}>
+            Dismiss
           </button>
-        </div>
+        </Notice>
+      )}
+      {portalError && <Notice error>{portalError}</Notice>}
+
+      {current && (
+        <StatusBanner
+          current={current}
+          canManage={canManage}
+          onManage={() => void openBillingPortal()}
+          portalBusy={portalLoading}
+        />
       )}
 
-      {current && <StatusBanner current={current} />}
-
-      {/* Current plan bar */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 16,
-          background: "var(--card)",
-          border: "1px solid var(--border)",
-          borderRadius: 12,
-          padding: "18px 22px",
-          marginBottom: 28,
-          flexWrap: "wrap",
-        }}
-      >
+      <div className="subscription-current">
         <div>
           <div
             style={{
@@ -973,83 +960,63 @@ export function Subscription({
           >
             {currentPlan?.name ?? "No active plan"}
           </div>
-          {current?.status && (
-            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
-              Status:{" "}
+          {current && kind && (
+            <p>
               <span style={{ fontWeight: 700, color: statusColor }}>
-                {current.status === "trialing"
-                  ? "Trial"
-                  : current.status.replace("_", " ")}
+                {statusLabel(kind)}
               </span>
-              {current.status === "trialing" &&
-                trialEndsLabel &&
-                ` · trial ends ${trialEndsLabel}`}
-              {current.status === "active" &&
-                !current.cancel_at_period_end &&
-                periodEndsLabel &&
-                ` · renews ${periodEndsLabel}`}
-              {current.status === "active" &&
-                current.cancel_at_period_end &&
-                periodEndsLabel && (
-                  <span style={{ color: "#c07000" }}>
-                    {" "}
-                    · cancels {periodEndsLabel}
-                  </span>
-                )}
-              {(current.status === "canceled" ||
-                current.status === "past_due") &&
-                periodEndsLabel &&
-                ` · access until ${periodEndsLabel}`}
-            </div>
-          )}
-          {current?.cancel_at_period_end && (
-            <div
-              style={{
-                marginTop: 6,
-                fontSize: 11,
-                color: "#c07000",
-                fontWeight: 600,
-              }}
-            >
-              ⚠️ Your subscription will not renew. Reactivate from the billing
-              portal.
-            </div>
+              {" · "}
+              {cycleLabel}
+              {kind === "trial" && trialEndsLabel
+                ? ` · trial ends ${trialEndsLabel}`
+                : null}
+              {kind === "active" &&
+              !current.cancel_at_period_end &&
+              periodEndsLabel
+                ? ` · next invoice ${periodEndsLabel}`
+                : null}
+              {kind === "active" &&
+              current.cancel_at_period_end &&
+              periodEndsLabel
+                ? ` · ends ${periodEndsLabel}`
+                : null}
+              {(kind === "cancelled" || kind === "past_due") &&
+              periodEndsLabel
+                ? ` · access until ${periodEndsLabel}`
+                : null}
+            </p>
           )}
         </div>
         <div>
-          {billingReady && current?.stripe_subscription_id ? (
+          {canManage ? (
             <button
-              className="btn btn-secondary"
-              onClick={openBillingPortal}
+              type="button"
+              className="button secondary"
+              onClick={() => void openBillingPortal()}
               disabled={portalLoading}
             >
-              {portalLoading ? "Loading…" : "Manage billing"}
+              {portalLoading ? "Opening…" : "Manage billing"}
             </button>
           ) : (
             <span style={{ fontSize: 12, color: "var(--muted)" }}>
-              Billing setup in progress
+              {billingReady
+                ? "No Stripe subscription yet — choose a plan to start billing."
+                : "Card billing is not connected for this environment."}
             </span>
           )}
         </div>
       </div>
 
-      {/* Plans header row */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-end",
-          justifyContent: "space-between",
-          marginBottom: 16,
-          flexWrap: "wrap",
-          gap: 12,
-        }}
-      >
+      <div className="subscription-plans-heading">
         <div>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>
             Available plans
           </h3>
           <p style={{ margin: "3px 0 0", fontSize: 12, color: "var(--muted)" }}>
-            All plans include a 14-day free trial.
+            {cycle === "yearly"
+              ? "Yearly is billed in full up front. Switching later prorates unused time on the next invoice."
+              : "Monthly is invoiced each month. Yearly is billed in full at the start of the year."}{" "}
+            New checkouts include a 14-day trial with no charge until it ends.
           </p>
         </div>
 
@@ -1099,23 +1066,14 @@ export function Subscription({
         ))}
       </div>
 
-      <p
-        style={{
-          fontSize: 11,
-          color: "var(--muted)",
-          marginTop: 20,
-          maxWidth: 700,
-        }}
-      >
-        Annual plans are billed in full at the start of each billing period.
-        Prices in USD, excluding taxes. Contact{" "}
-        <a
-          href="mailto:support@zettaz.com"
-          style={{ color: "inherit", textDecoration: "underline" }}
-        >
-          support@zettaz.com
-        </a>{" "}
-        for volume or custom pricing.
+      <p className="subscription-note">
+        Monthly invoices each month. Yearly is billed in full at the start of
+        the year. A failed invoice leaves a short grace window (about three
+        days); after that the subscription is cancelled and the tenant is
+        treated as suspended until a plan is paid again. Prices in USD,
+        excluding taxes. Contact{" "}
+        <a href="mailto:support@zettaz.com">support@zettaz.com</a> for volume or
+        custom pricing.
       </p>
       {upgradeTarget && (
         <UpgradeModal

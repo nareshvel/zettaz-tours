@@ -4,7 +4,7 @@ import { BarChart2, FileText, TrendingUp, Users } from "lucide-react";
 import { useCallback, useState } from "react";
 import type { Session } from "@/lib/types";
 import { money, useResource } from "@/lib/client";
-import { TenantDateInput } from "./common";
+import { Empty, Notice, TenantDateInput } from "./common";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,7 +60,12 @@ function BucketAmt({ minor, currency }: { minor: number; currency: string }) {
 // ─── Aging report ─────────────────────────────────────────────────────────────
 
 function AgingReport({ session }: { session: Session }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: session.tenant.timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 
   const [asOf, setAsOf] = useState(today);
   const [direction, setDirection] = useState<"both" | "payable" | "receivable">(
@@ -104,18 +109,36 @@ function AgingReport({ session }: { session: Session }) {
           compact
         />
 
-        <label className="aging-filter-group">
+        <div className="aging-filter-group">
           <span className="aging-filter-label">Direction</span>
-          <select
-            className="select-sm"
-            value={direction}
-            onChange={(e) => setDirection(e.target.value as typeof direction)}
+          <div
+            className="report-preset-chips"
+            role="radiogroup"
+            aria-label="Aging direction"
           >
-            <option value="both">All</option>
-            <option value="payable">Payable (we owe)</option>
-            <option value="receivable">Receivable (owed to us)</option>
-          </select>
-        </label>
+            {(
+              [
+                ["both", "All"],
+                ["payable", "We owe"],
+                ["receivable", "Owed to us"],
+              ] as const
+            ).map(([value, caption]) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={direction === value}
+                className={
+                  "filter-range-option" +
+                  (direction === value ? " selected" : "")
+                }
+                onClick={() => setDirection(value)}
+              >
+                {caption}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {partnerList.length > 0 && (
           <label className="aging-filter-group">
@@ -143,19 +166,12 @@ function AgingReport({ session }: { session: Session }) {
       </div>
 
       {/* Report body */}
-      {error && (
-        <div className="report-unavailable">
-          <p>Aging report unavailable — please try again shortly.</p>
-        </div>
-      )}
+      {error && <Notice error>{error}</Notice>}
 
       {!error && data && data.rows.length === 0 && (
-        <div className="report-empty">
-          <p>
-            No outstanding balances match this filter — all partners are
-            settled.
-          </p>
-        </div>
+        <Empty title="No outstanding balances">
+          <p>Nothing matches this filter — partners in range are settled.</p>
+        </Empty>
       )}
 
       {!error && data && data.rows.length > 0 && (
@@ -349,7 +365,7 @@ function StubCard({
       <div className="report-stub-body">
         <h4 className="report-stub-title">{title}</h4>
         <p className="report-stub-desc">{description}</p>
-        <span className="report-stub-badge">Coming soon</span>
+        <span className="report-stub-badge">Not in this launch</span>
       </div>
     </div>
   );
@@ -370,7 +386,7 @@ export function FinanceReports({ session }: { session: Session }) {
       </section>
 
       <section className="report-section">
-        <h3 className="finance-section-heading">Coming Soon</h3>
+        <h3 className="finance-section-heading">Later reports</h3>
         <div className="report-stub-list">
           <StubCard
             icon={<BarChart2 size={22} />}

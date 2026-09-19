@@ -4306,6 +4306,11 @@ td small {
 .filter-menu {
   position: relative;
 }
+.finance-period-menu .filter-popover {
+  width: min(16rem, calc(100vw - 32px));
+  padding: 8px;
+  gap: 6px;
+}
 .filter-popover {
   position: absolute;
   top: calc(100% + 8px);
@@ -4467,8 +4472,15 @@ td small {
   .departure-view-bar {
     gap: 8px;
   }
+  .view-action-bar.resource-view-bar {
+    grid-template-columns: 1fr;
+  }
+  .staff-list-tools {
+    width: 100%;
+  }
   .catalog-view-bar > .button.catalog-add-btn,
   .view-action-bar > .button.catalog-add-btn,
+  .staff-list-tools > .button.catalog-add-btn,
   .departure-view-bar > .button.catalog-add-btn,
   .departure-view-actions > .button.catalog-add-btn,
   .departure-view-actions .filter-menu > .button.catalog-add-btn {
@@ -4482,6 +4494,7 @@ td small {
   }
   .catalog-view-bar > .button.catalog-add-btn .button-label,
   .view-action-bar > .button.catalog-add-btn .button-label,
+  .staff-list-tools > .button.catalog-add-btn .button-label,
   .departure-view-bar > .button.catalog-add-btn .button-label,
   .departure-view-actions > .button.catalog-add-btn .button-label,
   .departure-view-actions .filter-menu > .button.catalog-add-btn .button-label {
@@ -8633,6 +8646,39 @@ dd {
   color: var(--muted);
 }
 
+.overview-setup {
+  margin-bottom: 16px;
+}
+.overview-setup-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 16px 16px;
+  display: grid;
+  gap: 0;
+}
+.overview-setup-list a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  color: inherit;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+}
+.overview-setup-list li:first-child a {
+  border-top: 0;
+}
+.overview-setup-list a:hover {
+  color: var(--teal);
+}
+.briefing-tile.attention {
+  border-color: color-mix(in srgb, #9a5b00 35%, var(--line));
+  background: #fff8ee;
+}
+
 /* ── Overview briefing ────────────────────────────────────────────────────
    Data colours are their own set, not the UI accent: --teal (#176c63) has a
    chroma of 0.078, below the 0.1 floor a chart mark needs, so at small sizes
@@ -10521,9 +10567,39 @@ a.briefing-tile:hover {
 .report-filter-menu .filter-range-options {
   grid-template-columns: 1fr 1fr;
 }
+.report-range-bar {
+  margin: 0 0 16px;
+}
+.report-preset-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.report-preset-chips .filter-range-option {
+  min-height: 40px;
+  padding: 8px 14px;
+  text-align: center;
+}
+.report-custom-dates {
+  display: grid;
+  grid-template-columns: minmax(11rem, 16rem) minmax(11rem, 16rem);
+  gap: 12px;
+  margin: -4px 0 16px;
+  max-width: 36rem;
+}
+.report-custom-dates > .tenant-date-control {
+  margin-bottom: 0;
+}
 .report-range-note {
   margin: 0 0 4px;
   font-size: 13px;
+}
+.metric-card.attention {
+  border-color: color-mix(in srgb, #9a5b00 35%, var(--line));
+  background: #fff8ee;
+}
+.metric-card.attention > svg {
+  color: #9a5b00;
 }
 .report-metrics .metric-card {
   min-height: 154px;
@@ -10631,6 +10707,10 @@ a.briefing-tile:hover {
     display: grid;
     gap: 0;
     padding: 0 16px 12px;
+  }
+  .report-custom-dates {
+    grid-template-columns: 1fr;
+    max-width: none;
   }
 }
 @media (max-width: 480px) {
@@ -11779,9 +11859,46 @@ a.briefing-tile:hover {
   scrollbar-width: thin;
   max-width: 100%;
 }
-.resource-view-bar .search {
-  flex: 1;
-  min-width: 10rem;
+.resource-view-bar.staff-toolbar,
+.view-action-bar.resource-view-bar {
+  grid-template-columns: minmax(0, auto) minmax(12rem, 1fr);
+}
+.staff-list-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+.staff-list-tools .search {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+}
+.staff-list-tools > .button {
+  flex-shrink: 0;
+  margin-left: 0;
+}
+.fleet-asset-bar,
+.finance-expense-bar {
+  width: 100%;
+  margin: 0 0 20px;
+}
+.finance-expense-bar {
+  margin: 0;
+}
+.attention-text {
+  color: #9a5b00;
+}
+.staff-doc-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.staff-doc-row small {
+  display: block;
 }
 .resource-cards {
   display: none;
@@ -14355,6 +14472,20 @@ a.briefing-tile:hover {
 .finance-net-tile.expenses {
   border-top: 3px solid #8b5cf6;
 }
+.finance-net-tile.unpaid {
+  border-top: 3px solid #9a5b00;
+}
+a.finance-net-tile {
+  color: inherit;
+  text-decoration: none;
+}
+a.finance-net-tile:hover {
+  border-color: var(--accent);
+}
+.finance-net-tile.unpaid.attention {
+  border-color: color-mix(in srgb, #9a5b00 35%, var(--line));
+  background: #fff8ee;
+}
 .finance-net-label {
   font-size: 0.72rem;
   text-transform: uppercase;
@@ -14384,6 +14515,9 @@ a.briefing-tile:hover {
 }
 .finance-net-tile.expenses .finance-net-amount {
   color: #8b5cf6;
+}
+.finance-net-tile.unpaid .finance-net-amount {
+  color: #9a5b00;
 }
 .finance-queue-section {
   margin-bottom: 24px;

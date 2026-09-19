@@ -238,6 +238,7 @@ export function Overview({ session }: { session: Session }) {
   const canBookings = can("bookings.read");
   const canMoney =
     can("payment.write") || can("payment.correct") || can("config.write");
+  const canSetup = can("config.write");
   const briefing = useResource<RawBriefing>(
     canBookings ? "staff/v1/workspace/briefing" : null,
   );
@@ -340,23 +341,70 @@ export function Overview({ session }: { session: Session }) {
       ) : !data ? (
         <Loading />
       ) : setupIncomplete ? (
-        // Zeros are the wrong first impression for a tenant that has not
-        // published anything yet; say what is missing instead.
-        <section className="panel">
-          <Empty title="Finish setting up before the briefing is useful">
-            <p>
-              The Overview reports on departures and bookings. Publish a product
-              and schedule a departure, and this page fills in.
-            </p>
-            <Link className="button" href="/catalog">
-              Open catalog <ArrowUpRight size={16} />
-            </Link>
-          </Empty>
-        </section>
+        canSetup ? (
+          <OverviewSetup readiness={readiness.data} />
+        ) : (
+          <section className="panel">
+            <Empty title="Finish setting up before the briefing is useful">
+              <p>
+                The Overview reports on departures and bookings. Publish a
+                product and schedule a departure, and this page fills in.
+              </p>
+            </Empty>
+          </section>
+        )
       ) : (
-        composed()
+        <>
+          {canSetup ? <OverviewSetup readiness={readiness.data} /> : null}
+          {composed()}
+        </>
       )}
     </>
+  );
+}
+
+function OverviewSetup({ readiness }: { readiness?: Readiness | null }) {
+  if (!readiness) return null;
+  const items: {
+    key: keyof Readiness;
+    label: string;
+    href: string;
+  }[] = [
+    { key: "products", label: "Publish a product", href: "/catalog" },
+    { key: "departures", label: "Schedule a departure", href: "/catalog" },
+    {
+      key: "pickupLocations",
+      label: "Add pickup locations",
+      href: "/settings?tab=pickups",
+    },
+    { key: "waiver", label: "Publish a waiver", href: "/settings?tab=waivers" },
+    { key: "logo", label: "Upload a logo", href: "/settings" },
+    { key: "team", label: "Invite your team", href: "/team" },
+  ];
+  const outstanding = items.filter((item) => !readiness[item.key]);
+  if (!outstanding.length) return null;
+  const done = items.length - outstanding.length;
+  return (
+    <section className="panel overview-setup" aria-label="Setup checklist">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">TENANT SETUP</p>
+          <h2>Finish setup</h2>
+        </div>
+        <span className="muted">
+          {done} of {items.length} complete
+        </span>
+      </div>
+      <ul className="overview-setup-list">
+        {outstanding.map((item) => (
+          <li key={item.key}>
+            <Link href={item.href}>
+              {item.label} <ArrowUpRight size={15} />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -477,35 +525,53 @@ function TodayStrip({
   const boardingShare = data.today.expected
     ? Math.round((data.today.boarded / data.today.expected) * 100)
     : 0;
+  const boardingOpen =
+    data.today.expected > 0 && data.today.boarded < data.today.expected;
+  const nextBody =
+    next && clock ? (
+      <>
+        <strong
+          className={clock.running ? "is-counting" : ""}
+          suppressHydrationWarning
+        >
+          {clock.text}
+        </strong>
+        <small className="briefing-next-name">{next.productName}</small>
+        <small className="briefing-next-when">
+          {friendlyDateTime(
+            next.startsAt,
+            session.tenant.timezone,
+            session.tenant.config.locale,
+            session.tenant.config.timeFormat,
+          )}
+        </small>
+      </>
+    ) : (
+      <>
+        <strong>—</strong>
+        <small>Nothing scheduled ahead</small>
+      </>
+    );
   return (
     <div className="briefing-today">
-      <article className="briefing-tile briefing-next">
-        <span>Next departure</span>
-        {next && clock ? (
-          <>
-            <strong
-              className={clock.running ? "is-counting" : ""}
-              suppressHydrationWarning
-            >
-              {clock.text}
-            </strong>
-            <small className="briefing-next-name">{next.productName}</small>
-            <small className="briefing-next-when">
-              {friendlyDateTime(
-                next.startsAt,
-                session.tenant.timezone,
-                session.tenant.config.locale,
-                session.tenant.config.timeFormat,
-              )}
-            </small>
-          </>
-        ) : (
-          <>
-            <strong>—</strong>
-            <small>Nothing scheduled ahead</small>
-          </>
-        )}
-      </article>
+      {next ? (
+        <Link
+          className="briefing-tile briefing-next"
+          href={
+            session.permissions.includes("manifest.read")
+              ? `/departures/${next.id}/manifest`
+              : "/operations"
+          }
+        >
+          <span>Next departure</span>
+          {nextBody}
+        </Link>
+      ) : (
+        <article className="briefing-tile briefing-next">
+          <span>Next departure</span>
+          {nextBody}
+        </article>
+      )}
       <Link className="briefing-tile" href="/operations">
         <span>Running today</span>
         <strong>{data.today.departures}</strong>
@@ -513,7 +579,10 @@ function TodayStrip({
           {data.today.guests} guest{data.today.guests === 1 ? "" : "s"} expected
         </small>
       </Link>
-      <Link className="briefing-tile" href="/operations">
+      <Link
+        className={"briefing-tile" + (boardingOpen ? " attention" : "")}
+        href="/operations"
+      >
         <span>Boarded</span>
         <strong>
           {data.today.boarded}

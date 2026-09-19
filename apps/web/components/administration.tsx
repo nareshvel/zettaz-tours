@@ -4546,20 +4546,22 @@ export function Team({ session }: { session: Session }) {
             Roles & permissions
           </Link>
         </div>
-        <SearchBox
-          value={staffSearch}
-          onChange={setStaffSearch}
-          placeholder="Search staff"
-        />
-        <button
-          type="button"
-          className="button catalog-add-btn"
-          aria-label="Add staff"
-          onClick={openCreate}
-        >
-          <Plus size={17} />
-          <span className="button-label">Add staff</span>
-        </button>
+        <div className="staff-list-tools">
+          <SearchBox
+            value={staffSearch}
+            onChange={setStaffSearch}
+            placeholder="Search staff"
+          />
+          <button
+            type="button"
+            className="button catalog-add-btn"
+            aria-label="Add staff"
+            onClick={openCreate}
+          >
+            <Plus size={17} />
+            <span className="button-label">Add staff</span>
+          </button>
+        </div>
       </div>
 
       {(invitationToken || grantNotice) && (
@@ -4637,8 +4639,15 @@ export function Team({ session }: { session: Session }) {
         </div>
         {members.busy && !members.items.length ? (
           <Loading />
-        ) : members.items.length ? (
-          visibleMembers.length ? (
+        ) : !members.items.length ? (
+          <Empty title="No staff members yet">
+            Add the first team member, then grant workspace access.
+          </Empty>
+        ) : !visibleMembers.length ? (
+          <Empty title="No staff match">
+            <p>Try a different name, email, or role.</p>
+          </Empty>
+        ) : (
           <>
             <div className="table-scroll resource-table">
               <table>
@@ -4836,15 +4845,6 @@ export function Team({ session }: { session: Session }) {
               ))}
             </div>
           </>
-          ) : (
-            <Empty title="No staff match">
-              <p>Try a different name, email, or role.</p>
-            </Empty>
-          )
-        ) : (
-          <Empty title="No staff members yet">
-            Add the first team member, then grant workspace access.
-          </Empty>
         )}
         <More {...members} count={members.items.length} />
       </section>

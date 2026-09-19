@@ -1,47 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import {
-  Check,
-  ChevronRight,
-  Landmark,
-  SlidersHorizontal,
-  X,
-} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import Link from "next/link";
-import type { PartnerClaim, Session } from "@/lib/types";
-import { dateTime, label, money, useMutation, useResource } from "@/lib/client";
-import {
-  ConfirmDialog,
-  Empty,
-  Field,
-  Heading,
-  Loading,
-  Notice,
-  Status,
-  TenantDateInput,
-} from "./common";
+import type { Session } from "@/lib/types";
+import { formatMediumDateRange } from "@/lib/client";
+import { Heading, TenantDateInput } from "./common";
 import { FinancePartners } from "./finance-partners";
 import { FinanceOverview } from "./finance-overview";
 import { FinanceExpenses } from "./finance-expenses";
 import { FinanceReports } from "./finance-reports";
-
-function amount(value: string | number) {
-  return typeof value === "number" ? value : Number(value);
-}
-
-type StatementLine = {
-  id: string;
-  booking_id: string;
-  partner_id: string;
-  partner_name: string;
-  amount_minor: string;
-  currency: string;
-  kind: string;
-  created_at: string;
-};
-
-// ─── Period helpers ───────────────────────────────────────────────────────────
 
 export type PeriodKey =
   | "this_week"
@@ -52,120 +20,72 @@ export type PeriodKey =
   | "custom";
 
 export const PERIOD_LABELS: Record<PeriodKey, string> = {
-  this_week: "This Week",
-  this_month: "This Month",
-  last_month: "Last Month",
-  this_year: "This Year",
-  last_year: "Last Year",
-  custom: "Custom Range",
+  this_week: "This week",
+  this_month: "This month",
+  last_month: "Last month",
+  this_year: "This year",
+  last_year: "Last year",
+  custom: "Custom",
 };
+
+function pad(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+function tenantDay(timezone: string, date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function shiftDay(day: string, days: number) {
+  const date = new Date(`${day}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function mondayOf(day: string) {
+  const date = new Date(`${day}T12:00:00Z`);
+  const weekday = date.getUTCDay();
+  const offset = weekday === 0 ? -6 : 1 - weekday;
+  return shiftDay(day, offset);
+}
+
+function monthBounds(day: string): [string, string] {
+  const [year, month] = day.split("-").map(Number);
+  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return [`${year}-${pad(month)}-01`, `${year}-${pad(month)}-${pad(last)}`];
+}
 
 export function periodDates(
   key: PeriodKey,
   customFrom: string,
   customTo: string,
+  timezone: string,
 ): { from: string; to: string } {
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const iso = (d: Date) =>
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
+  const today = tenantDay(timezone);
+  const [year, month] = today.split("-").map(Number);
   if (key === "custom") return { from: customFrom, to: customTo };
-
-  const y = now.getFullYear();
-  const m = now.getMonth();
-
   if (key === "this_week") {
-    const dow = now.getDay();
-    const mon = new Date(now);
-    mon.setDate(now.getDate() - ((dow + 6) % 7));
-    const sun = new Date(mon);
-    sun.setDate(mon.getDate() + 6);
-    return { from: iso(mon), to: iso(sun) };
+    const from = mondayOf(today);
+    return { from, to: shiftDay(from, 6) };
   }
   if (key === "this_month") {
-    return { from: `${y}-${pad(m + 1)}-01`, to: iso(new Date(y, m + 1, 0)) };
+    const [from, to] = monthBounds(today);
+    return { from, to };
   }
   if (key === "last_month") {
-    const lm = m === 0 ? 11 : m - 1;
-    const ly = m === 0 ? y - 1 : y;
-    return {
-      from: `${ly}-${pad(lm + 1)}-01`,
-      to: iso(new Date(ly, lm + 1, 0)),
-    };
+    const prev =
+      month === 1 ? `${year - 1}-12-01` : `${year}-${pad(month - 1)}-01`;
+    const [from, to] = monthBounds(prev);
+    return { from, to };
   }
-  if (key === "this_year") {
-    return { from: `${y}-01-01`, to: `${y}-12-31` };
-  }
-  return { from: `${y - 1}-01-01`, to: `${y - 1}-12-31` };
+  if (key === "this_year") return { from: `${year}-01-01`, to: `${year}-12-31` };
+  return { from: `${year - 1}-01-01`, to: `${year - 1}-12-31` };
 }
-
-// ─── Period selector (right-side slot for Overview tab) ───────────────────────
-
-function PeriodSelector({
-  period,
-  onPeriod,
-  customFrom,
-  customTo,
-  onCustomFrom,
-  onCustomTo,
-  dateFormat,
-  locale,
-}: {
-  period: PeriodKey;
-  onPeriod: (k: PeriodKey) => void;
-  customFrom: string;
-  customTo: string;
-  onCustomFrom: (v: string) => void;
-  onCustomTo: (v: string) => void;
-  dateFormat: "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD";
-  locale: string;
-}) {
-  return (
-    <div className="finance-period-selector catalog-view-actions">
-      {/* On mobile this collapses — the select itself stays, label hidden */}
-      <label className="finance-period-label">Period</label>
-      <select
-        value={period}
-        onChange={(e) => onPeriod(e.target.value as PeriodKey)}
-        className="finance-period-select"
-      >
-        {(Object.keys(PERIOD_LABELS) as PeriodKey[]).map((k) => (
-          <option key={k} value={k}>
-            {PERIOD_LABELS[k]}
-          </option>
-        ))}
-      </select>
-      {period === "custom" && (
-        <>
-          <div className="finance-period-date-wrap">
-            <TenantDateInput
-              label="From"
-              value={customFrom}
-              onChange={onCustomFrom}
-              dateFormat={dateFormat}
-              locale={locale}
-              compact
-            />
-          </div>
-          <span className="finance-period-dash">–</span>
-          <div className="finance-period-date-wrap">
-            <TenantDateInput
-              label="To"
-              value={customTo}
-              onChange={onCustomTo}
-              dateFormat={dateFormat}
-              locale={locale}
-              compact
-            />
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-// ─── Shared subnav ────────────────────────────────────────────────────────────
 
 export type FinanceSection = "overview" | "partners" | "expenses" | "reports";
 
@@ -201,35 +121,34 @@ function FinanceNav({
           </Link>
         ))}
       </div>
-      {actions && <div className="catalog-view-actions">{actions}</div>}
+      {actions ? <div className="catalog-view-actions">{actions}</div> : null}
     </div>
   );
 }
-
-// ─── Page shell ───────────────────────────────────────────────────────────────
 
 const SECTION_HEADINGS: Record<
   FinanceSection,
   { title: string; description: string }
 > = {
   overview: {
-    title: "Finance Overview",
+    title: "Finance",
     description:
-      "Work queue, net financial position, and recent activity across all partners.",
+      "Partner balances and operating expenses in the tenant reporting currency. Automatic FX conversion is off until an approved rate policy exists; expense bank rates stay on the expense they were entered with.",
   },
   partners: {
-    title: "Partner Accounts",
+    title: "Partner accounts",
     description:
       "Commission accruals, collections, and settlement history per partner.",
   },
   expenses: {
     title: "Expenses",
     description:
-      "Operating costs — fuel, equipment, maintenance, licenses, and more.",
+      "Operating costs. Foreign-currency lines use the bank rate recorded on that expense — they are not converted later.",
   },
   reports: {
-    title: "Reports",
-    description: "Partner aging, expense summaries, and financial statements.",
+    title: "Finance reports",
+    description:
+      "Partner aging in recorded currencies. Exports and P&L remain Track B.",
   },
 };
 
@@ -242,50 +161,99 @@ export function Finance({
   section: FinanceSection;
   partnerId?: string;
 }) {
-  // Period state lives here so the selector can sit inline in the nav bar
-  const [period, setPeriod] = useState<PeriodKey>("this_month");
-  const [customFrom, setCustomFrom] = useState(() => {
-    const d = new Date();
-    d.setDate(1);
-    return d.toISOString().slice(0, 10);
-  });
-  const [customTo, setCustomTo] = useState(() =>
-    new Date().toISOString().slice(0, 10),
-  );
+  const timezone = session.tenant.timezone;
+  const locale = session.tenant.config.locale;
+  const dateFormat = session.tenant.config.dateFormat;
+  const today = tenantDay(timezone);
+  const [period, setPeriod] = useState<PeriodKey>("this_year");
+  const [customFrom, setCustomFrom] = useState(today);
+  const [customTo, setCustomTo] = useState(today);
+  const [periodOpen, setPeriodOpen] = useState(false);
+  const periodRef = useRef<HTMLDivElement>(null);
 
   const { from, to } = useMemo(
-    () => periodDates(period, customFrom, customTo),
-    [period, customFrom, customTo],
+    () => periodDates(period, customFrom, customTo, timezone),
+    [period, customFrom, customTo, timezone],
   );
   const periodLabel =
-    period === "custom" ? `${from} – ${to}` : PERIOD_LABELS[period];
+    period === "custom"
+      ? formatMediumDateRange(from, to, locale)
+      : PERIOD_LABELS[period];
 
   const heading =
     section === "partners" && partnerId
       ? {
-          title: "Partner Account",
+          title: "Partner account",
           description:
             "Transaction register and settlement history for this partner.",
         }
       : (SECTION_HEADINGS[section] ?? SECTION_HEADINGS.overview);
 
-  // Right-side slot differs per tab
-  const navActions =
-    section === "overview" ? (
-      <PeriodSelector
-        period={period}
-        onPeriod={setPeriod}
-        customFrom={customFrom}
-        customTo={customTo}
-        onCustomFrom={setCustomFrom}
-        onCustomTo={setCustomTo}
-        dateFormat={
-          session.tenant.config.dateFormat as
-            "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD"
+  const presets: { value: PeriodKey; caption: string }[] = [
+    { value: "this_week", caption: "This week" },
+    { value: "this_month", caption: "This month" },
+    { value: "last_month", caption: "Last month" },
+    { value: "this_year", caption: "This year" },
+    { value: "last_year", caption: "Last year" },
+    { value: "custom", caption: "Custom" },
+  ];
+
+  function selectPeriod(next: PeriodKey) {
+    setPeriod(next);
+    setPeriodOpen(false);
+    if (next === "custom") {
+      setCustomFrom(from);
+      setCustomTo(to);
+    }
+  }
+
+  useEffect(() => {
+    if (!periodOpen) return;
+    const close = (event: MouseEvent) => {
+      if (!periodRef.current?.contains(event.target as Node)) {
+        setPeriodOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [periodOpen]);
+
+  const periodActions = (
+    <div className="filter-menu finance-period-menu" ref={periodRef}>
+      <button
+        type="button"
+        className={
+          "button secondary catalog-add-btn" + (periodOpen ? " active-filter" : "")
         }
-        locale={session.tenant.config.locale}
-      />
-    ) : undefined;
+        aria-label="Finance period"
+        aria-expanded={periodOpen}
+        aria-haspopup="listbox"
+        onClick={() => setPeriodOpen((open) => !open)}
+      >
+        <span className="button-label">{PERIOD_LABELS[period]}</span>
+        <ChevronDown size={16} aria-hidden="true" />
+      </button>
+      {periodOpen && (
+        <div className="filter-popover" role="listbox" aria-label="Finance period">
+          {presets.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              role="option"
+              aria-selected={period === item.value}
+              className={
+                "filter-range-option" +
+                (period === item.value ? " selected" : "")
+              }
+              onClick={() => selectPeriod(item.value)}
+            >
+              {item.caption}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <>
@@ -294,14 +262,41 @@ export function Finance({
         title={heading.title}
         description={heading.description}
       />
-      <FinanceNav section={section} actions={navActions} />
+      <FinanceNav
+        section={section}
+        actions={section === "overview" ? periodActions : undefined}
+      />
       {section === "overview" && (
-        <FinanceOverview
-          session={session}
-          dateFrom={from}
-          dateTo={to}
-          periodLabel={periodLabel}
-        />
+        <>
+          {period === "custom" && (
+            <div className="report-custom-dates">
+              <TenantDateInput
+                label="From"
+                value={customFrom}
+                max={customTo || undefined}
+                onChange={setCustomFrom}
+                dateFormat={dateFormat}
+                locale={locale}
+                compact
+              />
+              <TenantDateInput
+                label="To"
+                value={customTo}
+                min={customFrom || undefined}
+                onChange={setCustomTo}
+                dateFormat={dateFormat}
+                locale={locale}
+                compact
+              />
+            </div>
+          )}
+          <FinanceOverview
+            session={session}
+            dateFrom={from}
+            dateTo={to}
+            periodLabel={periodLabel}
+          />
+        </>
       )}
       {section === "partners" && (
         <FinancePartners session={session} initialPartnerId={partnerId} />

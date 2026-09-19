@@ -15,7 +15,7 @@
   - Localization explains why booking / collection / reporting currencies are read-only (Track A same-currency; FX out of scope).
   - Taxes & commercial explains the rate is applied exclusively on new-hold subtotals; inclusive pricing is not modeled.
   - Desktop aside meta/facts type slightly smaller; mobile/tablet tab-to-content spacing tightened.
-- **Follow-up 19 September 2026 (2):**
+- **Follow-up 19 September 2026 (3):** Pickup locations search and **Add location** share one toolbar row.
   - Payment integrations is an honest Track A status (cash/partner live, Connect not a toggle, Terminal deferred) with a link to Finance → Partners.
   - Taxes: collection methods / booking sources use the same card heading.
   - Printers: document storage heading matches other settings cards.

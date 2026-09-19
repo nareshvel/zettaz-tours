@@ -7,7 +7,7 @@ Keep under 200 lines. Update after sessions that change standing decisions.
 ## Current focus (agents)
 
 - **Sprint board:** [../HANDOFF/agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) — prefer over chat history.
-- **Owner priority (19 Sep):** Crew store binaries live (ASC 6813693098 · Play Internal 1.0.1/2). Field-pass UI still local. **Do not start Phase 5.** 4.8 airplane-mode is owner. Next web: owner visual on remaining settings; General/Taxes/Stays/Partners toolbar pass 19 Sep.
+- **Owner priority (19 Sep):** Crew store binaries live (ASC 6813693098 · Play Internal 1.0.1/2). Field-pass UI still local. **Do not start Phase 5.** 4.8 airplane-mode is owner. **Hold** finance cashbook: [../STRATEGY/finance-money-in-out-later.md](../STRATEGY/finance-money-in-out-later.md). Next web: Tenant settings remaining (pickup search shipped).
 - **In progress (15 Sep):** Tenant settings pass — printing, waivers, integrations, localization, sidebar. See the 15 September section below.
 - **Crew app (17 Sep):** Phases 1–4 engineering on production. Rebuild EAS; 4.8 airplane-mode is owner after that install. Phase 5 Track B stays unscheduled.
 - **Deploy:** VPS at tip `cad0ed8` via `./deploy.sh` (migrations through **089**, Pending: 0). `origin/main` `0acc028` not yet on VPS.

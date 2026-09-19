@@ -18,6 +18,7 @@ import {
   FormDialog,
   Loading,
   Notice,
+  SearchBox,
   TenantDateInput,
 } from "./common";
 
@@ -1235,6 +1236,7 @@ export function FinanceExpenses({ session }: { session: Session }) {
   const [addOpen, setAddOpen] = useState(false);
   const [editExpense, setEditExpense] = useState<Expense | null>(null);
   const [voidExpense, setVoidExpense] = useState<Expense | null>(null);
+  const [search, setSearch] = useState("");
 
   const { data: catData } = useResource<{ categories: ExpenseCategory[] }>(
     "finance/v1/expense-categories",
@@ -1249,6 +1251,16 @@ export function FinanceExpenses({ session }: { session: Session }) {
   const categories = catData?.categories ?? [];
   const vendors = vendorData?.vendors ?? [];
   const expenses = listData?.expenses ?? [];
+  const q = search.trim().toLowerCase();
+  const visibleExpenses = q
+    ? expenses.filter(
+        (e) =>
+          (e.vendor ?? "").toLowerCase().includes(q) ||
+          (e.description ?? "").toLowerCase().includes(q) ||
+          (e.reference ?? "").toLowerCase().includes(q) ||
+          e.category_name.toLowerCase().includes(q),
+      )
+    : expenses;
   const currency =
     listData?.currency ?? session.tenant.config.collectionCurrency ?? "XCD";
   const reportingCurrency =
@@ -1329,28 +1341,35 @@ export function FinanceExpenses({ session }: { session: Session }) {
       {/* Right: expense table */}
       <div className="finance-detail-panel">
         <div className="finance-detail-toolbar">
-          <div className="finance-detail-toolbar-title">
-            {selectedCatId
-              ? (categories.find((c) => c.id === selectedCatId)?.name ??
-                "Expenses")
-              : "All Expenses"}
+          <div className="staff-list-tools finance-expense-bar">
+            <SearchBox
+              value={search}
+              onChange={setSearch}
+              placeholder="Search expenses"
+            />
+            <button
+              type="button"
+              className="button catalog-add-btn"
+              onClick={() => setAddOpen(true)}
+            >
+              <Plus size={16} /> Add expense
+            </button>
           </div>
-          <button
-            className="button small primary"
-            onClick={() => setAddOpen(true)}
-          >
-            <Plus size={14} /> Add Expense
-          </button>
         </div>
         <div className="finance-detail-scroll">
           {listError && <Notice error>{listError}</Notice>}
           {!listData && <Loading />}
           {listData && expenses.length === 0 && (
             <Empty title="No expenses recorded">
-              Add your first expense to start tracking operating costs.
+              <p>Add an operating cost to start the register.</p>
             </Empty>
           )}
-          {listData && expenses.length > 0 && (
+          {listData && expenses.length > 0 && visibleExpenses.length === 0 && (
+            <Empty title="No expenses match">
+              <p>Try a different vendor, description, or reference.</p>
+            </Empty>
+          )}
+          {listData && visibleExpenses.length > 0 && (
             <div className="table-scroll">
               <table className="expense-table">
                 <thead>
@@ -1364,7 +1383,7 @@ export function FinanceExpenses({ session }: { session: Session }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {expenses.map((e) => (
+                  {visibleExpenses.map((e) => (
                     <ExpenseRow
                       key={e.id}
                       expense={e}

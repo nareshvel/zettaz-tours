@@ -14,8 +14,8 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 
 1. **Crew app.** Phases 1–4 on production `cad0ed8`. EAS **preview** + **production** binaries exist. iOS **1.0.1 (2)** is on App Store Connect (`6813693098`). Android **Internal testing 2 (1.0.1)** is live. Owner still: TestFlight/Unlisted review notes, screenshots, reviewer demo user, **4.8 airplane-mode**. **Do not start Phase 5.**
 2. **Operations menu group** remains functionally complete pending testing. Do not open new Ops web feature work unless testing finds a bug.
-3. **Non-Ops:** Customers, Audit, and Document library polish are on production (`cad0ed8`; owner visual still outstanding). **Profile polish follow-up** is local (uncommitted). **Crew field-pass UI** is local — needs commit + VPS + new EAS to match store binaries. Tenant settings + Finance Partners committed `ba74009`. **Staff & access** search + phone revoke/restore in the follow-up commit. Next engineering: Fleet (Team & resources) or Reports.
-4. **Hold Subscription messaging.**
+3. **Non-Ops:** Agent polish sequence (Workspace, Insights, Administration lists, Finance period/unpaid tile, pickup location search) is in the local working tree for this commit. **Next planned:** Tenant settings Localization / Booking integrations if still rough. Owner visual still outstanding. **Do not start** finance money-in-out later.
+4. **Hold Subscription messaging.** Hold **finance money in/out later** ([finance-money-in-out-later.md](../STRATEGY/finance-money-in-out-later.md)).
 
 ---
 
@@ -118,6 +118,7 @@ Remaining in this group: owner visual on General & branding, Taxes & commercial,
 ## Held — do not start unless owner reopens
 
 - **Subscription messaging polish** (row 17) — billing-cycle / failed payment / grace / post-suspension copy in `apps/web/components/subscription.tsx`
+- **Finance money in/out later** — expense payments, guest/partner cash on Overview, bank registers: [finance-money-in-out-later.md](../STRATEGY/finance-money-in-out-later.md). Do not start until the owner names a phase.
 - Dependency-blocked Track A: Stripe eligibility, XCD→USD rate, Rock printers, Rock waiver legal text, WP payload / import ID reconciliation
 - Track B: public checkout, reseller portal, GPS/ETAs, OTA cert, rich analytics — [launch-contract.md](../STRATEGY/launch-contract.md)
 
@@ -128,18 +129,18 @@ Remaining in this group: owner visual on General & branding, Taxes & commercial,
 Work **outside** the Operations aside group. Suggested order (adjust with owner):
 
 ### 1. Workspace
-- Home / overview — exceptions, setup checklist, role-appropriate dashboard
+- **Home / overview — My trips hidden for Day Board roles; setup checklist on Overview 19 Sep.** Evidence: [overview-polish-evidence.md](../TESTING/overview-polish-evidence.md). Owner visual still outstanding.
 
 ### 2. Insights
-- Reports — polish implemented 11 Sep; owner visual still outstanding
+- **Reports — chip-range follow-up 19 Sep; owner visual still outstanding.** Evidence: [reports-polish-evidence.md](../TESTING/reports-polish-evidence.md).
 - **Customers — polish implemented 17 Sep; owner visual still outstanding.** Evidence: [customers-polish-evidence.md](../TESTING/customers-polish-evidence.md). Next Insights item after owner pass is none; continue Administration remaining tabs.
 
 ### 3. Administration
-- Finance (overview, payments, partner statements — slim Track A) — polish 11 Sep; owner visual outstanding
-- Fleet (assets / readiness) — polish 11 Sep; owner visual outstanding
-- Staff & access — polish 11 Sep; owner visual outstanding
+- Finance (overview, payments, partner statements — slim Track A) — polish 11 Sep; period chips + expense search 19 Sep; owner visual outstanding. Evidence: [finance-polish-evidence.md](../TESTING/finance-polish-evidence.md).
+- Fleet (assets / readiness) — polish 11 Sep; search + Add asset row 19 Sep; owner visual outstanding
+- Staff & access — polish 11 Sep; search + Add staff row 19 Sep; owner visual outstanding
 - **Document library — polish implemented 17 Sep.** Evidence: [document-library-polish-evidence.md](../TESTING/document-library-polish-evidence.md)
-- Tenant settings — earlier module pass; Security non-owner empty state 17 Sep
+- Tenant settings — earlier module pass; Security non-owner empty state 17 Sep; Pickup locations search+add row 19 Sep
 - **Audit — polish implemented 17 Sep.** Evidence: [audit-polish-evidence.md](../TESTING/audit-polish-evidence.md)
 
 ### 4. Profile (account shell)
@@ -159,7 +160,7 @@ Not the current focus. When owner returns to platform/track work:
 | # | Epic | What’s left |
 | --- | --- | --- |
 | 1 | E01 Identity | Privileged MFA/TOTP + recovery codes |
-| 2 | E10 Finance | Live Stripe Connect Checkout (USD) + webhooks; XCD rate policy |
+| 2 | E10 Finance | Live Stripe Connect Checkout (USD) + webhooks; XCD rate policy. **Held cashbook plan:** [finance-money-in-out-later.md](../STRATEGY/finance-money-in-out-later.md) |
 | 3 | E06 Ops print | **Agent client + paper profiles shipped 15 Sep (ADR 018).** Left: live agent acceptance on real hardware; tenant-shared printer routing (needs agent-side job polling — `printer_routes` dormant); tenant-designed templates |
 | 4 | Comms | Tenant-editable templates, suppression, delivery webhooks |
 | 5 | Boarding money | Complimentary/prepaid flags, mixed allocation, per-passenger owed; crew-mobile Pay is Phase 2 of [crew-app-delivery.md](../STRATEGY/crew-app-delivery.md) |

@@ -16,6 +16,7 @@ import {
   Heading,
   Loading,
   Notice,
+  SearchBox,
   Status,
   TenantDateInput,
   Toggle,
@@ -97,6 +98,7 @@ export function Resources({ session }: { session: Session }) {
   );
   const [resourceForm, setResourceForm] = useState(emptyResource);
   const [docsFor, setDocsFor] = useState<Resource | null>(null);
+  const [assetSearch, setAssetSearch] = useState("");
   const [resourceDocForm, setResourceDocForm] = useState({
     documentType: "",
     expiresOn: "",
@@ -195,6 +197,15 @@ export function Resources({ session }: { session: Session }) {
   if (!resources.data || !documents.data) return <Loading />;
 
   const resourceList = resources.data;
+  const assetNeedle = assetSearch.trim().toLowerCase();
+  const visibleAssets = assetNeedle
+    ? resourceList.filter((item) =>
+        [item.name, item.code, item.type, label(item.type)]
+          .join(" ")
+          .toLowerCase()
+          .includes(assetNeedle),
+      )
+    : resourceList;
 
   return (
     <>
@@ -227,16 +238,12 @@ export function Resources({ session }: { session: Session }) {
         </div>
       )}
 
-      <div className="view-action-bar resource-view-bar">
-        <div
-          className="view-tabs compact"
-          role="tablist"
-          aria-label="Fleet sections"
-        >
-          <button type="button" role="tab" aria-selected>
-            Assets
-          </button>
-        </div>
+      <div className="staff-list-tools fleet-asset-bar">
+        <SearchBox
+          value={assetSearch}
+          onChange={setAssetSearch}
+          placeholder="Search assets"
+        />
         <button
           type="button"
           className="button catalog-add-btn"
@@ -259,6 +266,7 @@ export function Resources({ session }: { session: Session }) {
           </div>
         </div>
         {resourceList.length ? (
+          visibleAssets.length ? (
           <>
             <div className="table-scroll resource-table">
               <table>
@@ -272,7 +280,7 @@ export function Resources({ session }: { session: Session }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {resourceList.map((item) => (
+                  {visibleAssets.map((item) => (
                     <tr key={item.id}>
                       <td>
                         <strong>{item.name}</strong>
@@ -326,7 +334,7 @@ export function Resources({ session }: { session: Session }) {
               </table>
             </div>
             <div className="resource-cards">
-              {resourceList.map((item) => (
+              {visibleAssets.map((item) => (
                 <article key={item.id} className="resource-card">
                   <div className="resource-card-head">
                     <strong>{item.name}</strong>
@@ -377,6 +385,11 @@ export function Resources({ session }: { session: Session }) {
               ))}
             </div>
           </>
+          ) : (
+            <Empty title="No assets match">
+              <p>Try a different name, code, or type.</p>
+            </Empty>
+          )
         ) : (
           <Empty title="No resources yet">
             Add a vehicle, vessel, or equipment item for assignment.
@@ -505,17 +518,10 @@ export function Resources({ session }: { session: Session }) {
             .filter((d) => d.resource_id === docsFor.id)
             .map((doc) => (
               <div className="staff-doc-list" key={doc.id}>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    marginBottom: 8,
-                  }}
-                >
+              <div className="staff-doc-row">
                   <div>
                     <strong>{doc.document_type}</strong>
-                    <small style={{ display: "block" }}>
+                    <small>
                       Expires {formatMediumDate(doc.expires_on)}
                     </small>
                   </div>

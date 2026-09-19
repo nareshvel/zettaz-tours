@@ -42,8 +42,8 @@ See [agent-current-sprint.md](agent-current-sprint.md). Short form (19 Sep):
 1. **Crew store binaries** iOS ASC `6813693098` 1.0.1 (2); Play Internal 1.0.1/2. Engineering Phases 1–4 on production. Owner: Unlisted/review notes, screenshots, **4.8 airplane-mode**.
 2. **Do not start Phase 5** (kiosk, GPS, card-present, push, white-label).
 3. **Operations menu group closed** pending further testing.
-4. **Customers / Audit / Document library** polish on production (owner visual outstanding). **Profile + Crew field-pass** local. Settings General/Taxes/Stays + Finance Partners list pass 19 Sep.
-5. **Hold** Subscription messaging polish.
+4. **Customers / Audit / Document library** polish on production (owner visual outstanding). **Profile + Crew field-pass** local. Settings + Partners 19 Sep. Staff/Fleet/Reports/Overview/Finance follow-ups local/uncommitted. Agent polish sequence complete unless owner names a surface.
+5. **Hold** Subscription messaging polish. **Hold** finance money in/out later ([finance-money-in-out-later.md](../STRATEGY/finance-money-in-out-later.md)). Next web polish: Tenant settings pickup locations list tools.
 
 Pasteable Claude brief: [claude-handoff-2026-09-14.md](claude-handoff-2026-09-14.md).
 

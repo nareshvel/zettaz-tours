@@ -3,8 +3,8 @@
 import { AlertCircle, Clock } from "lucide-react";
 import Link from "next/link";
 import type { Session } from "@/lib/types";
-import { money, useResource } from "@/lib/client";
-import { Empty } from "./common";
+import { dateOnly, money, useResource } from "@/lib/client";
+import { Empty, Loading, Notice } from "./common";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -119,6 +119,10 @@ function NetPositionStrip({
   expenseReportingCurrency: string;
   periodLabel: string;
 }) {
+  const expenseDisplay =
+    expenseReportingTotal === 0 && !expenseHasUnconverted
+      ? "—"
+      : money(expenseReportingTotal, expenseReportingCurrency);
   return (
     <div className="finance-net-position">
       <div className="finance-net-tile receivable">
@@ -141,7 +145,7 @@ function NetPositionStrip({
       </div>
       {pos.overdue_minor > 0 && (
         <div className="finance-net-tile overdue">
-          <span className="finance-net-label">Overdue</span>
+          <span className="finance-net-label">Overdue partners</span>
           <span className="finance-net-amount overdue-text">
             {money(pos.overdue_minor, pos.currency)}
           </span>
@@ -150,22 +154,29 @@ function NetPositionStrip({
           </span>
         </div>
       )}
-      <div className="finance-net-tile expenses">
+      <Link className="finance-net-tile expenses" href="/finance/expenses">
         <span className="finance-net-label">Expenses · {periodLabel}</span>
-        <span className="finance-net-amount">
-          {expenseReportingTotal === 0 && !expenseHasUnconverted
-            ? "—"
-            : money(expenseReportingTotal, expenseReportingCurrency)}
-        </span>
+        <span className="finance-net-amount">{expenseDisplay}</span>
+        <span className="finance-net-sub">Recorded operating costs</span>
         {expenseHasUnconverted && (
-          <span
-            className="finance-net-sub"
-            style={{ color: "var(--warning, #c97700)", fontSize: "0.75rem" }}
-          >
-            ⚠ some expenses missing rate
+          <span className="finance-net-sub attention-text">
+            Some expenses have no bank rate and are excluded
           </span>
         )}
-      </div>
+      </Link>
+      <Link
+        className={
+          "finance-net-tile unpaid" +
+          (expenseReportingTotal > 0 ? " attention" : "")
+        }
+        href="/finance/expenses"
+      >
+        <span className="finance-net-label">Unpaid expenses · {periodLabel}</span>
+        <span className="finance-net-amount">{expenseDisplay}</span>
+        <span className="finance-net-sub">
+          Vendor payment is not recorded yet, so unpaid equals recorded
+        </span>
+      </Link>
     </div>
   );
 }
@@ -173,7 +184,7 @@ function NetPositionStrip({
 function SkeletonStrip() {
   return (
     <div className="finance-net-position">
-      {["receivable", "payable", "overdue", "expenses"].map((cls) => (
+      {["receivable", "payable", "expenses", "unpaid"].map((cls) => (
         <div key={cls} className={`finance-net-tile ${cls}`}>
           <span className="finance-net-label">&nbsp;</span>
           <span
@@ -190,21 +201,28 @@ function SkeletonStrip() {
 
 // ─── Recent activity feed ─────────────────────────────────────────────────────
 
-function ActivityFeed({ items }: { items: ActivityItem[] }) {
+function ActivityFeed({
+  items,
+  dateFormat,
+  locale,
+}: {
+  items: ActivityItem[];
+  dateFormat: Session["tenant"]["config"]["dateFormat"];
+  locale: string;
+}) {
   return (
     <div className="finance-activity-feed">
-      <h3 className="finance-section-heading">Recent Activity</h3>
+      <h3 className="finance-section-heading">Recent activity</h3>
       {items.length === 0 ? (
-        <p className="finance-activity-empty">No recent activity.</p>
+        <Empty title="No recent activity">
+          <p>Settlements and partner movements will appear here.</p>
+        </Empty>
       ) : (
         <div className="finance-activity-list">
           {items.map((item) => (
             <div key={item.id} className="finance-activity-row">
               <span className="finance-activity-date">
-                {new Date(item.event_at).toLocaleDateString(undefined, {
-                  month: "short",
-                  day: "numeric",
-                })}
+                {dateOnly(item.event_at, dateFormat, locale)}
               </span>
               <span className="finance-activity-partner">
                 {item.partner_name}
@@ -264,28 +282,14 @@ export function FinanceOverview({
         ct.currency !== reportingCurrency && ct.total_reporting_minor == null,
     ) ?? false;
 
-  const loading = data === null && !error;
-
-  if (loading || (!data && !error)) {
-    return (
-      <div className="finance-overview-shell">
-        <SkeletonStrip />
-        <div className="finance-queue-section">
-          <h3 className="finance-section-heading">Work Queue</h3>
-          <Empty title="All caught up">No actions required right now.</Empty>
-        </div>
-      </div>
-    );
+  if (error) {
+    return <Notice error>{error}</Notice>;
   }
-
   if (!data) {
     return (
       <div className="finance-overview-shell">
         <SkeletonStrip />
-        <div className="finance-queue-section">
-          <h3 className="finance-section-heading">Work Queue</h3>
-          <Empty title="All caught up">No actions required right now.</Empty>
-        </div>
+        <Loading />
       </div>
     );
   }
@@ -302,9 +306,11 @@ export function FinanceOverview({
         periodLabel={periodLabel}
       />
       <div className="finance-queue-section">
-        <h3 className="finance-section-heading">Work Queue</h3>
+        <h3 className="finance-section-heading">Work queue</h3>
         {work_queue.length === 0 ? (
-          <Empty title="All caught up">No actions required right now.</Empty>
+          <Empty title="All caught up">
+            <p>No partner collections or settlements need a decision.</p>
+          </Empty>
         ) : (
           <div className="finance-queue-list">
             {work_queue.map((item) => (
@@ -317,7 +323,11 @@ export function FinanceOverview({
           </div>
         )}
       </div>
-      <ActivityFeed items={recent_activity} />
+      <ActivityFeed
+        items={recent_activity}
+        dateFormat={session.tenant.config.dateFormat}
+        locale={session.tenant.config.locale}
+      />
     </div>
   );
 }

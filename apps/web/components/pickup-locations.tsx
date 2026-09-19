@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ExternalLink, MapPin, Pencil, Plus, Trash2 } from "lucide-react";
 import type { PickupLocation, Session } from "@/lib/types";
 import { label, useMutation, useResource } from "@/lib/client";
@@ -12,6 +12,7 @@ import {
   FormDialog,
   Loading,
   Notice,
+  SearchBox,
 } from "./common";
 import { LocationMapPreview } from "./location-map-preview";
 
@@ -89,6 +90,24 @@ export function PickupLocationsSettings({ session }: { session: Session }) {
   const [pendingDelete, setPendingDelete] = useState<PickupLocation | null>(
     null,
   );
+  const [search, setSearch] = useState("");
+  const visibleLocations = useMemo(() => {
+    const list = locations.data ?? [];
+    const q = search.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((location) => {
+      const hay = [
+        location.name,
+        location.slug,
+        location.kind,
+        location.address ?? "",
+        location.notes ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [locations.data, search]);
 
   function openCreateLocation() {
     setLocationForm({
@@ -182,17 +201,6 @@ export function PickupLocationsSettings({ session }: { session: Session }) {
             Plan pickups only sequences stops from this library.
           </p>
         </div>
-        {canWrite && (
-          <button
-            type="button"
-            className="button catalog-add-btn settings-head-action"
-            aria-label="Add location"
-            onClick={openCreateLocation}
-          >
-            <Plus size={17} />
-            <span className="button-label">Add location</span>
-          </button>
-        )}
       </div>
       {!canWrite && (
         <Notice>
@@ -222,59 +230,83 @@ export function PickupLocationsSettings({ session }: { session: Session }) {
         </Empty>
       ) : (
         <>
-          <div className="settings-list pickup-settings-list">
-            {locations.data.map((location) => (
-              <article key={location.id}>
-                <div>
-                  <strong>{location.name}</strong>
-                  <p>
-                    {label(location.kind)} · {location.slug}
-                    {location.address ? ` · ${location.address}` : ""}
-                    {location.latitude !== null &&
-                    location.longitude !== null ? (
-                      <>
-                        {" · "}
-                        {location.map_url ? (
-                          <a
-                            href={location.map_url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            mapped
-                          </a>
-                        ) : (
-                          "mapped"
-                        )}
-                      </>
-                    ) : null}
-                  </p>
-                </div>
-                {canWrite && (
-                  <div className="location-list-actions">
-                    <button
-                      type="button"
-                      className="icon-button"
-                      aria-label={`Edit ${location.name}`}
-                      onClick={() => openEditLocation(location)}
-                    >
-                      <Pencil size={16} />
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-button danger"
-                      aria-label={`Remove ${location.name}`}
-                      onClick={() => {
-                        removeLocation.clear();
-                        setPendingDelete(location);
-                      }}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                )}
-              </article>
-            ))}
+          <div className="staff-list-tools fleet-asset-bar">
+            <SearchBox
+              value={search}
+              onChange={setSearch}
+              placeholder="Search locations"
+            />
+            {canWrite && (
+              <button
+                type="button"
+                className="button catalog-add-btn"
+                aria-label="Add location"
+                onClick={openCreateLocation}
+              >
+                <Plus size={17} />
+                <span className="button-label">Add location</span>
+              </button>
+            )}
           </div>
+          {visibleLocations.length === 0 ? (
+            <Empty title="No locations match">
+              <p>Try a different name, address, or kind.</p>
+            </Empty>
+          ) : (
+            <div className="settings-list pickup-settings-list">
+              {visibleLocations.map((location) => (
+                <article key={location.id}>
+                  <div>
+                    <strong>{location.name}</strong>
+                    <p>
+                      {label(location.kind)} · {location.slug}
+                      {location.address ? ` · ${location.address}` : ""}
+                      {location.latitude !== null &&
+                      location.longitude !== null ? (
+                        <>
+                          {" · "}
+                          {location.map_url ? (
+                            <a
+                              href={location.map_url}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              mapped
+                            </a>
+                          ) : (
+                            "mapped"
+                          )}
+                        </>
+                      ) : null}
+                    </p>
+                  </div>
+                  {canWrite && (
+                    <div className="location-list-actions">
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label={`Edit ${location.name}`}
+                        onClick={() => openEditLocation(location)}
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-button danger"
+                        aria-label={`Remove ${location.name}`}
+                        onClick={() => {
+                          removeLocation.clear();
+                          setPendingDelete(location);
+                        }}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
         </>
       )}
       <FormDialog

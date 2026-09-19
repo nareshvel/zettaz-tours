@@ -102,4 +102,4 @@ Both defences were added after they had already failed once each — a `generate
 
 - The SQL in `briefing` is **unexecuted** — no database is reachable from the development bridge. It typechecks and follows the existing board/report queries, but it needs a real run before it is trusted.
 - Sparklines (14-day booking pace) are specified but not built.
-- Guide and driver roles still land on the permissions empty state; their own "my trips today" view is a separate slice.
+- Guide and driver roles still land on `/crew` for web. Owner, admin, dispatcher, and other Day Board roles no longer see **My trips** in the web sidebar; they use Overview and Day Board. Field work stays on Zettaz Crew.

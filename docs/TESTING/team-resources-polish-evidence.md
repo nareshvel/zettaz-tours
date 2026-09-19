@@ -15,6 +15,12 @@
 - Phone: icon-first Add button, scrollable tabs, card lists; metric tiles jump to the matching tab.
 - Expiry callout appears when not on Documents and deep-links into that tab.
 
+## Follow-up 19 September 2026
+
+- Fleet toolbar matches Staff: search and **Add asset** on one row, add on the right. Dummy “Assets” tab removed.
+- Search filters name, code, and type.
+- Asset document rows no longer use inline layout styles.
+
 ## Automated evidence
 
 - `resources are tenant-scoped…` first-slice test covers resource update, document update/delete, deactivate blocking assignment, and reactivation.

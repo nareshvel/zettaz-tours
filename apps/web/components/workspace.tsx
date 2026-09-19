@@ -281,6 +281,12 @@ export function Workspace({
       !session.permissions.includes("bookings.read")
     )
       router.replace("/crew");
+    if (
+      session &&
+      path === "/crew" &&
+      session.permissions.includes("manifest.read")
+    )
+      router.replace("/");
   }, [path, router, session]);
   useEffect(() => {
     if (!menu && !accountMenu) return;
@@ -403,6 +409,9 @@ export function Workspace({
   const can = (permission: string) =>
     permission === "authenticated" || session.permissions.includes(permission);
   const canOpen = (href: string, permission: string) => {
+    // Desk roles work Day Board / manifests on the web. My trips is the
+    // field fallback for crew-only web access (Expo is the real crew app).
+    if (href === "/crew" && can("manifest.read")) return false;
     const alternatives: Record<string, string[]> = {
       "/finance": [
         "payment.write",
@@ -470,12 +479,12 @@ export function Workspace({
   let content: React.ReactNode;
   let permission = "bookings.read";
   if (
-    area === "crew" ||
+    (area === "crew" && !can("manifest.read")) ||
     (area === "overview" && can("crew.trip.read") && !can("bookings.read"))
   ) {
     permission = "crew.trip.read";
     content = <CrewWorkspace session={session} />;
-  } else if (area === "overview") {
+  } else if (area === "overview" || (area === "crew" && can("manifest.read"))) {
     permission = "authenticated";
     content = <Overview session={session} />;
   } else if (area === "reservations" && segments[1] === "new") {

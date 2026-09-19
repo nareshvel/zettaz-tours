@@ -1,15 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import {
   AlertTriangle,
   BarChart3,
   CalendarDays,
   Landmark,
-  ListFilter,
 } from "lucide-react";
 import type { Session } from "@/lib/types";
-import { money, useResource } from "@/lib/client";
+import {
+  dateOnly,
+  formatMediumDateRange,
+  money,
+  useResource,
+} from "@/lib/client";
 import { Empty, Heading, Loading, Notice, TenantDateInput } from "./common";
 
 type Report = {
@@ -39,7 +43,13 @@ type Report = {
   }[];
 };
 
-type ReportRange = "today" | "week" | "month" | "last_month" | "custom";
+type ReportRange =
+  | "today"
+  | "last_7"
+  | "week"
+  | "month"
+  | "last_month"
+  | "custom";
 
 function tenantDay(timezone: string, date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -87,6 +97,7 @@ function rangeBounds(
   customTo: string,
 ): [string, string] {
   if (range === "today") return [today, today];
+  if (range === "last_7") return [shiftDay(today, -6), today];
   if (range === "week") return [mondayOf(today), sundayOf(today)];
   if (range === "month") return monthBounds(today);
   if (range === "last_month") return previousMonthBounds(today);
@@ -100,35 +111,13 @@ export function Reports({ session }: { session: Session }) {
   const [preset, setPreset] = useState<ReportRange>("week");
   const [customFrom, setCustomFrom] = useState(weekStart);
   const [customTo, setCustomTo] = useState(weekEnd);
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const filterRef = useRef<HTMLDivElement>(null);
 
   const [from, to] = rangeBounds(preset, today, customFrom, customTo);
   const report = useResource<Report>(
     `reports/v1/overview?${new URLSearchParams({ from, to }).toString()}`,
   );
-
-  useEffect(() => {
-    if (!filtersOpen) return;
-    function onPointer(event: MouseEvent) {
-      if (
-        filterRef.current &&
-        !filterRef.current.contains(event.target as Node) &&
-        !document.getElementById("tdp-popup")?.contains(event.target as Node)
-      ) {
-        setFiltersOpen(false);
-      }
-    }
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") setFiltersOpen(false);
-    }
-    document.addEventListener("mousedown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [filtersOpen]);
+  const locale = session.tenant.config.locale;
+  const dateFormat = session.tenant.config.dateFormat;
 
   function selectPreset(next: ReportRange) {
     setPreset(next);
@@ -138,34 +127,16 @@ export function Reports({ session }: { session: Session }) {
     }
   }
 
-  function resetView() {
-    setPreset("week");
-    setCustomFrom(weekStart);
-    setCustomTo(weekEnd);
-    setFiltersOpen(false);
-  }
+  const rangeHint = formatMediumDateRange(from, to, locale);
 
-  const rangeLabel =
-    preset === "today"
-      ? "Today"
-      : preset === "week"
-        ? "This week"
-        : preset === "month"
-          ? "This month"
-          : preset === "last_month"
-            ? "Last month"
-            : "Custom range";
-  const filterCount = preset === "week" ? 0 : 1;
-  const rangeHint =
-    preset === "today"
-      ? today
-      : preset === "week"
-        ? `${weekStart} – ${weekEnd}`
-        : preset === "month"
-          ? `${monthBounds(today)[0]} – ${monthBounds(today)[1]}`
-          : preset === "last_month"
-            ? `${previousMonthBounds(today)[0]} – ${previousMonthBounds(today)[1]}`
-            : `${customFrom} – ${customTo}`;
+  const presets: { value: ReportRange; caption: string }[] = [
+    { value: "today", caption: "Today" },
+    { value: "last_7", caption: "Last 7 days" },
+    { value: "week", caption: "This week" },
+    { value: "month", caption: "This month" },
+    { value: "last_month", caption: "Last month" },
+    { value: "custom", caption: "Custom" },
+  ];
 
   return (
     <>
@@ -173,117 +144,52 @@ export function Reports({ session }: { session: Session }) {
         eyebrow="REPORTING"
         title="Reports"
         description={`Departure-date facts in ${session.tenant.timezone}. Commercial totals use the tenant reporting currency only — no FX conversion.`}
-        action={
-          <div className="filter-menu report-filter-menu" ref={filterRef}>
-            <button
-              type="button"
-              className={
-                "button secondary catalog-add-btn" +
-                (filtersOpen || filterCount ? " active-filter" : "")
-              }
-              aria-label="Filter reports"
-              aria-expanded={filtersOpen}
-              aria-haspopup="dialog"
-              onClick={() => setFiltersOpen((open) => !open)}
-            >
-              <ListFilter size={17} />
-              <span className="button-label">{rangeLabel}</span>
-              {filterCount > 0 && (
-                <span className="filter-count">{filterCount}</span>
-              )}
-            </button>
-            {filtersOpen && (
-              <div
-                className="filter-popover"
-                role="dialog"
-                aria-label="Report date filters"
-              >
-                <div className="filter-popover-head">
-                  <strong>Date range</strong>
-                  <span>{rangeHint}</span>
-                </div>
-                <div className="compact-control">
-                  <span>Departure dates</span>
-                  <div
-                    className="filter-range-options"
-                    role="radiogroup"
-                    aria-label="Date range"
-                  >
-                    {(
-                      [
-                        ["today", "Today"],
-                        ["week", "This week"],
-                        ["month", "This month"],
-                        ["last_month", "Last month"],
-                        ["custom", "Custom range"],
-                      ] as const
-                    ).map(([value, caption]) => (
-                      <button
-                        key={value}
-                        type="button"
-                        role="radio"
-                        aria-checked={preset === value}
-                        className={
-                          "filter-range-option" +
-                          (preset === value ? " selected" : "")
-                        }
-                        onClick={() => selectPreset(value)}
-                      >
-                        {caption}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {preset === "custom" && (
-                  <div className="filter-custom-range">
-                    <TenantDateInput
-                      label="From"
-                      value={customFrom}
-                      max={customTo || undefined}
-                      onChange={setCustomFrom}
-                      locale={session.tenant.config.locale}
-                      dateFormat={session.tenant.config.dateFormat}
-                      compact
-                    />
-                    <TenantDateInput
-                      label="To"
-                      value={customTo}
-                      min={customFrom || undefined}
-                      onChange={setCustomTo}
-                      locale={session.tenant.config.locale}
-                      dateFormat={session.tenant.config.dateFormat}
-                      compact
-                    />
-                  </div>
-                )}
-                {preset !== "custom" && (
-                  <p className="filter-range-hint muted">{rangeHint}</p>
-                )}
-                <p className="filter-range-hint muted">
-                  Population is departures whose local start date falls in range
-                  {report.data ? ` · ${report.data.currency}` : ""}.
-                </p>
-                <div className="filter-popover-actions">
-                  <button
-                    type="button"
-                    className="text-button"
-                    onClick={resetView}
-                  >
-                    Reset
-                  </button>
-                  <button
-                    type="button"
-                    className="button"
-                    onClick={() => setFiltersOpen(false)}
-                  >
-                    Done
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        }
       />
+      <div className="report-range-bar">
+        <div
+          className="report-preset-chips"
+          role="radiogroup"
+          aria-label="Report date range"
+        >
+          {presets.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              role="radio"
+              aria-checked={preset === item.value}
+              className={
+                "filter-range-option" +
+                (preset === item.value ? " selected" : "")
+              }
+              onClick={() => selectPreset(item.value)}
+            >
+              {item.caption}
+            </button>
+          ))}
+        </div>
+      </div>
+      {preset === "custom" && (
+        <div className="report-custom-dates">
+          <TenantDateInput
+            label="From"
+            value={customFrom}
+            max={customTo || undefined}
+            onChange={setCustomFrom}
+            locale={locale}
+            dateFormat={dateFormat}
+            compact
+          />
+          <TenantDateInput
+            label="To"
+            value={customTo}
+            min={customFrom || undefined}
+            onChange={setCustomTo}
+            locale={locale}
+            dateFormat={dateFormat}
+            compact
+          />
+        </div>
+      )}
 
       {report.error ? (
         <Notice error>{report.error}</Notice>
@@ -293,7 +199,8 @@ export function Reports({ session }: { session: Session }) {
         <>
           <p className="muted report-range-note">
             Showing <strong>{rangeHint}</strong>
-            {report.data ? ` · ${report.data.currency}` : ""}.
+            {report.data ? ` · ${report.data.currency}` : ""}. Totals are for
+            departures that start on those local dates.
           </p>
           <section className="metric-grid report-metrics">
             <div className="metric-card">
@@ -322,7 +229,14 @@ export function Reports({ session }: { session: Session }) {
                 settled guest receipts
               </small>
             </div>
-            <div className="metric-card">
+            <div
+              className={
+                "metric-card" +
+                (report.data.commercial.guestBalanceMinor > 0
+                  ? " attention"
+                  : "")
+              }
+            >
               <AlertTriangle size={20} />
               <span>Guest balances</span>
               <strong>
@@ -408,7 +322,7 @@ export function Reports({ session }: { session: Session }) {
                     <tbody>
                       {report.data.days.map((row) => (
                         <tr key={row.date}>
-                          <td>{row.date}</td>
+                          <td>{dateOnly(row.date, dateFormat, locale)}</td>
                           <td>{row.departures}</td>
                           <td>{row.confirmed_bookings}</td>
                           <td>{row.guests}</td>
@@ -420,7 +334,9 @@ export function Reports({ session }: { session: Session }) {
                 <div className="report-daily-cards">
                   {report.data.days.map((row) => (
                     <article key={row.date} className="report-day-card">
-                      <strong>{row.date}</strong>
+                      <strong>
+                        {dateOnly(row.date, dateFormat, locale)}
+                      </strong>
                       <div className="report-day-stats">
                         <span>
                           <strong>{row.departures}</strong> departures

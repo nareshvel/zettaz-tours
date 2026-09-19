@@ -20,6 +20,12 @@
   - Taxes: collection methods / booking sources use the same card heading.
   - Printers: document storage heading matches other settings cards.
   - Finance Partners: empty state uses `Empty`; list rows no longer use inline layout styles.
+- **Follow-up 19 September 2026 (4):** Localization **Currency roles** use the shared ISO list (`CURRENCIES`) with labels from `Intl.DisplayNames`. Copy states guest balances are not auto-converted and expense FX is only the rate on that line.
+  - Booking integrations: channel search, `Empty` states for mapping / inbox / import, tab buttons use `view-tab-link`, inbound and import timestamps use tenant `dateTime` when Settings passes `session`.
+- **Follow-up 19 September 2026 (5):** Guest stays Search and **Add vessel / Add property** share one toolbar row (same pattern as pickup locations / staff).
+  - Taxes: hold duration is edited in minutes (30–1800 seconds stored).
+  - Security: support-grant expiry uses tenant `dateTime`.
+  - Typecheck: `apps/web` `tsc --noEmit` clean. Authenticated click-through was not available (unsigned marketing home).
 
 ## Owner acceptance still needed
 

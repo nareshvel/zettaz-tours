@@ -29,7 +29,7 @@ Stack is locked: NestJS modular monolith, Next.js workspace, Expo crew app, Post
 
 - Persistent local PostgreSQL is the normal development database.
 - Repo migrations exist through **`089_crew_captain_roles.sql`**. Production migrate via `./deploy.sh` → `db:migrate:prod`. Sign-in email verification under RLS: migration `061` + [../ISSUES_FIXES/signin-email-verified-rls.md](../ISSUES_FIXES/signin-email-verified-rls.md).
-- **VPS tip `cad0ed8`**. `origin/main` is `0acc028` (retained waiver PDF). Owner deploying. Profile polish is local until committed.
+- Owner ran a full VPS `./deploy.sh` on 19 Sep. Confirm checkout SHA on the box. 19 Sep settings polish may still be local-only until push.
 - Production demo (`tours.zettaz.com`): tenant `f6e566ce-…`; deploy notes in [deploy.md](deploy.md) and [demo-tenant-export.md](demo-tenant-export.md).
 - **Ops pickups (14 September 2026) closed:** Plan pickups Phase 1, Print list polish, Settings → Pickup locations (Esri map, tenant city/country default), demo multi-stop seed. See [../FEATURES/operations/pickup-disposition-and-plans.md](../FEATURES/operations/pickup-disposition-and-plans.md) and [../TESTING/pickup-location-modal-and-print-evidence.md](../TESTING/pickup-location-modal-and-print-evidence.md).
 - Connected crew Phases 1–4 live on production (`088`/`089` applied). 4.8 airplane-mode drill is owner after EAS.
@@ -42,7 +42,7 @@ See [agent-current-sprint.md](agent-current-sprint.md). Short form (19 Sep):
 1. **Crew store binaries** iOS ASC `6813693098` 1.0.1 (2); Play Internal 1.0.1/2. Engineering Phases 1–4 on production. Owner: Unlisted/review notes, screenshots, **4.8 airplane-mode**.
 2. **Do not start Phase 5** (kiosk, GPS, card-present, push, white-label).
 3. **Operations menu group closed** pending further testing.
-4. **Customers / Audit / Document library** polish on production (owner visual outstanding). **Profile + Crew field-pass** local. Settings + Partners 19 Sep. Staff/Fleet/Reports/Overview/Finance follow-ups local/uncommitted. Agent polish sequence complete unless owner names a surface.
+4. **Customers / Audit / Document library** polish (owner visual outstanding). 19 Sep admin/finance/settings polish is local (`f40fb94` plus Localization/integrations/stays). Agent polish sequence complete unless owner names a surface. Owner visual outstanding.
 5. **Hold** Subscription messaging polish. **Hold** finance money in/out later ([finance-money-in-out-later.md](../STRATEGY/finance-money-in-out-later.md)). Next web polish: Tenant settings pickup locations list tools.
 
 Pasteable Claude brief: [claude-handoff-2026-09-14.md](claude-handoff-2026-09-14.md).

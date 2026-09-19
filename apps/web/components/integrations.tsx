@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Download, Link2, Plug, Power } from "lucide-react";
-import { api, money, useMutation, useResource } from "@/lib/client";
+import { api, dateTime, money, useMutation, useResource } from "@/lib/client";
 import {
   Empty,
   Field,
@@ -11,9 +11,10 @@ import {
   InfoTip,
   Loading,
   Notice,
+  SearchBox,
   Status,
 } from "./common";
-import type { Product } from "@/lib/types";
+import type { Product, Session } from "@/lib/types";
 
 type Account = {
   id: string;
@@ -113,7 +114,13 @@ function parseCsv(text: string) {
     );
 }
 
-export function Integrations({ embedded = false }: { embedded?: boolean }) {
+export function Integrations({
+  embedded = false,
+  session = null,
+}: {
+  embedded?: boolean;
+  session?: Session | null;
+} = {}) {
   const catalog = useResource<ConnectorDefinition[]>("integrations/v1/catalog");
   const accounts = useResource<Account[]>("integrations/v1/accounts");
   const mappings = useResource<Mapping[]>("integrations/v1/mappings");
@@ -137,10 +144,22 @@ export function Integrations({ embedded = false }: { embedded?: boolean }) {
   const [importFileName, setImportFileName] = useState("");
   const [importMessage, setImportMessage] = useState("");
   const [inboxFilter, setInboxFilter] = useState("all");
+  const [channelSearch, setChannelSearch] = useState("");
   const [tab, setTab] = useState<"channels" | "mapping" | "inbox" | "import">(
     "channels",
   );
   const [reviewReason, setReviewReason] = useState("");
+  const visibleCatalog = useMemo(() => {
+    const list = catalog.data ?? [];
+    const q = channelSearch.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((definition) =>
+      [definition.name, definition.code, definition.description]
+        .join(" ")
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [catalog.data, channelSearch]);
 
   if (accounts.error) return <Notice error>{accounts.error}</Notice>;
   if (!accounts.data) return <Loading />;
@@ -295,6 +314,21 @@ export function Integrations({ embedded = false }: { embedded?: boolean }) {
   const filteredInbox = (inbox.data ?? []).filter(
     (event) => inboxFilter === "all" || event.status === inboxFilter,
   );
+  const inboxEmptyCopy =
+    inboxFilter === "all"
+      ? "Events appear here when a connected channel posts to the inbound endpoint."
+      : "Try another status filter.";
+
+  function formatWhen(value: string) {
+    if (!session) return new Date(value).toLocaleString();
+    return dateTime(
+      value,
+      session.tenant.timezone,
+      session.tenant.config.locale,
+      session.tenant.config.dateFormat,
+      session.tenant.config.timeFormat,
+    );
+  }
 
   const sections = (
     <>
@@ -319,6 +353,7 @@ export function Integrations({ embedded = false }: { embedded?: boolean }) {
         >
           <button
             type="button"
+            className="view-tab-link"
             role="tab"
             aria-selected={tab === "channels"}
             onClick={() => setTab("channels")}
@@ -330,6 +365,7 @@ export function Integrations({ embedded = false }: { embedded?: boolean }) {
           </button>
           <button
             type="button"
+            className="view-tab-link"
             role="tab"
             aria-selected={tab === "mapping"}
             onClick={() => setTab("mapping")}
@@ -341,6 +377,7 @@ export function Integrations({ embedded = false }: { embedded?: boolean }) {
           </button>
           <button
             type="button"
+            className="view-tab-link"
             role="tab"
             aria-selected={tab === "inbox"}
             onClick={() => setTab("inbox")}
@@ -352,6 +389,7 @@ export function Integrations({ embedded = false }: { embedded?: boolean }) {
           </button>
           <button
             type="button"
+            className="view-tab-link"
             role="tab"
             aria-selected={tab === "import"}
             onClick={() => setTab("import")}
@@ -368,8 +406,26 @@ export function Integrations({ embedded = false }: { embedded?: boolean }) {
           {!catalog.data ? (
             <Loading />
           ) : (
-            <div className="settings-list">
-              {catalog.data.map((definition) => {
+            <>
+              <Notice>
+                WordPress / OTA transforms stay off until a representative
+                payload is available. CSV dry-run import works now; connecting a
+                channel still does not invent bookings.
+              </Notice>
+              <div className="staff-list-tools fleet-asset-bar">
+                <SearchBox
+                  value={channelSearch}
+                  onChange={setChannelSearch}
+                  placeholder="Search channels"
+                />
+              </div>
+              {visibleCatalog.length === 0 ? (
+                <Empty title="No channels match">
+                  <p>Try a different name or connector code.</p>
+                </Empty>
+              ) : (
+                <div className="settings-list">
+                  {visibleCatalog.map((definition) => {
                 // One row per channel, configured or not. Previously a
                 // connector appeared twice — once in the catalog and again as
                 // an account card below it — which read as two different
@@ -377,6 +433,34 @@ export function Integrations({ embedded = false }: { embedded?: boolean }) {
                 const account = accounts.data!.find(
                   (item) => item.connector_code === definition.code,
                 );
+                let action: ReactNode = null;
+                if (account) {
+                  action = (
+                    <button
+                      type="button"
+                      className="button secondary"
+                      disabled={update.busy}
+                      onClick={() => toggleAccount(account)}
+                    >
+                      <Power size={16} />
+                      <span className="button-label">
+                        {account.status === "enabled" ? "Disable" : "Enable"}
+                      </span>
+                    </button>
+                  );
+                } else if (definition.provisioning_available) {
+                  action = (
+                    <button
+                      type="button"
+                      className="button"
+                      disabled={create.busy}
+                      onClick={() => void createAccount(definition.code)}
+                    >
+                      <Link2 size={16} />
+                      <span className="button-label">Connect</span>
+                    </button>
+                  );
+                }
                 return (
                   <article key={definition.code}>
                     <div>
@@ -405,105 +489,83 @@ export function Integrations({ embedded = false }: { embedded?: boolean }) {
                         </p>
                       )}
                     </div>
-                    <div className="button-row">
-                      {account ? (
-                        <button
-                          type="button"
-                          className="button secondary"
-                          disabled={update.busy}
-                          onClick={() => toggleAccount(account)}
-                        >
-                          <Power size={16} />
-                          <span className="button-label">
-                            {account.status === "enabled"
-                              ? "Disable"
-                              : "Enable"}
-                          </span>
-                        </button>
-                      ) : definition.provisioning_available ? (
-                        <button
-                          type="button"
-                          className="button"
-                          disabled={create.busy}
-                          onClick={() => void createAccount(definition.code)}
-                        >
-                          <Link2 size={16} />
-                          <span className="button-label">Connect</span>
-                        </button>
-                      ) : null}
-                    </div>
+                    <div className="button-row">{action}</div>
                   </article>
                 );
               })}
-            </div>
+                </div>
+              )}
+            </>
           )}
         </>
       )}
 
-      {tab === "mapping" &&
-        (!wpAccount ? (
-          <Empty title="Connect a channel first">
-            <p>
-              Mapping links a channel's own product IDs to tours in this
-              workspace. There is nothing to map until a channel is connected.
-            </p>
-          </Empty>
-        ) : (
-          <>
-            <p className="policy-copy">
-              An inbound booking names the product by the channel's ID. Map each
-              one to a tour here, or its events cannot be processed.
-            </p>
-            <form onSubmit={saveMapping}>
-              <div className="form-grid">
-                <Field label="External product ID" required>
-                  <input
-                    required
-                    value={externalId}
-                    placeholder="As it appears in the channel"
-                    onChange={(event) => setExternalId(event.target.value)}
-                  />
-                </Field>
-                <Field label="Tour in this workspace" required>
-                  <select
-                    required
-                    value={productId}
-                    onChange={(event) => setProductId(event.target.value)}
-                  >
-                    <option value="">Choose a tour</option>
-                    {(products.data ?? []).map((product) => (
-                      <option value={product.id} key={product.id}>
-                        {product.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
-              {addMapping.error && <Notice error>{addMapping.error}</Notice>}
-              <FormActions>
-                <button className="button" disabled={addMapping.busy}>
-                  {addMapping.busy ? "Saving…" : "Save mapping"}
-                </button>
-              </FormActions>
-            </form>
-            {mappings.data?.length ? (
-              <div className="settings-list">
-                {mappings.data.map((mapping) => (
-                  <article key={mapping.id}>
-                    <div>
-                      <strong>{mapping.product_name}</strong>
-                      <p>
-                        <code>{mapping.external_id}</code> → this tour
-                      </p>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <p className="muted">No products mapped yet.</p>
-            )}
-          </>
-        ))}
+      {tab === "mapping" && !wpAccount ? (
+        <Empty title="Connect a channel first">
+          <p>
+            Mapping links a channel product ID to a tour in this workspace.
+            There is nothing to map until a channel is connected.
+          </p>
+        </Empty>
+      ) : null}
+      {tab === "mapping" && wpAccount ? (
+        <div>
+          <p className="policy-copy">
+            An inbound booking names the product by the channel ID. Map each
+            one to a tour here, or its events cannot be processed.
+          </p>
+          <form onSubmit={saveMapping}>
+            <div className="form-grid">
+              <Field label="External product ID" required>
+                <input
+                  required
+                  value={externalId}
+                  placeholder="As it appears in the channel"
+                  onChange={(event) => setExternalId(event.target.value)}
+                />
+              </Field>
+              <Field label="Tour in this workspace" required>
+                <select
+                  required
+                  value={productId}
+                  onChange={(event) => setProductId(event.target.value)}
+                >
+                  <option value="">Choose a tour</option>
+                  {(products.data ?? []).map((product) => (
+                    <option value={product.id} key={product.id}>
+                      {product.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            {addMapping.error && <Notice error>{addMapping.error}</Notice>}
+            <FormActions>
+              <button className="button" disabled={addMapping.busy}>
+                {addMapping.busy ? "Saving…" : "Save mapping"}
+              </button>
+            </FormActions>
+          </form>
+          {mappings.data?.length ? (
+            <div className="settings-list">
+              {mappings.data.map((mapping) => (
+                <article key={mapping.id}>
+                  <div>
+                    <strong>{mapping.product_name}</strong>
+                    <p>
+                      <code>{mapping.external_id}</code> → this tour
+                    </p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <Empty title="No products mapped yet">
+              <p>Save a mapping so inbound events can match a tour.</p>
+            </Empty>
+          )}
+        </div>
+      ) : null}
 
       {tab === "inbox" && (
         <>
@@ -539,7 +601,9 @@ export function Integrations({ embedded = false }: { embedded?: boolean }) {
           </Field>
           {reviewInbox.error && <Notice error>{reviewInbox.error}</Notice>}
           {!filteredInbox.length ? (
-            <p className="muted">No inbound events match this filter.</p>
+            <Empty title="No inbound events match">
+              <p>{inboxEmptyCopy}</p>
+            </Empty>
           ) : (
             <div className="settings-list">
               {filteredInbox.map((event) => (
@@ -550,7 +614,7 @@ export function Integrations({ embedded = false }: { embedded?: boolean }) {
                     </strong>
                     <p>
                       {event.connector_code.replaceAll("_", " ")} ·{" "}
-                      {new Date(event.received_at).toLocaleString()}
+                      {formatWhen(event.received_at)}
                       {event.retry_count
                         ? ` · ${event.retry_count} retries`
                         : ""}
@@ -656,7 +720,7 @@ export function Integrations({ embedded = false }: { embedded?: boolean }) {
                       <Status state={item.status} />
                     </strong>
                     <p>
-                      {new Date(item.created_at).toLocaleString()} ·{" "}
+                      {formatWhen(item.created_at)} ·{" "}
                       {item.valid_rows}/{item.total_rows} ready ·{" "}
                       {item.quarantined_rows} quarantined
                       {item.currency && item.total_minor !== null
@@ -675,7 +739,11 @@ export function Integrations({ embedded = false }: { embedded?: boolean }) {
                 </article>
               ))}
             </div>
-          ) : null}
+          ) : (
+            <Empty title="No dry runs yet">
+              <p>Load a CSV or JSON staging file and run validation first.</p>
+            </Empty>
+          )}
         </>
       )}
     </>

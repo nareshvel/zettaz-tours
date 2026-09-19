@@ -49,7 +49,7 @@ import type {
   Partner,
 } from "@/lib/types";
 import { availabilityModes, modeLabel, weekdayLabels } from "@/lib/types";
-import { COUNTRIES } from "@/lib/countries";
+import { COUNTRIES, CURRENCIES } from "@/lib/countries";
 import {
   api,
   bookingSourceLabel,
@@ -3048,7 +3048,7 @@ export function Settings({
         </aside>
         {tab === "integrations" ? (
           <div className="panel form-panel settings-tab-content">
-            <Integrations embedded />
+            <Integrations embedded session={session} />
           </div>
         ) : tab === "pickups" ? (
           <div className="panel form-panel settings-tab-content">
@@ -3303,19 +3303,26 @@ export function Settings({
                 />
                 <div className="form-grid">
                   <Field
-                    label="Hold duration · seconds"
-                    hint={`Between 30 and 1,800 seconds (${Math.round(config.holdSeconds / 60)} min at the current value).`}
+                    label="Hold duration · minutes"
+                    hint="Between 1 and 30 minutes. Existing quotes keep their original window."
                   >
                     <input
                       type="number"
-                      min="30"
-                      max="1800"
+                      min="0.5"
+                      max="30"
+                      step="0.5"
                       required
-                      value={config.holdSeconds}
+                      value={config.holdSeconds / 60}
                       onChange={(e) =>
                         setConfig({
                           ...config,
-                          holdSeconds: Number(e.target.value),
+                          holdSeconds: Math.min(
+                            1800,
+                            Math.max(
+                              30,
+                              Math.round(Number(e.target.value) * 60),
+                            ),
+                          ),
                         })
                       }
                     />
@@ -3389,13 +3396,15 @@ export function Settings({
                 </div>
                 <dl className="locale-preview">
                   <div>
-                    <dt>On a new hold of {money(10000, config.bookingCurrency)}</dt>
+                    <dt>
+                      On a new hold of {money(10000, config.bookingCurrency)}
+                    </dt>
                     <dd>
-                      {config.taxBasisPoints === 0
-                        ? "No tax is added."
-                        : config.taxInclusive
-                          ? `Guest pays ${money(10000, config.bookingCurrency)} including ${config.taxBasisPoints / 100}% tax.`
-                          : `Guest pays ${money(10000, config.bookingCurrency)} plus ${config.taxBasisPoints / 100}% tax.`}
+                      {taxHoldPreview(
+                        config.taxBasisPoints,
+                        config.taxInclusive,
+                        config.bookingCurrency,
+                      )}
                     </dd>
                   </div>
                 </dl>
@@ -3555,97 +3564,64 @@ export function Settings({
                   </div>
                 </dl>
                 <div className="form-divider" />
-                <h2>
-                  Currency &amp; tax context
-                  <InfoTip label="currency and tax context">
-                    Three separate currency roles: Booking (what guests pay in),
-                    Expense / Collection (your local operating currency — used
-                    as the default when recording expenses), and Reporting (the
-                    currency shown on financial summaries). Enter any ISO 4217
-                    three-letter code. Tax rate editing lives under Taxes &amp;
-                    commercial.
-                  </InfoTip>
-                </h2>
+                <div className="settings-card-head" id="currency-roles">
+                  <Landmark size={20} />
+                  <div>
+                    <h2>
+                      Currency roles
+                      <InfoTip label="currency roles">
+                        Booking is what guests are quoted in. Expense /
+                        collection is the default when recording operating
+                        costs. Reporting is the currency on Finance summaries.
+                        Guest balances are not converted automatically. A
+                        foreign expense uses only the bank rate entered on that
+                        line.
+                      </InfoTip>
+                    </h2>
+                    <p>ISO codes for quoting, expenses, and summaries.</p>
+                  </div>
+                </div>
                 <p className="policy-copy">
-                  Each currency role can be set independently. Reporting
-                  currency also serves as the base currency for expense FX
-                  calculations and system-wide fallbacks.
+                  Mixing booking and reporting currencies does not convert guest
+                  money. Cross-currency settlement stays off until an approved
+                  rate policy exists. Expense FX is only the rate stored on each
+                  expense.
                 </p>
-                {(() => {
-                  const CURRENCIES: { code: string; label: string }[] = [
-                    { code: "USD", label: "USD – US Dollar" },
-                    { code: "XCD", label: "XCD – East Caribbean Dollar" },
-                    {
-                      code: "ANG",
-                      label: "ANG – Netherlands Antillean Guilder",
-                    },
-                    { code: "AWG", label: "AWG – Aruban Florin" },
-                    { code: "BBD", label: "BBD – Barbadian Dollar" },
-                    { code: "BSD", label: "BSD – Bahamian Dollar" },
-                    { code: "BZD", label: "BZD – Belize Dollar" },
-                    { code: "CAD", label: "CAD – Canadian Dollar" },
-                    { code: "DOP", label: "DOP – Dominican Peso" },
-                    { code: "EUR", label: "EUR – Euro" },
-                    { code: "GBP", label: "GBP – British Pound" },
-                    { code: "GHS", label: "GHS – Ghanaian Cedi" },
-                    { code: "GYD", label: "GYD – Guyanese Dollar" },
-                    { code: "HTG", label: "HTG – Haitian Gourde" },
-                    { code: "JMD", label: "JMD – Jamaican Dollar" },
-                    { code: "KES", label: "KES – Kenyan Shilling" },
-                    { code: "KYD", label: "KYD – Cayman Islands Dollar" },
-                    { code: "MXN", label: "MXN – Mexican Peso" },
-                    { code: "NGN", label: "NGN – Nigerian Naira" },
-                    { code: "BRL", label: "BRL – Brazilian Real" },
-                    { code: "TTD", label: "TTD – Trinidad & Tobago Dollar" },
-                    { code: "ZAR", label: "ZAR – South African Rand" },
-                  ];
-                  const CurrencySelect = ({
-                    value,
-                    onChange,
-                  }: {
-                    value: string;
-                    onChange: (v: string) => void;
-                  }) => (
-                    <select
-                      value={value}
-                      onChange={(e) => onChange(e.target.value)}
-                    >
-                      {CURRENCIES.map((c) => (
-                        <option key={c.code} value={c.code}>
-                          {c.label}
-                        </option>
-                      ))}
-                    </select>
-                  );
-                  return (
-                    <div className="form-grid three">
-                      <Field label="Base / Reporting currency">
-                        <CurrencySelect
-                          value={config.reportingCurrency}
-                          onChange={(v) =>
-                            setConfig((c) => ({ ...c, reportingCurrency: v }))
-                          }
-                        />
-                      </Field>
-                      <Field label="Expense currency">
-                        <CurrencySelect
-                          value={config.collectionCurrency}
-                          onChange={(v) =>
-                            setConfig((c) => ({ ...c, collectionCurrency: v }))
-                          }
-                        />
-                      </Field>
-                      <Field label="Booking currency">
-                        <CurrencySelect
-                          value={config.bookingCurrency}
-                          onChange={(v) =>
-                            setConfig((c) => ({ ...c, bookingCurrency: v }))
-                          }
-                        />
-                      </Field>
-                    </div>
-                  );
-                })()}
+                <div className="form-grid three">
+                  <Field
+                    label="Reporting currency"
+                    hint="Finance Overview and Reports."
+                  >
+                    <CurrencySelect
+                      value={config.reportingCurrency}
+                      onChange={(v) =>
+                        setConfig((c) => ({ ...c, reportingCurrency: v }))
+                      }
+                    />
+                  </Field>
+                  <Field
+                    label="Expense currency"
+                    hint="Default when adding an operating cost."
+                  >
+                    <CurrencySelect
+                      value={config.collectionCurrency}
+                      onChange={(v) =>
+                        setConfig((c) => ({ ...c, collectionCurrency: v }))
+                      }
+                    />
+                  </Field>
+                  <Field
+                    label="Booking currency"
+                    hint="Catalogue and guest quotes."
+                  >
+                    <CurrencySelect
+                      value={config.bookingCurrency}
+                      onChange={(v) =>
+                        setConfig((c) => ({ ...c, bookingCurrency: v }))
+                      }
+                    />
+                  </Field>
+                </div>
                 <div className="form-divider" />
               </section>
             )}
@@ -3804,7 +3780,7 @@ export function Settings({
             {tab === "waivers" && <WaiverSettings session={session} />}
             {tab === "security" ? (
               session.role === "owner" ? (
-                <SupportAccessSettings />
+                <SupportAccessSettings session={session} />
               ) : (
                 <section>
                   <div className="settings-card-head">
@@ -3929,6 +3905,47 @@ const LOCKED_BOOKING_SOURCES = [
 /** Matches the `slug` schema in packages/shared/src/contracts.ts. */
 const CODE_PATTERN = /^[a-z][a-z0-9_-]{1,49}$/;
 
+function taxHoldPreview(
+  taxBasisPoints: number,
+  taxInclusive: boolean,
+  currency: string,
+) {
+  if (taxBasisPoints === 0) return "No tax is added.";
+  const sample = money(10000, currency);
+  const rate = `${taxBasisPoints / 100}%`;
+  if (taxInclusive)
+    return `Guest pays ${sample} including ${rate} tax.`;
+  return `Guest pays ${sample} plus ${rate} tax.`;
+}
+
+function currencyOptionLabel(code: string) {
+  try {
+    const name = new Intl.DisplayNames(["en"], { type: "currency" }).of(code);
+    return name ? `${code} – ${name}` : code;
+  } catch {
+    return code;
+  }
+}
+
+function CurrencySelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const options = CURRENCIES.includes(value) ? CURRENCIES : [value, ...CURRENCIES];
+  return (
+    <select value={value} onChange={(event) => onChange(event.target.value)}>
+      {options.map((code) => (
+        <option key={code} value={code}>
+          {currencyOptionLabel(code)}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function CodeListEditor({
   label: caption,
   hint,
@@ -4046,7 +4063,7 @@ function CodeListEditor({
   );
 }
 
-function SupportAccessSettings() {
+function SupportAccessSettings({ session }: { session: Session }) {
   const grants = useResource<{ items: SupportGrant[] }>(
     "admin/v1/support-access",
   );
@@ -4112,7 +4129,14 @@ function SupportAccessSettings() {
                   <small>{grant.permissions.map(label).join(" · ")}</small>
                   {grant.expires_at && (
                     <small>
-                      Expires {new Date(grant.expires_at).toLocaleString()}
+                      Expires{" "}
+                      {dateTime(
+                        grant.expires_at,
+                        session.tenant.timezone,
+                        session.tenant.config.locale,
+                        session.tenant.config.dateFormat,
+                        session.tenant.config.timeFormat,
+                      )}
                     </small>
                   )}
                 </span>
@@ -4167,7 +4191,14 @@ function SupportAccessSettings() {
                 <small>{grant.permissions.map(label).join(" · ")}</small>
                 {grant.expires_at && (
                   <small>
-                    Expires {new Date(grant.expires_at).toLocaleString()}
+                      Expires{" "}
+                      {dateTime(
+                        grant.expires_at,
+                        session.tenant.timezone,
+                        session.tenant.config.locale,
+                        session.tenant.config.dateFormat,
+                        session.tenant.config.timeFormat,
+                      )}
                   </small>
                 )}
                 <div className="row-actions support-grant-actions">

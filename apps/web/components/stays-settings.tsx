@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Building2, Plus, Ship } from "lucide-react";
 import type { Session } from "@/lib/types";
 import { useMutation, useResource } from "@/lib/client";
@@ -111,6 +111,86 @@ export function StaysSettings({ session }: { session: Session }) {
     }
   }
 
+  let list: ReactNode;
+  if (onVessels) {
+    if (vessels.error) list = <Notice error>{vessels.error}</Notice>;
+    else if (!vessels.data) list = <Loading />;
+    else if (!vessels.data.length)
+      list = (
+        <Empty title={search ? "No vessels match" : "No vessels yet"}>
+          <p>
+            {search
+              ? "Try a different name, or add this ship if it is genuinely missing."
+              : "The shared list looks empty — add the ships your guests arrive on."}
+          </p>
+        </Empty>
+      );
+    else
+      list = (
+        <div className="settings-list">
+          {vessels.data.map((vessel) => (
+            <article key={vessel.id}>
+              <div>
+                <strong>
+                  {vessel.name}
+                  {vessel.tenant_owned ? (
+                    <span className="status inactive">Yours</span>
+                  ) : null}
+                </strong>
+                <p>
+                  {[
+                    vessel.cruise_line,
+                    vessel.imo && `IMO ${vessel.imo}`,
+                    vessel.passenger_capacity &&
+                      `${vessel.passenger_capacity.toLocaleString()} guests`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") ||
+                    (vessel.tenant_owned
+                      ? "Added by your team"
+                      : "Shared entry")}
+                </p>
+              </div>
+            </article>
+          ))}
+        </div>
+      );
+  } else if (options.error) {
+    list = <Notice error>{options.error}</Notice>;
+  } else if (!options.data) {
+    list = <Loading />;
+  } else if (!visibleStays.length) {
+    list = (
+      <Empty
+        title={stayNeedle ? "No properties match" : "No properties yet"}
+      >
+        <p>
+          {stayNeedle
+            ? "Try a different name, or add this hotel if it is genuinely missing."
+            : "Add the hotels and rentals your guests stay at so pickups can be planned against a known address."}
+        </p>
+      </Empty>
+    );
+  } else {
+    list = (
+      <div className="settings-list">
+        {visibleStays.map((stay) => (
+          <article key={stay.id}>
+            <div>
+              <strong>
+                <Building2 size={14} aria-hidden="true" /> {stay.name}
+                {stay.tenant_owned ? (
+                  <span className="status inactive">Yours</span>
+                ) : null}
+              </strong>
+              <p>{stay.address || "No address recorded"}</p>
+            </div>
+          </article>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <section>
       <div className="settings-card-head">
@@ -123,19 +203,6 @@ export function StaysSettings({ session }: { session: Session }) {
             if it is missing.
           </p>
         </div>
-        {canWrite && (
-          <button
-            type="button"
-            className="button catalog-add-btn settings-head-action"
-            aria-label={onVessels ? "Add vessel" : "Add property"}
-            onClick={onVessels ? openVessel : openStay}
-          >
-            <Plus size={17} />
-            <span className="button-label">
-              {onVessels ? "Add vessel" : "Add property"}
-            </span>
-          </button>
-        )}
       </div>
 
       <div className="view-action-bar">
@@ -146,6 +213,7 @@ export function StaysSettings({ session }: { session: Session }) {
         >
           <button
             type="button"
+            className="view-tab-link"
             role="tab"
             aria-selected={onVessels}
             onClick={() => setTab("vessels")}
@@ -157,6 +225,7 @@ export function StaysSettings({ session }: { session: Session }) {
           </button>
           <button
             type="button"
+            className="view-tab-link"
             role="tab"
             aria-selected={!onVessels}
             onClick={() => setTab("properties")}
@@ -167,97 +236,31 @@ export function StaysSettings({ session }: { session: Session }) {
             )}
           </button>
         </div>
+      </div>
+      <div className="staff-list-tools fleet-asset-bar">
         <SearchBox
           value={search}
           onChange={setSearch}
           placeholder={onVessels ? "Search vessels" : "Search properties"}
         />
+        {canWrite && (
+          <button
+            type="button"
+            className="button catalog-add-btn"
+            aria-label={onVessels ? "Add vessel" : "Add property"}
+            onClick={onVessels ? openVessel : openStay}
+          >
+            <Plus size={17} />
+            <span className="button-label">
+              {onVessels ? "Add vessel" : "Add property"}
+            </span>
+          </button>
+        )}
       </div>
 
       {notice && <Notice>{notice}</Notice>}
 
-      {onVessels ? (
-        vessels.error ? (
-          <Notice error>{vessels.error}</Notice>
-        ) : !vessels.data ? (
-          <Loading />
-        ) : !vessels.data.length ? (
-          <Empty title={search ? "No vessels match" : "No vessels yet"}>
-            <p>
-              {search
-                ? "Try a different name, or add this ship if it is genuinely missing."
-                : "The shared list looks empty — add the ships your guests arrive on."}
-            </p>
-          </Empty>
-        ) : (
-          <div className="settings-list">
-            {vessels.data.map((vessel) => (
-              <article key={vessel.id}>
-                <div>
-                  <strong>
-                    {vessel.name}
-                    {vessel.tenant_owned ? (
-                      <span className="status inactive">Yours</span>
-                    ) : null}
-                  </strong>
-                  <p>
-                    {[
-                      vessel.cruise_line,
-                      vessel.imo && `IMO ${vessel.imo}`,
-                      vessel.passenger_capacity &&
-                        `${vessel.passenger_capacity.toLocaleString()} guests`,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ") ||
-                      (vessel.tenant_owned
-                        ? "Added by your team"
-                        : "Shared entry")}
-                  </p>
-                </div>
-              </article>
-            ))}
-          </div>
-        )
-      ) : options.error ? (
-        <Notice error>{options.error}</Notice>
-      ) : !options.data ? (
-        <Loading />
-      ) : !visibleStays.length ? (
-        <Empty
-          title={
-            stayNeedle
-              ? "No properties match"
-              : "No properties yet"
-          }
-        >
-          <p>
-            {stayNeedle
-              ? "Try a different name, or add this hotel if it is genuinely missing."
-              : "Add the hotels and rentals your guests stay at so pickups can be planned against a known address."}
-          </p>
-          {canWrite && !stayNeedle && (
-            <button type="button" className="button" onClick={openStay}>
-              <Plus size={16} /> Add property
-            </button>
-          )}
-        </Empty>
-      ) : (
-        <div className="settings-list">
-          {visibleStays.map((stay) => (
-            <article key={stay.id}>
-              <div>
-                <strong>
-                  <Building2 size={14} aria-hidden="true" /> {stay.name}
-                  {stay.tenant_owned ? (
-                    <span className="status inactive">Yours</span>
-                  ) : null}
-                </strong>
-                <p>{stay.address || "No address recorded"}</p>
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
+      {list}
 
       <FormDialog
         open={vesselOpen}

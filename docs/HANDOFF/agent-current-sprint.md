@@ -14,7 +14,7 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 
 1. **Crew app.** Phases 1–4 on production `cad0ed8`. EAS **preview** + **production** binaries exist. iOS **1.0.1 (2)** is on App Store Connect (`6813693098`). Android **Internal testing 2 (1.0.1)** is live. Owner still: TestFlight/Unlisted review notes, screenshots, reviewer demo user, **4.8 airplane-mode**. **Do not start Phase 5.**
 2. **Operations menu group** remains functionally complete pending testing. Do not open new Ops web feature work unless testing finds a bug.
-3. **Non-Ops:** Agent polish sequence (Workspace, Insights, Administration lists, Finance period/unpaid tile, pickup location search) is in the local working tree for this commit. **Next planned:** Tenant settings Localization / Booking integrations if still rough. Owner visual still outstanding. **Do not start** finance money-in-out later.
+3. **Non-Ops:** Tenant settings Localization / Booking integrations / Guest stays toolbar / hold-minutes / support-grant timestamps committed locally. **Next:** owner visual. Push and VPS pull only when the owner asks. **Do not start** finance money-in-out later.
 4. **Hold Subscription messaging.** Hold **finance money in/out later** ([finance-money-in-out-later.md](../STRATEGY/finance-money-in-out-later.md)).
 
 ---
@@ -24,17 +24,13 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 | Fact | Value |
 | --- | --- |
 | Branch | `main` |
-| Tip deployed | `cad0ed8` (Crew Phases 1–4 + Customers / Audit / Document library polish) |
-| `origin/main` | `0acc028` (retained waiver PDF + Crew sync-centre sign-out). Owner may have deployed. **Local:** Profile polish + Crew field-pass UI (uncommitted). |
-| Mac ↔ `origin/main` | Ahead locally with Profile polish; VPS still `cad0ed8` until `./deploy.sh` |
+| Tip last seen on VPS | Owner ran `./deploy.sh` 19 Sep (`tours-api` / `tours-web` restarted; “Full deploy complete”). Confirm SHA on the box; do not assume it includes later local commits. |
+| `origin/main` | Confirm with `git status`. Local `main` has been ahead with 19 Sep polish (`a1399cd`, `f40fb94` logo, plus Localization/integrations/stays). |
+| Mac ↔ remote | Push not requested. Later local commits stay off VPS until push + `./deploy.sh`. |
 | Migrations | Through **`089_crew_captain_roles.sql`** on production. Prod migrate **COMPLETE**, Applied this run: **088**, **089**, Pending: 0 |
 | Email verification / trial auth | **Already on `main`** (`060`–`061`); do not invent “never pushed” |
 
-**VPS deploy completed 17 September 2026** (`/var/www/zettaz-tours`):
-
-- Fast-forward `25ab896..cad0ed8`. Migrations **088** and **089** applied, Pending: 0, PM2 restarted.
-- Rebuild EAS **preview** now so phones pick up Pay, Day Board, field-pass UI, and Phase 4 offline.
-- Task 4.8 (airplane-mode cycle) is the owner’s device pass after that EAS install.
+**VPS:** Owner completed a full `./deploy.sh` on 19 September 2026 (`/var/www/zettaz-tours`, PM2 `tours-api` + `tours-web`). SHA on the box must be read from that checkout. Migrations through **`089`**.
 
 If a later pull fails on dirty lockfile again:
 
@@ -140,7 +136,7 @@ Work **outside** the Operations aside group. Suggested order (adjust with owner)
 - Fleet (assets / readiness) — polish 11 Sep; search + Add asset row 19 Sep; owner visual outstanding
 - Staff & access — polish 11 Sep; search + Add staff row 19 Sep; owner visual outstanding
 - **Document library — polish implemented 17 Sep.** Evidence: [document-library-polish-evidence.md](../TESTING/document-library-polish-evidence.md)
-- Tenant settings — earlier module pass; Security non-owner empty state 17 Sep; Pickup locations search+add row 19 Sep
+- Tenant settings — Localization currency roles + Booking integrations + Guest stays search/add row + hold minutes + support-grant tenant dates 19 Sep. Remaining: **owner visual**.
 - **Audit — polish implemented 17 Sep.** Evidence: [audit-polish-evidence.md](../TESTING/audit-polish-evidence.md)
 
 ### 4. Profile (account shell)

@@ -7,9 +7,9 @@ Keep under 200 lines. Update after sessions that change standing decisions.
 ## Current focus (agents)
 
 - **Sprint board:** [../HANDOFF/agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) — prefer over chat history.
-- **Owner priority (19 Sep):** Crew store binaries live. **Phase 5.1 kiosk** engineering 19 Sep. GPS/Terminal/push/white-label still gated. 4.8 airplane-mode is owner. **Hold** finance cashbook.
+- **Owner priority (19 Sep):** Crew store binaries live. **Phase 5.1 kiosk** + Crew **Share PDF** (pickup list / receipt) engineering 19 Sep. GPS/Terminal/push/white-label still gated. 4.8 airplane-mode is owner. **Hold** finance cashbook.
 - **In progress (15 Sep):** Tenant settings pass — printing, waivers, integrations, localization, sidebar. See the 15 September section below.
-- **Crew app (17–19 Sep):** Phases 1–4 on production. Phase 5.1 guest kiosk engineering 19 Sep. Rebuild EAS; 4.8 + kiosk PIN cycle are owner.
+- **Crew app (17–19 Sep):** Phases 1–4 on production. Phase 5.1 guest kiosk + Phase 3.5 server-PDF share 19 Sep. Rebuild EAS; 4.8 + kiosk PIN cycle are owner.
 - **Deploy:** VPS at tip `cad0ed8` via `./deploy.sh` (migrations through **089**, Pending: 0). `origin/main` `0acc028` not yet on VPS.
 - Claude paste brief: [../HANDOFF/claude-handoff-2026-09-14.md](../HANDOFF/claude-handoff-2026-09-14.md).
 

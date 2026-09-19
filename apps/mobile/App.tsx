@@ -19,7 +19,13 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { call, crewLoadMessage, isUnauthorized, requestKey } from "./src/api";
+import {
+  call,
+  crewLoadMessage,
+  downloadPdf,
+  isUnauthorized,
+  requestKey,
+} from "./src/api";
 import { APP_VERSION, SESSION_KEY, SUPPORT_EMAIL, WEB } from "./src/config";
 import {
   biometricAvailable,
@@ -72,6 +78,7 @@ import {
   tripsToBookItems,
   WalkUpSheet,
   WeatherSheet,
+  sharePdfFile,
   sharePickupText,
 } from "./src/tablet";
 import {
@@ -653,6 +660,7 @@ export default function App() {
             ),
           );
         }
+        await shareReceiptIfAllowed(result.bookingId);
       }
     } catch (reason) {
       if (isUnauthorized(reason)) await clearSession();
@@ -681,6 +689,7 @@ export default function App() {
           },
         }),
       });
+      const bookingId = walkUpHeld.bookingId;
       setWalkUpItem(null);
       setWalkUpHeld(null);
       await load(token);
@@ -689,11 +698,40 @@ export default function App() {
           await call<BoardPayload>(`/crew/v1/board?date=${bookDate}`, token),
         );
       }
+      await shareReceiptIfAllowed(bookingId);
     } catch (reason) {
       if (isUnauthorized(reason)) await clearSession();
       else setError((reason as Error).message);
     } finally {
       setBusy(false);
+    }
+  }
+  function canSharePdf() {
+    const permissions = profile?.permissions ?? [];
+    return (
+      permissions.includes("print.jobs.create") &&
+      permissions.includes("print.jobs.read")
+    );
+  }
+  async function shareCrewPdf(
+    documentType: "pickup_list" | "receipt",
+    sourceId: string,
+  ) {
+    if (!token) return;
+    const job = await call<{ id: string }>("/crew/v1/print-jobs", token, {
+      method: "POST",
+      headers: { "Idempotency-Key": requestKey() },
+      body: JSON.stringify({ documentType, sourceId }),
+    });
+    const pdf = await downloadPdf(`/crew/v1/print-jobs/${job.id}/pdf`, token);
+    await sharePdfFile(pdf.filename, pdf.bytes);
+  }
+  async function shareReceiptIfAllowed(bookingId: string) {
+    if (!canSharePdf()) return;
+    try {
+      await shareCrewPdf("receipt", bookingId);
+    } catch (reason) {
+      setError((reason as Error).message);
     }
   }
   async function sharePickup(item: BoardItem) {
@@ -730,15 +768,13 @@ export default function App() {
             `Gap · ${row.lead_name} · ${row.pickup_kind} · ${row.party_size}`,
         ),
       ];
-      if (board?.capabilities.print) {
-        await call("/crew/v1/print-jobs", token, {
-          method: "POST",
-          headers: { "Idempotency-Key": requestKey() },
-          body: JSON.stringify({
-            documentType: "pickup_list",
-            sourceId: item.id,
-          }),
-        });
+      if (board?.capabilities.print || canSharePdf()) {
+        try {
+          await shareCrewPdf("pickup_list", item.id);
+          return;
+        } catch {
+          /* fall back to the plaintext list */
+        }
       }
       await sharePickupText(
         item.product_name,
@@ -1009,9 +1045,11 @@ export default function App() {
           }),
         },
       );
+      const bookingId = paying.guest.booking_id;
       setPaying(null);
       setOfflineMode(false);
       await load(token);
+      await shareReceiptIfAllowed(bookingId);
     } catch (reason) {
       if (await handleDeviceFailure(reason)) {
         setBusy(false);

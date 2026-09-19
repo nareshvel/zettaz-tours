@@ -56,7 +56,7 @@ Launch contract wins. Delivery.md lists E07 offline under “after cutover”; t
 | Crew-mobile Pay | Same as web manifest Pay: cash/manual first; partner invoice/collect skip Pay; no last-write-win |
 | Tablet Day Board | Today’s tenant trips for dispatcher/ops/owner — not the full admin menu |
 | Tablet walk-up reservation | Locked to one departure; `bookings.write`; staff-assisted phone/WhatsApp/walk-in |
-| Print/share pickup list + receipt PDF | `expo-print` / share against existing `ops/v1/print-jobs` |
+| Print/share pickup list + receipt PDF | Crew shares the **server PDF** (`POST/GET /crew/v1/print-jobs`) via `expo-sharing`. Text fallback if the PDF cannot download. Engineering 19 Sep. |
 | Encrypted offline | After first connected operating week if needed. ADR 007 + ADR 016. Cutover must exercise one offline cycle |
 | Store listing | Unlisted/internal; screenshots; reviewer demo **guide** with a same-day assignment |
 | Retained waiver PDF / drive copy | Server generates an immutable PDF after accepted evidence. Manifest **Download PDF**. Drive/OneDrive/Dropbox adapters stay flagged off. |
@@ -164,7 +164,7 @@ Calendar is **from owner acceptance of this file**, not from chat history. Indic
 | 3.2 | Board: occupancy, assigned crew, weather/close/reopen with reason | Existing ops endpoints |
 | 3.3 | Open boarding gate from a board row | Already web |
 | 3.4 | Walk-up: one departure → hold → guest → confirm (optional Pay from Phase 2) | `bookings.write` |
-| 3.5 | Share/print pickup list + receipt PDF | `print.jobs.*` |
+| 3.5 | Share/print pickup list + receipt PDF | `print.jobs.*` — **engineering 19 Sep** (share server PDF; not `expo-print` client render) |
 | 3.6 | Hide board/walk-up from guide/driver | RBAC |
 
 **Exit:** Reservations or owner on an iPad can sell a walk-up on a selected departure and hand the same device to a guide for boarding. Engineering complete 17 Sep; production device pass follows deploy.

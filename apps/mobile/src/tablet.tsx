@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
 import {
   Modal,
   Pressable,
@@ -353,7 +355,7 @@ export function DayBoard({
                   <ShareIcon disabled={busy} onPress={() => onShare(item)} />
                 ) : (
                   <Action quiet disabled={busy} onPress={() => onShare(item)}>
-                    Share list
+                    Share PDF
                   </Action>
                 )
               ) : null}
@@ -1416,6 +1418,36 @@ export function WalkUpSheet({
       />
     </View>
   );
+}
+
+function bytesToBase64(bytes: ArrayBuffer) {
+  const u8 = new Uint8Array(bytes);
+  const chunk = 0x2000;
+  let binary = "";
+  for (let i = 0; i < u8.length; i += chunk) {
+    binary += String.fromCharCode(...u8.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+export async function sharePdfFile(filename: string, bytes: ArrayBuffer) {
+  const directory = FileSystem.cacheDirectory;
+  if (!directory)
+    throw new Error("This device cannot save a PDF to share.");
+  const safe = filename.replace(/[^\w.-]+/g, "_") || "document.pdf";
+  const uri = `${directory}${safe}`;
+  await FileSystem.writeAsStringAsync(uri, bytesToBase64(bytes), {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(uri, {
+      mimeType: "application/pdf",
+      UTI: "com.adobe.pdf",
+      dialogTitle: filename,
+    });
+    return;
+  }
+  await Share.share({ url: uri, title: filename });
 }
 
 export async function sharePickupText(productName: string, body: string) {

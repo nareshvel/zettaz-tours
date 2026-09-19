@@ -10,6 +10,7 @@
 - `POST /crew/v1/walk-ups` (`bookings.write`) creates a walk-in hold, guest, pending roster, optional cash/manual payment, and confirm. If the tenant requires a deposit, the first call returns `needsPayment` and the second call records payment then confirms.
 - `POST /crew/v1/departures/{id}/operational-status` (`operations.write`) weather-holds, closes, or reopens with a reason.
 - Pickup-list share plus `POST /crew/v1/print-jobs` and `GET /crew/v1/print-jobs/{id}/pdf` for pickup-list and receipt PDFs only.
+- **19 Sep:** Day Board **Share PDF** opens the system share sheet with the server PDF (`expo-file-system` + `expo-sharing`). Walk-up confirm/pay and boarding Pay do the same for receipts when the actor has `print.jobs.create` + `print.jobs.read`. Plaintext pickup list remains the fallback.
 - `/api/mobile` allowlists only those crew tablet paths. Catalog, partner, and settings stay closed.
 - Expo: width ≥ 700 and `manifest.read` adds **My trips / Day Board**. Walk-up and weather sheets are hidden when the role lacks the matching permission.
 

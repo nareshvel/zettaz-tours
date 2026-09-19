@@ -64,6 +64,7 @@ const config: ExpoConfig = {
       },
     ],
     "expo-status-bar",
+    "expo-sharing",
     [
       "expo-camera",
       {

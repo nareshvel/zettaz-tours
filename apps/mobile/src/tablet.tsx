@@ -9,7 +9,14 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { OptionSheet, ProductCover, stayChoiceLabel, stayChoices } from "./chrome";
+import {
+  OptionSheet,
+  ProductCover,
+  EMERGENCY_RELATIONSHIP_OTHER,
+  EMERGENCY_RELATIONSHIPS,
+  stayChoiceLabel,
+  stayChoices,
+} from "./chrome";
 import {
   FALLBACK_CATEGORIES,
   formatMoney,
@@ -23,10 +30,12 @@ import {
   type BoardPayload,
   type PartyCategory,
   type PickupLocationOption,
+  type StayOption,
   type Trip,
   type WalkUpQuote,
 } from "./field";
 
+const STAY_NAME_OTHER = "__other__";
 function Action({
   children,
   disabled,
@@ -619,7 +628,9 @@ export function WalkUpSheet({
   held,
   error,
   pickupLocations,
-  allowUnresolvedPickup,
+  accommodations,
+  vessels,
+  allowUnresolvedPickup: _allowUnresolvedPickup,
   currency,
   onClose,
   onCreate,
@@ -631,6 +642,8 @@ export function WalkUpSheet({
   held: { bookingId: string; quote: WalkUpQuote } | null;
   error?: string;
   pickupLocations: PickupLocationOption[];
+  accommodations: StayOption[];
+  vessels: StayOption[];
   allowUnresolvedPickup?: boolean;
   currency?: string | null;
   onClose: () => void;
@@ -642,6 +655,7 @@ export function WalkUpSheet({
     guestNames: string[];
     pickup: Record<string, string>;
     stay: Record<string, string>;
+    emergencyContact?: { name: string; phone: string; relationship: string };
     concession?: { discountMinor: number; reason: string; promoCode?: string };
     collection: "now" | "tab" | "link";
     payment?: { method: string };
@@ -669,8 +683,15 @@ export function WalkUpSheet({
   const [stayKind, setStayKind] = useState<(typeof stayChoices)[number]["value"]>(
     "none",
   );
+  const [stayReferenceId, setStayReferenceId] = useState("");
   const [stayName, setStayName] = useState("");
+  const [stayNameOther, setStayNameOther] = useState(false);
   const [stayDetail, setStayDetail] = useState("");
+  const [emergencyName, setEmergencyName] = useState("");
+  const [emergencyPhone, setEmergencyPhone] = useState("");
+  const [emergencyRelationship, setEmergencyRelationship] = useState("");
+  const [emergencyRelationshipOther, setEmergencyRelationshipOther] =
+    useState(false);
   const [extraNames, setExtraNames] = useState<string[]>([]);
   const [discountAmount, setDiscountAmount] = useState("");
   const [discountReason, setDiscountReason] = useState("");
@@ -685,6 +706,8 @@ export function WalkUpSheet({
     | { kind: "pickup" }
     | { kind: "location" }
     | { kind: "stay" }
+    | { kind: "stayName" }
+    | { kind: "relationship" }
     | { kind: "method" }
     | { kind: "collection" }
     | null
@@ -694,8 +717,14 @@ export function WalkUpSheet({
     setPickupKind("none");
     setLocation("");
     setStayKind("none");
+    setStayReferenceId("");
     setStayName("");
+    setStayNameOther(false);
     setStayDetail("");
+    setEmergencyName("");
+    setEmergencyPhone("");
+    setEmergencyRelationship("");
+    setEmergencyRelationshipOther(false);
     setExtraNames([]);
     setDiscountAmount("");
     setDiscountReason("");
@@ -732,14 +761,34 @@ export function WalkUpSheet({
   const pickupOptions = [
     { value: "none", label: "No pickup needed" },
     { value: "selected", label: "Requested pickup" },
-    ...(allowUnresolvedPickup
-      ? [{ value: "unresolved", label: "Pickup to arrange" }]
-      : []),
   ];
   const collectionOptions = [
     { value: "now", label: "Pay now" },
     { value: "tab", label: "Tab — pay later" },
     { value: "link", label: "Payment link (Stripe)" },
+  ];
+  const stayNameOptions =
+    stayKind === "hotel"
+      ? [
+          ...accommodations.map((item) => ({
+            value: item.id,
+            label: item.name,
+          })),
+          { value: STAY_NAME_OTHER, label: "Other" },
+        ]
+      : stayKind === "cruise"
+        ? [
+            { value: "", label: "Not recorded" },
+            ...vessels.map((item) => ({ value: item.id, label: item.name })),
+            { value: STAY_NAME_OTHER, label: "Other" },
+          ]
+        : [];
+  const relationshipOptions = [
+    ...EMERGENCY_RELATIONSHIPS.map((item) => ({ value: item, label: item })),
+    {
+      value: EMERGENCY_RELATIONSHIP_OTHER,
+      label: EMERGENCY_RELATIONSHIP_OTHER,
+    },
   ];
   const payMethods = methods.filter(
     (value) => value !== "online" && value !== "reseller_payment",
@@ -748,8 +797,8 @@ export function WalkUpSheet({
   const discountReady = discountMinor < 1 || discountReason.trim().length >= 3;
   const stayReady =
     stayKind === "none" ||
-    stayKind === "cruise" ||
     stayKind === "local" ||
+    (stayKind === "cruise" && (stayNameOther ? stayName.trim().length > 0 : true)) ||
     (stayKind === "hotel" && stayName.trim().length > 0) ||
     (stayKind === "private_accommodation" &&
       stayName.trim().length > 0 &&
@@ -758,6 +807,19 @@ export function WalkUpSheet({
     pickupKind === "none" ||
     (pickupKind === "selected" && location.length > 0) ||
     (pickupKind === "unresolved" && pickupNote.trim().length > 0);
+  const emergencyPartial = Boolean(
+    emergencyName.trim() ||
+      emergencyPhone.trim() ||
+      emergencyRelationship.trim() ||
+      emergencyRelationshipOther,
+  );
+  const emergencyReady =
+    !emergencyPartial ||
+    Boolean(
+      emergencyName.trim() &&
+        emergencyPhone.trim() &&
+        emergencyRelationship.trim(),
+    );
   const guestsReady = Object.values(party).some((count) => count > 0);
   if (held) {
     return (
@@ -824,14 +886,18 @@ export function WalkUpSheet({
                 value: choice.value,
                 label: choice.label,
               }))
-            : picker?.kind === "collection"
-              ? collectionOptions
-              : picker?.kind === "method"
-                ? payMethods.map((value) => ({
-                    value,
-                    label: paymentMethodLabel(value),
-                  }))
-                : [];
+            : picker?.kind === "stayName"
+              ? stayNameOptions
+              : picker?.kind === "relationship"
+                ? relationshipOptions
+                : picker?.kind === "collection"
+                  ? collectionOptions
+                  : picker?.kind === "method"
+                    ? payMethods.map((value) => ({
+                        value,
+                        label: paymentMethodLabel(value),
+                      }))
+                    : [];
   return (
     <View style={styles.stack}>
       {error ? <Text style={styles.warn}>{error}</Text> : null}
@@ -930,15 +996,29 @@ export function WalkUpSheet({
         {stayKind === "cruise" || stayKind === "hotel" ? (
           <View style={styles.formGrid}>
             <View style={styles.fieldHalf}>
-              <Text style={styles.fieldLabel}>
-                {stayKind === "cruise" ? "Vessel (optional)" : "Hotel"}
-              </Text>
-              <TextInput
-                style={styles.input}
-                placeholder={stayKind === "cruise" ? "Ship name" : "Hotel name"}
-                value={stayName}
-                onChangeText={setStayName}
+              <SelectField
+                label={stayKind === "cruise" ? "Vessel (optional)" : "Hotel"}
+                value={
+                  stayNameOther
+                    ? "Other"
+                    : stayName ||
+                      (stayKind === "cruise" ? "Not recorded" : "Choose hotel")
+                }
+                placeholder={
+                  stayKind === "cruise" ? "Not recorded" : "Choose hotel"
+                }
+                onPress={() => setPicker({ kind: "stayName" })}
               />
+              {stayNameOther ? (
+                <TextInput
+                  style={styles.input}
+                  placeholder={
+                    stayKind === "cruise" ? "Ship name" : "Hotel name"
+                  }
+                  value={stayName}
+                  onChangeText={setStayName}
+                />
+              ) : null}
             </View>
             <View style={styles.fieldHalf}>
               <Text style={styles.fieldLabel}>
@@ -1005,6 +1085,52 @@ export function WalkUpSheet({
               placeholder="Where to collect this guest"
               value={pickupNote}
               onChangeText={setPickupNote}
+            />
+          </View>
+        ) : null}
+        <Text style={styles.muted}>
+          Emergency contact is optional. If any field is entered, complete all
+          three.
+        </Text>
+        <View style={styles.formGrid}>
+          <View style={styles.fieldHalf}>
+            <Text style={styles.fieldLabel}>Emergency name</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Optional"
+              value={emergencyName}
+              onChangeText={setEmergencyName}
+            />
+          </View>
+          <View style={styles.fieldHalf}>
+            <Text style={styles.fieldLabel}>Emergency phone</Text>
+            <TextInput
+              style={styles.input}
+              keyboardType="phone-pad"
+              placeholder="Optional"
+              value={emergencyPhone}
+              onChangeText={setEmergencyPhone}
+            />
+          </View>
+        </View>
+        <SelectField
+          label="Relationship"
+          value={
+            emergencyRelationshipOther
+              ? EMERGENCY_RELATIONSHIP_OTHER
+              : emergencyRelationship || "Select"
+          }
+          placeholder="Select"
+          onPress={() => setPicker({ kind: "relationship" })}
+        />
+        {emergencyRelationshipOther ? (
+          <View style={styles.fieldHalf}>
+            <Text style={styles.fieldLabel}>Other relationship</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Describe the relationship"
+              value={emergencyRelationship}
+              onChangeText={setEmergencyRelationship}
             />
           </View>
         ) : null}
@@ -1092,6 +1218,7 @@ export function WalkUpSheet({
           seats > remaining ||
           !pickupReady ||
           !stayReady ||
+          !emergencyReady ||
           !discountReady ||
           collection === "link"
         }
@@ -1116,12 +1243,18 @@ export function WalkUpSheet({
               stayKind === "cruise"
                 ? {
                     kind: "cruise",
+                    ...(stayReferenceId
+                      ? { vesselId: stayReferenceId }
+                      : {}),
                     ...(stayName.trim() ? { vesselName: stayName.trim() } : {}),
                     cabinNumber: stayDetail.trim(),
                   }
                 : stayKind === "hotel"
                   ? {
                       kind: "hotel",
+                      ...(stayReferenceId
+                        ? { accommodationId: stayReferenceId }
+                        : {}),
                       hotelName: stayName.trim(),
                       roomNumber: stayDetail.trim(),
                     }
@@ -1134,6 +1267,15 @@ export function WalkUpSheet({
                     : stayKind === "local"
                       ? { kind: "local", address: stayDetail.trim() }
                       : { kind: "none" },
+            ...(emergencyPartial
+              ? {
+                  emergencyContact: {
+                    name: emergencyName.trim(),
+                    phone: emergencyPhone.trim(),
+                    relationship: emergencyRelationship.trim(),
+                  },
+                }
+              : {}),
             ...(discountMinor
               ? {
                   concession: {
@@ -1170,11 +1312,17 @@ export function WalkUpSheet({
                 ? "Pickup location"
                 : picker?.kind === "stay"
                   ? "Stay"
-                  : picker?.kind === "collection"
-                    ? "Collection"
-                    : picker?.kind === "method"
-                      ? "Payment method"
-                      : ""
+                  : picker?.kind === "stayName"
+                    ? stayKind === "cruise"
+                      ? "Vessel"
+                      : "Hotel"
+                    : picker?.kind === "relationship"
+                      ? "Relationship"
+                      : picker?.kind === "collection"
+                        ? "Collection"
+                        : picker?.kind === "method"
+                          ? "Payment method"
+                          : ""
         }
         visible={Boolean(picker)}
         options={pickerOptions}
@@ -1187,11 +1335,19 @@ export function WalkUpSheet({
                 ? location
                 : picker?.kind === "stay"
                   ? stayKind
-                  : picker?.kind === "collection"
-                    ? collection
-                    : picker?.kind === "method"
-                      ? method
-                      : undefined
+                  : picker?.kind === "stayName"
+                    ? stayNameOther
+                      ? STAY_NAME_OTHER
+                      : stayReferenceId
+                    : picker?.kind === "relationship"
+                      ? emergencyRelationshipOther
+                        ? EMERGENCY_RELATIONSHIP_OTHER
+                        : emergencyRelationship
+                      : picker?.kind === "collection"
+                        ? collection
+                        : picker?.kind === "method"
+                          ? method
+                          : undefined
         }
         onSelect={(value) => {
           if (picker?.kind === "party")
@@ -1206,8 +1362,44 @@ export function WalkUpSheet({
           if (picker?.kind === "location") setLocation(value);
           if (picker?.kind === "stay") {
             setStayKind(value as (typeof stayChoices)[number]["value"]);
+            setStayReferenceId("");
             setStayName("");
+            setStayNameOther(false);
             setStayDetail("");
+          }
+          if (picker?.kind === "stayName") {
+            if (value === STAY_NAME_OTHER) {
+              setStayNameOther(true);
+              setStayReferenceId("");
+              setStayName("");
+            } else if (!value) {
+              setStayNameOther(false);
+              setStayReferenceId("");
+              setStayName("");
+            } else {
+              setStayNameOther(false);
+              setStayReferenceId(value);
+              const match =
+                stayKind === "hotel"
+                  ? accommodations.find((item) => item.id === value)
+                  : vessels.find((item) => item.id === value);
+              setStayName(match?.name ?? "");
+            }
+          }
+          if (picker?.kind === "relationship") {
+            if (value === EMERGENCY_RELATIONSHIP_OTHER) {
+              setEmergencyRelationshipOther(true);
+              if (
+                (EMERGENCY_RELATIONSHIPS as readonly string[]).includes(
+                  emergencyRelationship,
+                )
+              ) {
+                setEmergencyRelationship("");
+              }
+            } else {
+              setEmergencyRelationshipOther(false);
+              setEmergencyRelationship(value);
+            }
           }
           if (picker?.kind === "collection")
             setCollection(value as "now" | "tab" | "link");

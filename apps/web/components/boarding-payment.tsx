@@ -116,9 +116,15 @@ export function BoardingPaymentModal({
   }
 
   return (
-    <div className="boarding-waiver-scrim open" role="presentation">
+    <div className="boarding-waiver-root" role="presentation">
+      <button
+        type="button"
+        className="boarding-waiver-scrim"
+        aria-label="Close payment"
+        onClick={onClose}
+      />
       <div
-        className="panel boarding-waiver-sheet"
+        className="boarding-waiver-sheet"
         role="dialog"
         aria-modal="true"
         aria-label="Collect balance"

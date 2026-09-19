@@ -32,7 +32,11 @@ import type {
   Product,
   AvailabilityMode,
 } from "@/lib/types";
-import { availabilityModes } from "@/lib/types";
+import {
+  availabilityModes,
+  EMERGENCY_RELATIONSHIP_OPTIONS,
+  EMERGENCY_RELATIONSHIP_OTHER,
+} from "@/lib/types";
 import {
   bookingSourceLabel,
   dateTime,
@@ -221,6 +225,8 @@ function categoryIsMinor(category: string) {
 
 /** A stored placeholder, not a name anybody chose. */
 const PENDING_NAME = /· name required$/;
+/** Select sentinel when the pickup place is not in the tenant list. */
+const PICKUP_LOCATION_OTHER = "__other__";
 function realName(passenger: { name: string; identity_pending?: boolean }) {
   return passenger.identity_pending || PENDING_NAME.test(passenger.name)
     ? ""
@@ -704,6 +710,17 @@ export function NewReservation({
     [emergencyRelationship, setEmergencyRelationship] = useState(
       amendBooking?.emergency_contact?.relationship ?? "",
     ),
+    [emergencyRelationshipOther, setEmergencyRelationshipOther] = useState(
+      () => {
+        const value = amendBooking?.emergency_contact?.relationship ?? "";
+        return Boolean(
+          value &&
+            !(EMERGENCY_RELATIONSHIP_OPTIONS as readonly string[]).includes(
+              value,
+            ),
+        );
+      },
+    ),
     [source, setSource] = useState(
       amendBooking?.source ?? session.tenant.config.bookingSources[0] ?? "",
     ),
@@ -715,6 +732,7 @@ export function NewReservation({
         ? amendBooking.pickup.location
         : "",
     ),
+    [pickupLocationOther, setPickupLocationOther] = useState(false),
     [instructions, setInstructions] = useState(
       amendBooking?.pickup?.kind === "selected"
         ? amendBooking.pickup.instructions
@@ -825,6 +843,7 @@ export function NewReservation({
       pickupLocations.data ?? [],
     );
     if (!match) return;
+    setPickupLocationOther(false);
     setLocation((current) => {
       if (!current || current === stayPickupMatchRef.current) {
         stayPickupMatchRef.current = match;
@@ -840,6 +859,17 @@ export function NewReservation({
     stays.data,
     pickupLocations.data,
   ]);
+  useEffect(() => {
+    if (pickupKind !== "selected") {
+      setPickupLocationOther(false);
+      return;
+    }
+    const names = pickupLocations.data;
+    if (!names || !location) return;
+    if (!names.some((item) => item.name === location)) {
+      setPickupLocationOther(true);
+    }
+  }, [pickupKind, pickupLocations.data, location]);
   useEffect(() => {
     if (!finderFiltersOpen) return;
     function onPointer(event: MouseEvent) {
@@ -1285,7 +1315,7 @@ export function NewReservation({
             emergencyContact: {
               name: emergencyName || name,
               phone: emergencyPhone || phone || "n/a",
-              relationship: emergencyRelationship || "other",
+              relationship: emergencyRelationship || EMERGENCY_RELATIONSHIP_OTHER,
             },
           }
         : {}),
@@ -2621,49 +2651,71 @@ export function NewReservation({
                       >
                         <option value="none">No pickup needed</option>
                         <option value="selected">Requested pickup</option>
-                        <option value="unresolved">Pickup to arrange</option>
+                        {pickupKind === "unresolved" && (
+                          <option value="unresolved">Pickup to arrange</option>
+                        )}
                       </select>
                     </Field>
                     {pickupKind === "selected" && (
-                      <Field
-                        label="Pickup location"
-                        hint="From the tenant's pickup locations. Add a missing one under Settings › Pickup locations."
-                      >
-                        <select
-                          required
-                          value={location}
-                          onChange={(e) => setLocation(e.target.value)}
+                      <>
+                        <Field
+                          label="Pickup location"
+                          hint="Choose a common pickup, or Other to type a place that is not in the list."
                         >
-                          <option value="">Select a pickup location</option>
-                          {(pickupLocations.data ?? []).map((item) => (
-                            <option key={item.id} value={item.name}>
-                              {item.name}
-                              {item.address ? ` — ${item.address}` : ""}
-                            </option>
-                          ))}
-                          {/* An older booking may name a place that has since
-                              been renamed or retired. Keeping it as an option
-                              means amending some other field cannot silently
-                              rewrite where the guest is being collected. */}
-                          {location &&
-                            !(pickupLocations.data ?? []).some(
-                              (item) => item.name === location,
-                            ) && (
-                              <option value={location}>
-                                {location} (not in settings)
+                          <select
+                            required
+                            value={
+                              pickupLocationOther
+                                ? PICKUP_LOCATION_OTHER
+                                : location
+                            }
+                            onChange={(e) => {
+                              const next = e.target.value;
+                              if (next === PICKUP_LOCATION_OTHER) {
+                                setPickupLocationOther(true);
+                                if (
+                                  (pickupLocations.data ?? []).some(
+                                    (item) => item.name === location,
+                                  )
+                                ) {
+                                  setLocation("");
+                                }
+                                return;
+                              }
+                              setPickupLocationOther(false);
+                              setLocation(next);
+                            }}
+                          >
+                            <option value="">Select a pickup location</option>
+                            {(pickupLocations.data ?? []).map((item) => (
+                              <option key={item.id} value={item.name}>
+                                {item.name}
                               </option>
-                            )}
-                        </select>
-                      </Field>
+                            ))}
+                            <option value={PICKUP_LOCATION_OTHER}>Other</option>
+                          </select>
+                        </Field>
+                        {pickupLocationOther && (
+                          <Field label="Other pickup location">
+                            <input
+                              required
+                              maxLength={120}
+                              value={location}
+                              onChange={(e) => setLocation(e.target.value)}
+                              placeholder="Hotel, dock, or meeting point"
+                            />
+                          </Field>
+                        )}
+                      </>
                     )}
                   </div>
                   {pickupKind === "selected" &&
                     pickupLocations.data &&
                     !pickupLocations.data.length && (
                       <Notice>
-                        No pickup locations have been set up yet. Add them under
-                        Settings › Pickup locations so staff pick from a known
-                        list instead of typing.
+                        No common pickup locations yet. Choose Other to type a
+                        place, or add shared ones under Settings › Pickup
+                        locations.
                       </Notice>
                     )}
                   {pickupKind !== "none" && (
@@ -2819,15 +2871,54 @@ export function NewReservation({
                       />
                     </Field>
                     <Field label="Relationship">
-                      <input
+                      <select
                         required={Boolean(emergencyName || emergencyPhone)}
-                        maxLength={80}
-                        value={emergencyRelationship}
-                        onChange={(event) =>
-                          setEmergencyRelationship(event.target.value)
+                        value={
+                          emergencyRelationshipOther
+                            ? EMERGENCY_RELATIONSHIP_OTHER
+                            : emergencyRelationship
                         }
-                      />
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          if (next === EMERGENCY_RELATIONSHIP_OTHER) {
+                            setEmergencyRelationshipOther(true);
+                            if (
+                              (
+                                EMERGENCY_RELATIONSHIP_OPTIONS as readonly string[]
+                              ).includes(emergencyRelationship)
+                            ) {
+                              setEmergencyRelationship("");
+                            }
+                            return;
+                          }
+                          setEmergencyRelationshipOther(false);
+                          setEmergencyRelationship(next);
+                        }}
+                      >
+                        <option value="">Select</option>
+                        {EMERGENCY_RELATIONSHIP_OPTIONS.map((item) => (
+                          <option key={item} value={item}>
+                            {item}
+                          </option>
+                        ))}
+                        <option value={EMERGENCY_RELATIONSHIP_OTHER}>
+                          {EMERGENCY_RELATIONSHIP_OTHER}
+                        </option>
+                      </select>
                     </Field>
+                    {emergencyRelationshipOther && (
+                      <Field label="Other relationship">
+                        <input
+                          required={Boolean(emergencyName || emergencyPhone)}
+                          maxLength={80}
+                          value={emergencyRelationship}
+                          onChange={(event) =>
+                            setEmergencyRelationship(event.target.value)
+                          }
+                          placeholder="Describe the relationship"
+                        />
+                      </Field>
+                    )}
                   </div>
                 </BookingAccordion>
                 {amendMode && (

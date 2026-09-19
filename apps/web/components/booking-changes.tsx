@@ -20,6 +20,8 @@ import {
   Notice,
 } from "./common";
 
+const PICKUP_LOCATION_OTHER = "__other__";
+
 type ChangeQuote = {
   quoteId: string;
   version: number;
@@ -271,11 +273,20 @@ function ChangeForm({
     accept = useMutation(),
     cancellation = useMutation();
   const departures = usePaged<Departure>("staff/v1/workspace/departures");
+  const pickupLocations = useResource<
+    {
+      id: string;
+      name: string;
+      kind: string;
+      address: string | null;
+    }[]
+  >("ops/v1/pickup-locations");
   const [departureId, setDepartureId] = useState(b.departure_id),
     [party, setParty] = useState(b.party),
     [name, setName] = useState(b.lead_name),
     [email, setEmail] = useState(b.lead_email),
     [pickup, setPickup] = useState<Pickup>(b.pickup),
+    [pickupLocationOther, setPickupLocationOther] = useState(false),
     [reason, setReason] = useState(""),
     [quote, setQuote] = useState<ChangeQuote | null>(null),
     [ack, setAck] = useState(false),
@@ -287,6 +298,15 @@ function ChangeForm({
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
+  useEffect(() => {
+    if (pickup.kind !== "selected") {
+      setPickupLocationOther(false);
+      return;
+    }
+    const names = pickupLocations.data;
+    if (!names) return;
+    setPickupLocationOther(!names.some((item) => item.name === pickup.location));
+  }, [pickup, pickupLocations.data]);
   useEffect(() => {
     if (!quote) return;
     const reduceMotion = window.matchMedia(
@@ -520,21 +540,64 @@ function ChangeForm({
             >
               <option value="none">No pickup needed</option>
               <option value="selected">Requested pickup</option>
-              <option value="unresolved">Pickup to arrange</option>
+              {pickup.kind === "unresolved" && (
+                <option value="unresolved">Pickup to arrange</option>
+              )}
             </select>
           </Field>
           {pickup.kind === "selected" && (
             <>
-              <Field label="Pickup location">
-                <input
+              <Field
+                label="Pickup location"
+                hint="Choose a common pickup, or Other to type a place that is not in the list."
+              >
+                <select
                   required
-                  maxLength={120}
-                  value={pickup.location}
-                  onChange={(e) =>
-                    setPickup({ ...pickup, location: e.target.value })
+                  value={
+                    pickupLocationOther
+                      ? PICKUP_LOCATION_OTHER
+                      : pickup.location
                   }
-                />
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    if (next === PICKUP_LOCATION_OTHER) {
+                      setPickupLocationOther(true);
+                      setPickup({
+                        ...pickup,
+                        location: (pickupLocations.data ?? []).some(
+                          (item) => item.name === pickup.location,
+                        )
+                          ? ""
+                          : pickup.location,
+                      });
+                      return;
+                    }
+                    setPickupLocationOther(false);
+                    setPickup({ ...pickup, location: next });
+                  }}
+                >
+                  <option value="">Select a pickup location</option>
+                  {(pickupLocations.data ?? []).map((item) => (
+                    <option key={item.id} value={item.name}>
+                      {item.name}
+                    </option>
+                  ))}
+                  <option value={PICKUP_LOCATION_OTHER}>Other</option>
+                </select>
               </Field>
+              {pickupLocationOther && (
+                <Field label="Other pickup location">
+                  <input
+                    required
+                    maxLength={120}
+                    value={pickup.location}
+                    onChange={(e) =>
+                      setPickup({ ...pickup, location: e.target.value })
+                    }
+                    placeholder="Hotel, dock, or meeting point"
+                  />
+                </Field>
+              )}
               <Field label="Pickup instructions">
                 <textarea
                   maxLength={500}

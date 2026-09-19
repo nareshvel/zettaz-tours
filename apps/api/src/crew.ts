@@ -63,6 +63,7 @@ const walkUpCreate = z
     leadPhone: z.string().trim().max(40).default(""),
     pickup: bookingSchema.shape.pickup.optional(),
     stay: bookingSchema.shape.stay.optional(),
+    emergencyContact: bookingSchema.shape.emergencyContact.optional(),
     guestNames: z.array(z.string().trim().max(120)).max(30).optional(),
     concession: bookingConcessionSchema.optional(),
     collection: z.enum(["now", "tab", "link"]).optional(),
@@ -285,6 +286,16 @@ export class CrewService {
               [actor.tenantId],
             )
           ).rows[0] ?? null,
+        vessels: (
+          await tx.query(
+            "SELECT id,name FROM vessels WHERE active ORDER BY name,id",
+          )
+        ).rows,
+        accommodations: (
+          await tx.query(
+            "SELECT id,name FROM accommodation_properties WHERE active ORDER BY name,id",
+          )
+        ).rows,
         trips: trips.map((trip) => {
           const tripGuests = roster.filter(
             (guest) => guest.departure_id === trip.id,
@@ -476,6 +487,16 @@ export class CrewService {
             [actor.tenantId],
           )
         ).rows,
+        vessels: (
+          await tx.query(
+            "SELECT id,name FROM vessels WHERE active ORDER BY name,id",
+          )
+        ).rows,
+        accommodations: (
+          await tx.query(
+            "SELECT id,name FROM accommodation_properties WHERE active ORDER BY name,id",
+          )
+        ).rows,
         allowUnresolvedPickup: Boolean(tenant.config?.allowUnresolvedPickup),
       };
     });
@@ -501,6 +522,8 @@ export class CrewService {
       collectionCurrency: meta.collectionCurrency,
       waiverTemplate: meta.waiverTemplate,
       pickupLocations: meta.pickupLocations,
+      vessels: meta.vessels,
+      accommodations: meta.accommodations,
       allowUnresolvedPickup: meta.allowUnresolvedPickup,
       capabilities: {
         walkUp: actor.permissions.includes("bookings.write"),
@@ -602,6 +625,9 @@ export class CrewService {
       source: "walk_in",
       pickup: input.pickup ?? { kind: "none" },
       stay: input.stay ?? { kind: "none" },
+      ...(input.emergencyContact
+        ? { emergencyContact: input.emergencyContact }
+        : {}),
       ...(input.concession ? { concession: input.concession } : {}),
     });
     await this.passengers.replace(actor, booking.bookingId, `${key}:roster`, {

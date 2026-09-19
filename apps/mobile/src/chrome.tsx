@@ -29,6 +29,18 @@ export const stayChoices = [
   { value: "local", label: "Local" },
 ] as const;
 
+/** Keep in sync with packages/shared EMERGENCY_RELATIONSHIP_OPTIONS. */
+export const EMERGENCY_RELATIONSHIPS = [
+  "Spouse",
+  "Partner",
+  "Parent",
+  "Child",
+  "Sibling",
+  "Friend",
+  "Guardian",
+] as const;
+export const EMERGENCY_RELATIONSHIP_OTHER = "Other";
+
 export const tripStatusChoices = [
   { value: "preparing", label: "Preparing" },
   { value: "boarding", label: "Boarding" },

@@ -641,3 +641,15 @@ export const cancellationSchema = z
     reason: z.string().trim().min(1).max(500),
   })
   .strict();
+
+/** Common emergency-contact relationships for staff and crew booking UIs. */
+export const EMERGENCY_RELATIONSHIP_OPTIONS = [
+  "Spouse",
+  "Partner",
+  "Parent",
+  "Child",
+  "Sibling",
+  "Friend",
+  "Guardian",
+] as const;
+export const EMERGENCY_RELATIONSHIP_OTHER = "Other";

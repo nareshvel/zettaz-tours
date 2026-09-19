@@ -59,6 +59,7 @@ import {
   type BoardPayload,
   type Guest,
   type Passenger,
+  type StayOption,
   type Trip,
   type WalkUpQuote,
 } from "./src/field";
@@ -85,6 +86,8 @@ import {
   tripStatusLabel,
   type TabId,
 } from "./src/chrome";
+
+const STAY_NAME_OTHER = "__other__";
 type WaiverTemplate = {
   id: string;
   version: number;
@@ -165,6 +168,10 @@ export default function App() {
   const [signing, setSigning] = useState<Signing | null>(null);
   const [stayKind, setStayKind] = useState("none");
   const [stayName, setStayName] = useState("");
+  const [stayNameOther, setStayNameOther] = useState(false);
+  const [stayReferenceId, setStayReferenceId] = useState("");
+  const [vessels, setVessels] = useState<StayOption[]>([]);
+  const [accommodations, setAccommodations] = useState<StayOption[]>([]);
   const [stayUnit, setStayUnit] = useState("");
   const [stayAddress, setStayAddress] = useState("");
   const [signerName, setSignerName] = useState("");
@@ -221,6 +228,7 @@ export default function App() {
   const [showJumpTop, setShowJumpTop] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const [stayOpen, setStayOpen] = useState(false);
+  const [stayNameOpen, setStayNameOpen] = useState(false);
   const tokenRef = useRef<string | null>(null);
   const signingRef = useRef(false);
   const listRef = useRef<ScrollView>(null);
@@ -328,9 +336,13 @@ export default function App() {
           waiverTemplate: WaiverTemplate | null;
           paymentMethods?: string[];
           collectionCurrency?: string | null;
+          vessels?: StayOption[];
+          accommodations?: StayOption[];
         }>("/crew/v1/today", session);
         setTrips(result.trips);
         setWaiverTemplate(result.waiverTemplate);
+        if (result.vessels) setVessels(result.vessels);
+        if (result.accommodations) setAccommodations(result.accommodations);
         setPaymentMethods(
           (result.paymentMethods ?? []).filter(Boolean).length
             ? (result.paymentMethods ?? [])
@@ -352,6 +364,8 @@ export default function App() {
           session,
         );
         setBoard(result);
+        if (result.vessels) setVessels(result.vessels);
+        if (result.accommodations) setAccommodations(result.accommodations);
         if (result.paymentMethods?.length)
           setPaymentMethods(result.paymentMethods);
         if (result.collectionCurrency !== undefined)
@@ -551,6 +565,7 @@ export default function App() {
     guestNames: string[];
     pickup: Record<string, string>;
     stay: Record<string, string>;
+    emergencyContact?: { name: string; phone: string; relationship: string };
     concession?: { discountMinor: number; reason: string; promoCode?: string };
     collection: "now" | "tab" | "link";
     payment?: { method: string };
@@ -581,6 +596,9 @@ export default function App() {
           pickup: input.pickup,
           stay: input.stay,
           collection: input.collection,
+          ...(input.emergencyContact
+            ? { emergencyContact: input.emergencyContact }
+            : {}),
           ...(input.concession ? { concession: input.concession } : {}),
           ...(input.payment?.method
             ? { paymentMethod: input.payment.method }
@@ -726,12 +744,20 @@ export default function App() {
   function openWaiver(guest: Guest, passenger: Passenger) {
     setSigning({ guest, passenger });
     setStayKind(guest.stay?.kind ?? "none");
-    setStayName(
+    const existingName =
       guest.stay?.vesselName ??
-        guest.stay?.hotelName ??
-        guest.stay?.propertyName ??
-        "",
-    );
+      guest.stay?.hotelName ??
+      guest.stay?.propertyName ??
+      "";
+    setStayName(existingName);
+    const known =
+      guest.stay?.kind === "hotel"
+        ? accommodations.find((item) => item.name === existingName)
+        : guest.stay?.kind === "cruise"
+          ? vessels.find((item) => item.name === existingName)
+          : undefined;
+    setStayReferenceId(known?.id ?? "");
+    setStayNameOther(Boolean(existingName && !known));
     setStayUnit(guest.stay?.cabinNumber ?? guest.stay?.roomNumber ?? "");
     setStayAddress(guest.stay?.address ?? "");
     setPassengerName(passenger.identity_pending ? "" : passenger.name);
@@ -745,9 +771,21 @@ export default function App() {
     if (!token || !signing || !waiverTemplate) return;
     const stay =
       stayKind === "cruise"
-        ? { kind: "cruise", vesselName: stayName, cabinNumber: stayUnit }
+        ? {
+            kind: "cruise",
+            ...(stayReferenceId ? { vesselId: stayReferenceId } : {}),
+            ...(stayName.trim() ? { vesselName: stayName.trim() } : {}),
+            cabinNumber: stayUnit,
+          }
         : stayKind === "hotel"
-          ? { kind: "hotel", hotelName: stayName, roomNumber: stayUnit }
+          ? {
+              kind: "hotel",
+              ...(stayReferenceId
+                ? { accommodationId: stayReferenceId }
+                : {}),
+              hotelName: stayName,
+              roomNumber: stayUnit,
+            }
           : stayKind === "private_accommodation"
             ? {
                 kind: "private_accommodation",
@@ -1269,10 +1307,26 @@ export default function App() {
     const needsPassengerName =
       signing.passenger.identity_pending && !passengerName.trim();
     const needsStayName =
-      ["cruise", "hotel", "private_accommodation"].includes(stayKind) &&
+      (stayKind === "hotel" || stayKind === "private_accommodation") &&
       !stayName.trim();
     const needsAddress =
       stayKind === "private_accommodation" && !stayAddress.trim();
+    const stayNameOptions =
+      stayKind === "hotel"
+        ? [
+            ...accommodations.map((item) => ({
+              value: item.id,
+              label: item.name,
+            })),
+            { value: STAY_NAME_OTHER, label: "Other" },
+          ]
+        : stayKind === "cruise"
+          ? [
+              { value: "", label: "Not recorded" },
+              ...vessels.map((item) => ({ value: item.id, label: item.name })),
+              { value: STAY_NAME_OTHER, label: "Other" },
+            ]
+          : [];
     return (
       <SafeAreaView style={styles.screen}>
         <StatusBar style="dark" />
@@ -1324,30 +1378,52 @@ export default function App() {
                 {stayChoiceLabel(stayKind)}
               </Text>
             </Pressable>
-            {["cruise", "hotel", "private_accommodation"].includes(stayKind) ? (
+            {stayKind === "cruise" || stayKind === "hotel" ? (
+              <>
+                <Pressable
+                  style={styles.select}
+                  onPress={() => setStayNameOpen(true)}
+                >
+                  <Text style={styles.selectLabel}>
+                    {stayKind === "cruise" ? "Vessel" : "Hotel"}
+                  </Text>
+                  <Text style={styles.selectValue}>
+                    {stayNameOther
+                      ? "Other"
+                      : stayName ||
+                        (stayKind === "cruise"
+                          ? "Not recorded"
+                          : "Choose hotel")}
+                  </Text>
+                </Pressable>
+                {stayNameOther ? (
+                  <TextInput
+                    style={styles.input}
+                    placeholder={
+                      stayKind === "cruise" ? "Vessel name" : "Hotel name"
+                    }
+                    value={stayName}
+                    onChangeText={setStayName}
+                  />
+                ) : null}
+                <TextInput
+                  style={styles.input}
+                  placeholder={
+                    stayKind === "cruise"
+                      ? "Cabin number (optional)"
+                      : "Room number (optional)"
+                  }
+                  value={stayUnit}
+                  onChangeText={setStayUnit}
+                />
+              </>
+            ) : null}
+            {stayKind === "private_accommodation" ? (
               <TextInput
                 style={styles.input}
-                placeholder={
-                  stayKind === "cruise"
-                    ? "Vessel name"
-                    : stayKind === "hotel"
-                      ? "Hotel name"
-                      : "Property name"
-                }
+                placeholder="Property name"
                 value={stayName}
                 onChangeText={setStayName}
-              />
-            ) : null}
-            {["cruise", "hotel"].includes(stayKind) ? (
-              <TextInput
-                style={styles.input}
-                placeholder={
-                  stayKind === "cruise"
-                    ? "Cabin number (optional)"
-                    : "Room number (optional)"
-                }
-                value={stayUnit}
-                onChangeText={setStayUnit}
               />
             ) : null}
             {["private_accommodation", "local"].includes(stayKind) ? (
@@ -1485,8 +1561,45 @@ export default function App() {
             value: item.value,
             label: item.label,
           }))}
-          onSelect={setStayKind}
+          onSelect={(value) => {
+            setStayKind(value);
+            setStayName("");
+            setStayNameOther(false);
+            setStayReferenceId("");
+            setStayUnit("");
+            setStayAddress("");
+          }}
           onClose={() => setStayOpen(false)}
+        />
+        <OptionSheet
+          title={stayKind === "cruise" ? "Vessel" : "Hotel"}
+          visible={stayNameOpen}
+          selected={
+            stayNameOther
+              ? STAY_NAME_OTHER
+              : stayReferenceId
+          }
+          options={stayNameOptions}
+          onSelect={(value) => {
+            if (value === STAY_NAME_OTHER) {
+              setStayNameOther(true);
+              setStayReferenceId("");
+              setStayName("");
+            } else if (!value) {
+              setStayNameOther(false);
+              setStayReferenceId("");
+              setStayName("");
+            } else {
+              setStayNameOther(false);
+              setStayReferenceId(value);
+              const match =
+                stayKind === "hotel"
+                  ? accommodations.find((item) => item.id === value)
+                  : vessels.find((item) => item.id === value);
+              setStayName(match?.name ?? "");
+            }
+          }}
+          onClose={() => setStayNameOpen(false)}
         />
       </SafeAreaView>
     );
@@ -2313,6 +2426,10 @@ export default function App() {
             pickupLocations={
               (dock === "book" ? bookingBoard : board)?.pickupLocations ?? []
             }
+            accommodations={
+              (dock === "book" ? bookingBoard : board)?.accommodations ?? []
+            }
+            vessels={(dock === "book" ? bookingBoard : board)?.vessels ?? []}
             allowUnresolvedPickup={
               (dock === "book" ? bookingBoard : board)?.allowUnresolvedPickup
             }

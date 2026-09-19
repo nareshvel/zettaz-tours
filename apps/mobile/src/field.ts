@@ -163,6 +163,7 @@ export type PartyCategory = {
   countsTowardCapacity: boolean;
 };
 export type PickupLocationOption = { id: string; name: string };
+export type StayOption = { id: string; name: string };
 export type BoardItem = {
   id: string;
   starts_at: string;
@@ -185,6 +186,8 @@ export type BoardPayload = {
   capabilities: BoardCapabilities;
   items: BoardItem[];
   pickupLocations?: PickupLocationOption[];
+  vessels?: StayOption[];
+  accommodations?: StayOption[];
   allowUnresolvedPickup?: boolean;
   paymentMethods?: string[];
   collectionCurrency?: string | null;
@@ -229,7 +232,7 @@ export function matchStayPickupLocation(
   const exact = scored.find((row) => row.score === 3);
   if (exact) return exact.name;
   const contains = scored.filter((row) => row.score === 2);
-  return contains.length === 1 ? contains[0].name : null;
+  return contains.length === 1 ? (contains[0]?.name ?? null) : null;
 }
 export const FALLBACK_CATEGORIES: PartyCategory[] = [
   { slug: "adult", label: "Adult", countsTowardCapacity: true },

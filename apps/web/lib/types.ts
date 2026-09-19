@@ -4,6 +4,10 @@ import type {
   Quote,
 } from "../../../packages/shared/src/contracts";
 export type { TenantConfig, ProductInput, Quote };
+export {
+  EMERGENCY_RELATIONSHIP_OPTIONS,
+  EMERGENCY_RELATIONSHIP_OTHER,
+} from "../../../packages/shared/src/contracts";
 export type Session = {
   actorId: string;
   actorName: string;

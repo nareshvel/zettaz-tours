@@ -519,7 +519,7 @@ function ChangeForm({
               }
             >
               <option value="none">No pickup needed</option>
-              <option value="selected">Pickup arranged</option>
+              <option value="selected">Requested pickup</option>
               <option value="unresolved">Pickup to arrange</option>
             </select>
           </Field>

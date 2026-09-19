@@ -16,9 +16,9 @@
 
 - Master matrix: [crew-roles-and-permissions.md](../FEATURES/operations/crew-roles-and-permissions.md). Guide/driver/crew/captain assignment gates now share `isFieldCrewRole`.
 - `GET /crew/v1/today` and Day Board include `cover_path`. Today cards show the catalog cover (or a monogram) plus a trips/guests/to-board/balance strip and role-specific hint copy.
-- Footer tabs: **Today**, **Scan** (if `checkin.write`), **Board** (tablet + `manifest.read`), **Profile**.
+- Footer tabs: **Today**, **Scan** (if `checkin.write`), **Day Board** (`manifest.read`), **Booking** (`bookings.write`), **Me**. Day Board share is icon-only on phone. Booking has a date filter and product covers.
 - Trip status is one control that opens a sheet. Start trip remains the leave/no-show confirmation.
-- Guest name opens the waiver. The primary action is **Sign waiver** until evidence exists, then Mark arrived / Clear to board / Board. No-show is a sibling control, not nested inside the name press target. Check-in states use human labels (`Waiver needed`, not `waiver_pending`).
+- Guest name opens the waiver. The primary boarding button steps **Arrived → Pay (if due) → Sign waiver → Board**. **No-show** stays beside it. Lead row shows **Settled** or **Pay {balance}**; each guest can also pay a suggested share. Start trip stays disabled until at least one guest is boarded.
 - Signature pad is docked below the scroll region and draws a continuous stroke (not a dotted trail). Cover images load without a workspace cookie (`/uploads/product-covers/…` is public for allowlisted files).
 - While online, a successful Today load enrolls the device if needed and refreshes the 24h snapshot. Returning to the foreground reloads. Profile shows last-synced status; PIN is optional lock, not a download button.
 

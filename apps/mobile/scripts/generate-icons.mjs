@@ -38,10 +38,27 @@ const adaptive = await sharp({
   .toBuffer();
 await writeFile(path.join(assets, "adaptive-icon.png"), adaptive);
 
-const splashMark = await sharp(svg)
-  .resize(512, 512)
-  .flatten({ background: navy })
-  .removeAlpha()
+const splashMark = await sharp({
+  create: { width: 1024, height: 1024, channels: 3, background: navy },
+})
+  .composite([
+    {
+      input: await sharp(svg)
+        .resize(360, 360)
+        .flatten({ background: navy })
+        .png()
+        .toBuffer(),
+      top: 250,
+      left: 332,
+    },
+    {
+      input: Buffer.from(`<svg width="1024" height="140" xmlns="http://www.w3.org/2000/svg">
+  <text x="512" y="90" text-anchor="middle" font-family="Helvetica" font-size="52" font-weight="700" fill="#71E2C7">ZETTAZ CREW</text>
+</svg>`),
+      top: 760,
+      left: 0,
+    },
+  ])
   .png()
   .toBuffer();
 await writeFile(path.join(assets, "splash-icon.png"), splashMark);

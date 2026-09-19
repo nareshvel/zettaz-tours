@@ -102,6 +102,7 @@ export class DispatchService {
     return this.db.transaction(actor, async (tx) => {
       const { rows } = await tx.query(
         `SELECT d.id,d.starts_at,d.capacity,(d.committed+d.overbooked)::int AS committed,d.overbooked,d.operational_status,d.operational_reason,d.operational_version,p.name AS product_name,p.cover_path,
+        COALESCE(p.definition->'categories','[]'::jsonb) AS categories,
         COUNT(b.id) FILTER(WHERE b.state='confirmed')::int AS confirmed_bookings,
         COALESCE(SUM((SELECT SUM(value::int) FROM jsonb_each_text(h.party))) FILTER(WHERE b.state='confirmed'),0)::int AS confirmed_guests,
         COUNT(b.id) FILTER(WHERE b.state='confirmed' AND b.pickup->>'kind'='selected')::int AS pickup_required,
@@ -166,7 +167,7 @@ export class DispatchService {
         LEFT JOIN departure_pickup_plans plan ON plan.tenant_id=d.tenant_id AND plan.departure_id=d.id
         LEFT JOIN trip_runs tr ON tr.tenant_id=d.tenant_id AND tr.departure_id=d.id
         WHERE d.tenant_id=$1 AND d.local_date=$2
-        GROUP BY d.tenant_id,d.id,d.starts_at,d.capacity,d.committed,d.overbooked,d.operational_status,d.operational_reason,d.operational_version,p.name,p.cover_path,plan.version,plan.notes,tr.state ORDER BY d.starts_at,d.id`,
+        GROUP BY d.tenant_id,d.id,d.starts_at,d.capacity,d.committed,d.overbooked,d.operational_status,d.operational_reason,d.operational_version,p.name,p.cover_path,p.definition,plan.version,plan.notes,tr.state ORDER BY d.starts_at,d.id`,
         [actor.tenantId, query.date],
       );
       return { date: query.date, items: rows };

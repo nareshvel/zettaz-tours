@@ -157,11 +157,18 @@ export type BoardCapabilities = {
   print: boolean;
   checkin: boolean;
 };
+export type PartyCategory = {
+  slug: string;
+  label: string;
+  countsTowardCapacity: boolean;
+};
+export type PickupLocationOption = { id: string; name: string };
 export type BoardItem = {
   id: string;
   starts_at: string;
   product_name: string;
   cover_path?: string | null;
+  categories?: PartyCategory[];
   capacity: number;
   committed: number;
   confirmed_guests: number;
@@ -177,6 +184,8 @@ export type BoardPayload = {
   date: string;
   capabilities: BoardCapabilities;
   items: BoardItem[];
+  pickupLocations?: PickupLocationOption[];
+  allowUnresolvedPickup?: boolean;
   paymentMethods?: string[];
   collectionCurrency?: string | null;
   waiverTemplate?: {
@@ -191,6 +200,40 @@ export type WalkUpQuote = {
   currency: string;
 };
 export const TABLET_MIN_WIDTH = 700;
+export function matchStayPickupLocation(
+  stayName: string,
+  locations: { name: string }[],
+) {
+  const needle = stayName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!needle) return null;
+  const scored = locations
+    .map((location) => {
+      const hay = location.name
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!hay) return null;
+      if (hay === needle) return { name: location.name, score: 3 };
+      if (hay.includes(needle) || needle.includes(hay))
+        return { name: location.name, score: 2 };
+      return null;
+    })
+    .filter((row): row is { name: string; score: number } => Boolean(row));
+  const exact = scored.find((row) => row.score === 3);
+  if (exact) return exact.name;
+  const contains = scored.filter((row) => row.score === 2);
+  return contains.length === 1 ? contains[0].name : null;
+}
+export const FALLBACK_CATEGORIES: PartyCategory[] = [
+  { slug: "adult", label: "Adult", countsTowardCapacity: true },
+];
 
 export function occupancyLabel(item: BoardItem) {
   return `${item.committed}/${item.capacity} seats · ${item.confirmed_guests} guests`;
@@ -219,10 +262,12 @@ export function guestMatchesQuery(guest: Guest, query: string) {
   return hay.includes(needle);
 }
 
+export function tripRunLeft(state?: string | null) {
+  return ["departed", "completed", "cancelled"].includes(state ?? "");
+}
+
 export function tripStarted(trip: Trip) {
-  return ["departed", "completed", "cancelled"].includes(
-    trip.trip_run_state ?? "",
-  );
+  return tripRunLeft(trip.trip_run_state);
 }
 
 export function assignedToPickups(roles: string[]) {
@@ -268,19 +313,20 @@ export function checkinLabel(state?: string | null) {
 export type PassengerAction =
   | { kind: "waiver"; label: string }
   | { kind: "arrived"; label: string }
-  | { kind: "clear"; label: string }
   | { kind: "board"; label: string }
   | { kind: "pay"; label: string };
 
 export function nextPassengerAction(
   passenger: Passenger,
+  guest: Guest,
 ): PassengerAction | null {
   const state = passenger.checkin_state ?? "not_arrived";
   if (state === "boarded" || state === "no_show") return null;
-  if (!passenger.waiver_signed || passenger.identity_pending)
+  if (passenger.identity_pending)
     return { kind: "waiver", label: "Sign waiver" };
-  if (state === "balance_pending") return { kind: "pay", label: "Collect" };
-  if (state === "cleared_to_board") return { kind: "board", label: "Board" };
-  if (state === "arrived") return { kind: "clear", label: "Clear to board" };
-  return { kind: "arrived", label: "Mark arrived" };
+  if (state === "not_arrived") return { kind: "arrived", label: "Arrived" };
+  if (guest.boarding_clearance === "due") return { kind: "pay", label: "Pay" };
+  if (!passenger.waiver_signed)
+    return { kind: "waiver", label: "Sign waiver" };
+  return { kind: "board", label: "Board" };
 }

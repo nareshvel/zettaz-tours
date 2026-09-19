@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Alert,
   AppState,
+  Image,
   Linking,
   Pressable,
   RefreshControl,
@@ -14,7 +15,6 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
 } from "react-native";
 import { call, crewLoadMessage, isUnauthorized, requestKey } from "./src/api";
@@ -54,7 +54,7 @@ import {
   stayLabel,
   suggestedBoardingShare,
   tripStarted,
-  TABLET_MIN_WIDTH,
+  tripRunLeft,
   type BoardItem,
   type BoardPayload,
   type Guest,
@@ -63,23 +63,25 @@ import {
   type WalkUpQuote,
 } from "./src/field";
 import {
+  BookBoard,
   DayBoard,
   tenantDay,
+  tripsToBookItems,
   WalkUpSheet,
   WeatherSheet,
   sharePickupText,
 } from "./src/tablet";
 import {
   OptionSheet,
+  FormModal,
   SignatureInk,
   TabBar,
   TodayStrip,
   TripCard,
-  TripTimer,
   stayChoiceLabel,
   stayChoices,
   todayRoleHint,
-  tripStatusChoices,
+  selectableTripStatuses,
   tripStatusLabel,
   type TabId,
 } from "./src/chrome";
@@ -113,11 +115,13 @@ function Button({
   disabled,
   onPress,
   quiet = false,
+  compact = false,
 }: {
   children: string;
   disabled?: boolean;
   onPress: () => void;
   quiet?: boolean;
+  compact?: boolean;
 }) {
   return (
     <Pressable
@@ -126,10 +130,17 @@ function Button({
       style={[
         styles.button,
         quiet && styles.quiet,
+        compact && styles.compact,
         disabled && styles.disabled,
       ]}
     >
-      <Text style={[styles.buttonText, quiet && styles.quietText]}>
+      <Text
+        style={[
+          styles.buttonText,
+          quiet && styles.quietText,
+          compact && styles.compactText,
+        ]}
+      >
         {children}
       </Text>
     </Pressable>
@@ -137,7 +148,6 @@ function Button({
 }
 
 export default function App() {
-  const { width } = useWindowDimensions();
   const [token, setToken] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [email, setEmail] = useState("");
@@ -185,7 +195,10 @@ export default function App() {
   const [payReference, setPayReference] = useState("");
   const [payNote, setPayNote] = useState("");
   const [board, setBoard] = useState<BoardPayload | null>(null);
-  const [dock, setDock] = useState<"trips" | "board">("trips");
+  const [bookDate, setBookDate] = useState("");
+  const [bookingBoard, setBookingBoard] = useState<BoardPayload | null>(null);
+  const [dock, setDock] = useState<"trips" | "board" | "book">("trips");
+  const [pinEnabled, setPinEnabled] = useState(false);
   const [fromBoard, setFromBoard] = useState(false);
   const [weatherItem, setWeatherItem] = useState<BoardItem | null>(null);
   const [walkUpItem, setWalkUpItem] = useState<BoardItem | null>(null);
@@ -205,10 +218,12 @@ export default function App() {
   const [enrolled, setEnrolled] = useState(false);
   const [leaseExpiresAt, setLeaseExpiresAt] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
+  const [showJumpTop, setShowJumpTop] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const [stayOpen, setStayOpen] = useState(false);
   const tokenRef = useRef<string | null>(null);
   const signingRef = useRef(false);
+  const listRef = useRef<ScrollView>(null);
   tokenRef.current = token;
   signingRef.current = Boolean(signing);
 
@@ -251,6 +266,7 @@ export default function App() {
   async function refreshQueue() {
     setQueueSize(await queuedCount());
     setEnrolled(Boolean(await deviceCredentials()));
+    setPinEnabled(await hasPin());
     const snapshot = await readSnapshot();
     setLeaseExpiresAt(snapshot?.leaseExpiresAt ?? null);
     setLastSync(await lastSyncAt());
@@ -344,6 +360,18 @@ export default function App() {
         if (fromBoard && active) {
           const trip = await call<Trip>(`/crew/v1/board/${active.id}`, session);
           setActive(trip);
+        }
+        const bookingDay = bookDate || day;
+        if (!bookDate || bookDate === day) {
+          setBookingBoard(result);
+          setBookDate(day);
+        } else {
+          setBookingBoard(
+            await call<BoardPayload>(
+              `/crew/v1/board?date=${bookingDay}`,
+              session,
+            ),
+          );
         }
       }
       setOfflineMode(false);
@@ -516,11 +544,22 @@ export default function App() {
     setWeatherItem(null);
   }
   async function createWalkUp(input: {
-    adults: number;
+    party: Record<string, number>;
     leadName: string;
     leadEmail: string;
+    leadPhone: string;
+    guestNames: string[];
+    pickup: Record<string, string>;
+    stay: Record<string, string>;
+    concession?: { discountMinor: number; reason: string; promoCode?: string };
+    collection: "now" | "tab" | "link";
+    payment?: { method: string };
   }) {
     if (!token || !walkUpItem) return;
+    if (tripRunLeft(walkUpItem.trip_run_state)) {
+      setError("Walk-in is closed because this trip has already left.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -534,9 +573,18 @@ export default function App() {
         headers: { "Idempotency-Key": requestKey() },
         body: JSON.stringify({
           departureId: walkUpItem.id,
-          party: { adult: input.adults },
+          party: input.party,
           leadName: input.leadName,
           leadEmail: input.leadEmail,
+          leadPhone: input.leadPhone,
+          guestNames: input.guestNames,
+          pickup: input.pickup,
+          stay: input.stay,
+          collection: input.collection,
+          ...(input.concession ? { concession: input.concession } : {}),
+          ...(input.payment?.method
+            ? { paymentMethod: input.payment.method }
+            : {}),
         }),
       });
       if (result.needsPayment && result.quote) {
@@ -545,6 +593,14 @@ export default function App() {
         setWalkUpItem(null);
         setWalkUpHeld(null);
         await load(token);
+        if (dock === "book" && bookDate) {
+          setBookingBoard(
+            await call<BoardPayload>(
+              `/crew/v1/board?date=${bookDate}`,
+              token,
+            ),
+          );
+        }
       }
     } catch (reason) {
       if (isUnauthorized(reason)) await clearSession();
@@ -576,6 +632,11 @@ export default function App() {
       setWalkUpItem(null);
       setWalkUpHeld(null);
       await load(token);
+      if (dock === "book" && bookDate) {
+        setBookingBoard(
+          await call<BoardPayload>(`/crew/v1/board?date=${bookDate}`, token),
+        );
+      }
     } catch (reason) {
       if (isUnauthorized(reason)) await clearSession();
       else setError((reason as Error).message);
@@ -927,18 +988,19 @@ export default function App() {
     setScanning(true);
   }
 
-  const showBoard =
-    width >= TABLET_MIN_WIDTH &&
-    Boolean(profile?.permissions?.includes("manifest.read"));
+  const showBoard = Boolean(profile?.permissions?.includes("manifest.read"));
   const can = (code: string) => Boolean(profile?.permissions?.includes(code));
+  const showBook = can("bookings.write");
   const canPay = can("checkin.write") || can("payment.write");
   const canCheckin = can("checkin.write");
   const canEvents = can("crew.trip.read");
   const activeTab: TabId = showProfile
     ? "profile"
-    : showBoard && dock === "board"
+    : dock === "board" && showBoard
       ? "board"
-      : "today";
+      : dock === "book" && showBook
+        ? "book"
+        : "today";
   function goTab(tab: TabId) {
     if (tab === "scan") {
       setShowProfile(false);
@@ -958,13 +1020,28 @@ export default function App() {
     setFromBoard(false);
     setStartOpen(false);
     setRosterQuery("");
-    setDock(tab === "board" ? "board" : "trips");
+    setDock(tab === "board" ? "board" : tab === "book" ? "book" : "trips");
+    if (tab === "book" && token) {
+      const day = bookDate || tenantDay(profile?.tenant.timezone);
+      setBookDate(day);
+      void (async () => {
+        try {
+          setBookingBoard(
+            await call<BoardPayload>(`/crew/v1/board?date=${day}`, token),
+          );
+        } catch (reason) {
+          if (isUnauthorized(reason)) await clearSession();
+          else setError((reason as Error).message);
+        }
+      })();
+    }
   }
   const footer = (
     <TabBar
       active={activeTab}
       showScan={canCheckin}
       showBoard={showBoard}
+      showBook={showBook}
       onChange={goTab}
     />
   );
@@ -985,9 +1062,11 @@ export default function App() {
             ? "My profile"
             : active
               ? active.product_name
-              : showBoard && dock === "board"
+              : dock === "board" && showBoard
                 ? "Day Board"
-                : "Today"}
+                : dock === "book" && showBook
+                  ? "Booking"
+                  : "Today"}
         </Text>
       </View>
     </View>
@@ -995,15 +1074,25 @@ export default function App() {
 
   if (!ready)
     return (
-      <SafeAreaView style={styles.center}>
-        <ActivityIndicator />
+      <SafeAreaView style={styles.boot}>
+        <StatusBar style="light" />
+        <Image
+          source={require("./assets/icon.png")}
+          resizeMode="contain"
+          style={styles.bootMark}
+        />
+        <Text style={styles.bootBrand}>ZETTAZ CREW</Text>
+        <ActivityIndicator color="#71E2C7" />
       </SafeAreaView>
     );
   if (!token)
     return (
       <SafeAreaView style={styles.screen}>
         <StatusBar style="dark" />
-        <View style={styles.login}>
+        <ScrollView
+          contentContainerStyle={styles.login}
+          keyboardShouldPersistTaps="handled"
+        >
           <Text style={styles.brand}>ZETTAZ</Text>
           <Text style={styles.title}>
             {recovering ? "Reset password" : "Crew sign in"}
@@ -1094,20 +1183,21 @@ export default function App() {
             </Pressable>
           </View>
           <Text style={styles.version}>Version {APP_VERSION}</Text>
-        </View>
+        </ScrollView>
       </SafeAreaView>
     );
   if (locked)
     return (
       <SafeAreaView style={styles.screen}>
         <StatusBar style="dark" />
-        <View style={styles.login}>
-          <Text style={styles.brand}>ZETTAZ</Text>
-          <Text style={styles.title}>Unlock this device</Text>
-          <Text style={styles.muted}>
-            Offline field data is encrypted on this phone. Unlock with your crew
-            PIN{canBiometric ? " or biometrics" : ""}.
-          </Text>
+        <View style={styles.lockShade} />
+        <FormModal
+          visible
+          dismissible={false}
+          title="Unlock this device"
+          subtitle={`Offline field data is encrypted on this phone. Unlock with your crew PIN${canBiometric ? " or biometrics" : ""}.`}
+          onClose={() => undefined}
+        >
           <TextInput
             style={styles.input}
             keyboardType="number-pad"
@@ -1147,7 +1237,7 @@ export default function App() {
               Use biometrics
             </Button>
           ) : null}
-        </View>
+        </FormModal>
       </SafeAreaView>
     );
   if (scanning)
@@ -1366,7 +1456,7 @@ export default function App() {
               />
             )}
           </View>
-          <View style={styles.rowActions}>
+          <View style={styles.signActions}>
             <Button quiet onPress={() => setSignaturePoints([])}>
               Clear
             </Button>
@@ -1549,58 +1639,6 @@ export default function App() {
                 this account can read assigned trips.
               </Text>
             )}
-            {offlineSetup ? (
-              <>
-                <TextInput
-                  style={styles.input}
-                  keyboardType="number-pad"
-                  maxLength={8}
-                  placeholder="Choose a 4–8 digit PIN"
-                  secureTextEntry
-                  value={pinValue}
-                  onChangeText={setPinValue}
-                />
-                <TextInput
-                  style={styles.input}
-                  keyboardType="number-pad"
-                  maxLength={8}
-                  placeholder="Confirm PIN"
-                  secureTextEntry
-                  value={pinConfirm}
-                  onChangeText={setPinConfirm}
-                />
-                <Button
-                  disabled={
-                    busy || pinValue.length < 4 || pinValue !== pinConfirm
-                  }
-                  onPress={() => {
-                    void (async () => {
-                      if (!token) return;
-                      setBusy(true);
-                      setError("");
-                      try {
-                        await prepareOffline(token, pinValue);
-                        setOfflineSetup(false);
-                        setPinValue("");
-                        setPinConfirm("");
-                        await refreshQueue();
-                        await load(token);
-                      } catch (reason) {
-                        setError((reason as Error).message);
-                      } finally {
-                        setBusy(false);
-                      }
-                    })();
-                  }}
-                >
-                  {busy ? "Saving PIN…" : "Save PIN"}
-                </Button>
-              </>
-            ) : (
-              <Button quiet onPress={() => setOfflineSetup(true)}>
-                {enrolled ? "Add or change unlock PIN" : "Add unlock PIN"}
-              </Button>
-            )}
             {queueSize > 0 ? (
               <Button
                 quiet
@@ -1651,27 +1689,103 @@ export default function App() {
               </Button>
             </View>
           ) : null}
-          <Button
-            quiet
-            onPress={() =>
-              Alert.alert(
-                "Sign out?",
-                "You will need your staff email and password to sign in again.",
-                [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Sign out",
-                    style: "destructive",
-                    onPress: () => void signOut(),
-                  },
-                ],
-              )
-            }
-          >
-            Sign out
-          </Button>
+          <View style={styles.profileActions}>
+            <Pressable
+              onPress={() => setOfflineSetup(true)}
+              style={styles.pinBadge}
+            >
+              <Text style={styles.pinBadgeText}>
+                {pinEnabled ? "Unlock PIN on" : "Add unlock PIN"}
+              </Text>
+            </Pressable>
+            <Button
+              compact
+              quiet
+              onPress={() =>
+                Alert.alert(
+                  "Sign out?",
+                  "You will need your staff email and password to sign in again.",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Sign out",
+                      style: "destructive",
+                      onPress: () => void signOut(),
+                    },
+                  ],
+                )
+              }
+            >
+              Sign out
+            </Button>
+          </View>
           <Text style={styles.version}>Version {APP_VERSION}</Text>
         </ScrollView>
+        <FormModal
+          visible={offlineSetup}
+          title={pinEnabled ? "Change unlock PIN" : "Add unlock PIN"}
+          subtitle="This PIN unlocks the encrypted offline copy on this device."
+          onClose={() => {
+            setOfflineSetup(false);
+            setPinValue("");
+            setPinConfirm("");
+          }}
+        >
+          <TextInput
+            style={styles.input}
+            keyboardType="number-pad"
+            maxLength={8}
+            placeholder="Choose a 4–8 digit PIN"
+            secureTextEntry
+            value={pinValue}
+            onChangeText={setPinValue}
+          />
+          <TextInput
+            style={styles.input}
+            keyboardType="number-pad"
+            maxLength={8}
+            placeholder="Confirm PIN"
+            secureTextEntry
+            value={pinConfirm}
+            onChangeText={setPinConfirm}
+          />
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <Button
+            disabled={busy || pinValue.length < 4 || pinValue !== pinConfirm}
+            onPress={() => {
+              void (async () => {
+                if (!token) return;
+                setBusy(true);
+                setError("");
+                try {
+                  await prepareOffline(token, pinValue);
+                  setOfflineSetup(false);
+                  setPinValue("");
+                  setPinConfirm("");
+                  setPinEnabled(true);
+                  await refreshQueue();
+                  await load(token);
+                } catch (reason) {
+                  setError((reason as Error).message);
+                } finally {
+                  setBusy(false);
+                }
+              })();
+            }}
+          >
+            {busy ? "Saving PIN…" : "Save PIN"}
+          </Button>
+          <Button
+            quiet
+            onPress={() => {
+              setOfflineSetup(false);
+              setPinValue("");
+              setPinConfirm("");
+            }}
+          >
+            Cancel
+          </Button>
+        </FormModal>
         {footer}
       </SafeAreaView>
     );
@@ -1695,8 +1809,13 @@ export default function App() {
         </Text>
       ) : null}
       <ScrollView
+        ref={listRef}
         style={styles.flex}
         contentContainerStyle={styles.content}
+        scrollEventThrottle={16}
+        onScroll={(event) =>
+          setShowJumpTop(event.nativeEvent.contentOffset.y > 280)
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -1739,7 +1858,25 @@ export default function App() {
                     minute: "2-digit",
                   })}
                 </Text>
-                <TripTimer startsAt={active.starts_at} />
+                {canEvents ? (
+                  <Pressable
+                    style={styles.statusChip}
+                    onPress={() => setStatusOpen(true)}
+                  >
+                    <View style={styles.statusDot} />
+                    <Text style={styles.statusChipText}>
+                      {tripStatusLabel(active.trip_run_state)}
+                    </Text>
+                    <Text style={styles.statusChipHint}>▾</Text>
+                  </Pressable>
+                ) : (
+                  <View style={styles.statusChip}>
+                    <View style={styles.statusDot} />
+                    <Text style={styles.statusChipText}>
+                      {tripStatusLabel(active.trip_run_state)}
+                    </Text>
+                  </View>
+                )}
               </View>
               <View style={styles.countsRow}>
                 <View style={styles.countPill}>
@@ -1761,7 +1898,7 @@ export default function App() {
                   <Text style={styles.countLabel}>No-show</Text>
                 </View>
               </View>
-              <Text style={styles.muted}>
+              <Text style={styles.guestsMeta}>
                 {active.guests.reduce(
                   (sum, guest) => sum + guest.party_size,
                   0,
@@ -1778,18 +1915,6 @@ export default function App() {
                   ? ` · ${active.operational_status.replace(/_/g, " ")}`
                   : ""}
               </Text>
-              {canEvents ? (
-                <Pressable
-                  style={styles.statusChip}
-                  onPress={() => setStatusOpen(true)}
-                >
-                  <View style={styles.statusDot} />
-                  <Text style={styles.statusChipText}>
-                    {tripStatusLabel(active.trip_run_state)}
-                  </Text>
-                  <Text style={styles.statusChipHint}>Change</Text>
-                </Pressable>
-              ) : null}
               {!tripStarted(active) ? (
                 canCheckin ? (
                   startOpen ? (
@@ -1835,18 +1960,24 @@ export default function App() {
                       </Button>
                     </View>
                   ) : (
-                    <Button quiet onPress={() => setStartOpen(true)}>
-                      Start trip
-                    </Button>
+                    <>
+                      <Button
+                        quiet
+                        disabled={busy || (active.boarded_guests ?? 0) < 1}
+                        onPress={() => setStartOpen(true)}
+                      >
+                        Start trip
+                      </Button>
+                      {(active.boarded_guests ?? 0) < 1 ? (
+                        <Text style={styles.muted}>
+                          Board at least one guest before starting.
+                        </Text>
+                      ) : null}
+                    </>
                   )
                 ) : null
               ) : (
-                <Text style={styles.muted}>
-                  Trip started
-                  {active.trip_run_state
-                    ? ` · ${active.trip_run_state.replace(/_/g, " ")}`
-                    : ""}
-                </Text>
+                <Text style={styles.muted}>Boarding is closed for this run.</Text>
               )}
             </View>
             {assignedToPickups(active.assignment_roles) &&
@@ -1876,15 +2007,17 @@ export default function App() {
                 ))}
               </View>
             ) : null}
-            <Text style={styles.section}>GUESTS</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Search guests, stay, or pickup"
-              value={rosterQuery}
-              onChangeText={setRosterQuery}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
+            <View style={styles.guestsHead}>
+              <Text style={styles.section}>GUESTS</Text>
+              <TextInput
+                style={[styles.input, styles.guestSearch]}
+                placeholder="Search guests, stay…"
+                value={rosterQuery}
+                onChangeText={setRosterQuery}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
             {!visibleGuests.length ? (
               <Text style={styles.muted}>
                 {rosterQuery.trim()
@@ -1894,18 +2027,39 @@ export default function App() {
             ) : (
               visibleGuests.map((guest) => {
                 const aboard = allAboardLabel(guest.stay);
+                const due = guest.boarding_clearance === "due";
+                const bookingPay = formatMoney(
+                  guest.guest_balance_minor ?? 0,
+                  guest.currency,
+                );
+                const rosterCount = Math.max(
+                  1,
+                  guest.passengers.length || guest.party_size || 1,
+                );
                 return (
                   <View style={styles.card} key={guest.booking_id}>
-                    <Text style={styles.cardTitle}>{guest.lead_name}</Text>
-                    <Text
-                      style={
-                        guest.boarding_clearance === "due"
-                          ? styles.warn
-                          : styles.muted
-                      }
-                    >
-                      {clearanceLabel(guest)}
-                    </Text>
+                    <View style={styles.leadRow}>
+                      <Text style={[styles.cardTitle, styles.grow]}>
+                        {guest.lead_name}
+                      </Text>
+                      {due && canPay ? (
+                        <Button
+                          compact
+                          disabled={busy}
+                          onPress={() => openPay(guest)}
+                        >
+                          {`Pay ${bookingPay}`}
+                        </Button>
+                      ) : (
+                        <Text
+                          style={
+                            due ? styles.warn : styles.settledTag
+                          }
+                        >
+                          {clearanceLabel(guest)}
+                        </Text>
+                      )}
+                    </View>
                     <Text style={styles.muted}>
                       {guest.party_size} guests ·{" "}
                       {pickupLabel(guest.pickup?.kind)}
@@ -1917,65 +2071,85 @@ export default function App() {
                       {stayLabel(guest.stay)}
                       {aboard ? ` · all aboard ${aboard}` : ""}
                     </Text>
-                    {guest.boarding_clearance === "due" && canPay ? (
-                      <Button disabled={busy} onPress={() => openPay(guest)}>
-                        Pay
-                      </Button>
-                    ) : null}
                     {guest.passengers.map((passenger) => {
-                      const action = nextPassengerAction(passenger);
+                      const action = nextPassengerAction(passenger, guest);
+                      const share = suggestedBoardingShare(
+                        guest.guest_balance_minor ?? 0,
+                        rosterCount,
+                      );
+                      const stepLabel =
+                        action?.kind === "pay"
+                          ? `Pay ${formatMoney(share, guest.currency)}`
+                          : action?.label;
                       return (
                         <View style={styles.person} key={passenger.id}>
-                          <Pressable
-                            style={styles.grow}
-                            onPress={() =>
-                              canCheckin
-                                ? openWaiver(guest, passenger)
-                                : undefined
-                            }
-                          >
-                            <Text style={styles.personName}>
-                              {passenger.identity_pending
-                                ? "Guest name required"
-                                : passenger.name}
-                            </Text>
-                            <Text style={styles.muted}>
-                              {passenger.category}
-                              {passenger.is_minor ? " · minor" : ""} ·{" "}
-                              {checkinLabel(passenger.checkin_state)} ·{" "}
-                              {passenger.waiver_signed
-                                ? "waiver signed"
-                                : "waiver required"}
-                            </Text>
-                          </Pressable>
-                          {action && canCheckin ? (
-                            <View style={styles.rowActions}>
+                          <View style={styles.leadRow}>
+                            <Pressable
+                              style={styles.grow}
+                              onPress={() =>
+                                canCheckin
+                                  ? openWaiver(guest, passenger)
+                                  : undefined
+                              }
+                            >
+                              <Text style={styles.personName}>
+                                {passenger.identity_pending
+                                  ? "Guest name required"
+                                  : passenger.name}
+                              </Text>
+                              <Text style={styles.muted}>
+                                {passenger.category}
+                                {passenger.is_minor ? " · minor" : ""} ·{" "}
+                                {checkinLabel(passenger.checkin_state)}
+                                {passenger.waiver_signed
+                                  ? " · waiver signed"
+                                  : " · waiver required"}
+                              </Text>
+                            </Pressable>
+                            {due &&
+                            canPay &&
+                            action &&
+                            action.kind !== "pay" ? (
                               <Button
+                                compact
+                                quiet
                                 disabled={busy}
-                                onPress={() => {
-                                  if (action.kind === "waiver") {
-                                    openWaiver(guest, passenger);
-                                    return;
-                                  }
-                                  if (action.kind === "pay") {
-                                    openPay(guest, passenger);
-                                    return;
-                                  }
-                                  void mutate(
-                                    `/staff/v1/passengers/${passenger.id}/checkin`,
-                                    {
-                                      state:
-                                        action.kind === "clear"
-                                          ? "cleared_to_board"
-                                          : action.kind === "board"
+                                onPress={() => openPay(guest, passenger)}
+                              >
+                                {`Pay ${formatMoney(share, guest.currency)}`}
+                              </Button>
+                            ) : null}
+                          </View>
+                          {canCheckin &&
+                          passenger.checkin_state !== "no_show" &&
+                          passenger.checkin_state !== "boarded" ? (
+                            <View style={styles.rowActions}>
+                              {action ? (
+                                <Button
+                                  disabled={busy}
+                                  onPress={() => {
+                                    if (action.kind === "waiver") {
+                                      openWaiver(guest, passenger);
+                                      return;
+                                    }
+                                    if (action.kind === "pay") {
+                                      openPay(guest, passenger);
+                                      return;
+                                    }
+                                    void mutate(
+                                      `/staff/v1/passengers/${passenger.id}/checkin`,
+                                      {
+                                        state:
+                                          action.kind === "board"
                                             ? "boarded"
                                             : "arrived",
-                                    },
-                                  );
-                                }}
-                              >
-                                {action.label}
-                              </Button>
+                                      },
+                                    );
+                                  }}
+                                >
+                                  {stepLabel ?? action.label}
+                                </Button>
+                              ) : null}
                               <Button
                                 quiet
                                 disabled={busy}
@@ -1983,17 +2157,6 @@ export default function App() {
                               >
                                 No-show
                               </Button>
-                              {guest.boarding_clearance === "due" &&
-                              canPay &&
-                              action.kind !== "pay" ? (
-                                <Button
-                                  quiet
-                                  disabled={busy}
-                                  onPress={() => openPay(guest, passenger)}
-                                >
-                                  Pay
-                                </Button>
-                              ) : null}
                             </View>
                           ) : null}
                         </View>
@@ -2006,75 +2169,8 @@ export default function App() {
           </>
         ) : (
           <>
-            {showBoard ? (
-              <View style={styles.dock}>
-                <Pressable
-                  onPress={() => {
-                    setDock("trips");
-                    setWeatherItem(null);
-                    setWalkUpItem(null);
-                    setWalkUpHeld(null);
-                  }}
-                  style={[
-                    styles.dockTab,
-                    dock === "trips" && styles.dockTabActive,
-                  ]}
-                >
-                  <Text
-                    style={
-                      dock === "trips"
-                        ? styles.dockTabTextActive
-                        : styles.dockTabText
-                    }
-                  >
-                    My trips
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setDock("board")}
-                  style={[
-                    styles.dockTab,
-                    dock === "board" && styles.dockTabActive,
-                  ]}
-                >
-                  <Text
-                    style={
-                      dock === "board"
-                        ? styles.dockTabTextActive
-                        : styles.dockTabText
-                    }
-                  >
-                    Day Board
-                  </Text>
-                </Pressable>
-              </View>
-            ) : null}
             {showBoard && dock === "board" ? (
-              weatherItem ? (
-                <WeatherSheet
-                  item={weatherItem}
-                  busy={busy}
-                  onClose={() => setWeatherItem(null)}
-                  onSave={(status, reason) =>
-                    void saveWeather(weatherItem, status, reason)
-                  }
-                />
-              ) : walkUpItem ? (
-                <WalkUpSheet
-                  item={walkUpItem}
-                  busy={busy}
-                  methods={paymentMethods}
-                  held={walkUpHeld}
-                  error={error}
-                  onClose={() => {
-                    setWalkUpItem(null);
-                    setWalkUpHeld(null);
-                  }}
-                  onCreate={(input) => void createWalkUp(input)}
-                  onPay={(input) => void payWalkUp(input)}
-                />
-              ) : (
-                <DayBoard
+              <DayBoard
                   board={
                     board ?? {
                       date: tenantDay(profile?.tenant.timezone),
@@ -2105,10 +2201,53 @@ export default function App() {
                   onShare={(item) => void sharePickup(item)}
                   onRefresh={() => void load()}
                 />
-              )
+            ) : showBook && dock === "book" ? (
+              <BookBoard
+                items={
+                  bookingBoard?.items?.length
+                    ? bookingBoard.items
+                    : bookDate && bookDate !== board?.date
+                      ? []
+                      : board?.items?.length
+                        ? board.items
+                        : tripsToBookItems(trips)
+                }
+                date={bookDate || tenantDay(profile?.tenant.timezone)}
+                minDate={tenantDay(profile?.tenant.timezone)}
+                busy={busy}
+                onDateChange={(date) => {
+                  setBookDate(date);
+                  if (!token) return;
+                  void (async () => {
+                    setBusy(true);
+                    setError("");
+                    try {
+                      setBookingBoard(
+                        await call<BoardPayload>(
+                          `/crew/v1/board?date=${date}`,
+                          token,
+                        ),
+                      );
+                    } catch (reason) {
+                      if (isUnauthorized(reason)) await clearSession();
+                      else setError((reason as Error).message);
+                    } finally {
+                      setBusy(false);
+                    }
+                  })();
+                }}
+                onBook={(item) => {
+                  setWalkUpHeld(null);
+                  setWalkUpItem(item);
+                }}
+              />
             ) : !trips.length ? (
               <View style={styles.empty}>
-                <Text style={styles.cardTitle}>No assigned trips today</Text>
+                <Text style={styles.cardTitle}>
+                  {profile?.role === "owner" || profile?.role === "admin"
+                    ? "No trips today"
+                    : "No assigned trips today"}
+                </Text>
                 <Text style={styles.muted}>
                   {todayRoleHint(profile?.role, showBoard)}
                 </Text>
@@ -2134,12 +2273,81 @@ export default function App() {
           </>
         )}
       </ScrollView>
+      {showJumpTop ? (
+        <Pressable
+          accessibilityLabel="Back to top"
+          onPress={() => listRef.current?.scrollTo({ y: 0, animated: true })}
+          style={styles.jumpTop}
+        >
+          <Text style={styles.jumpTopText}>↑</Text>
+        </Pressable>
+      ) : null}
       {footer}
+      <FormModal
+        visible={Boolean(walkUpItem)}
+        full
+        title={
+          walkUpHeld
+            ? "Collect to confirm"
+            : dock === "book"
+              ? "Book"
+              : "Walk-in"
+        }
+        subtitle={
+          walkUpItem
+            ? `${walkUpItem.product_name} · ${Math.max(0, walkUpItem.capacity - walkUpItem.committed)} seats left`
+            : undefined
+        }
+        onClose={() => {
+          setWalkUpItem(null);
+          setWalkUpHeld(null);
+        }}
+      >
+        {walkUpItem ? (
+          <WalkUpSheet
+            item={walkUpItem}
+            busy={busy}
+            methods={paymentMethods}
+            held={walkUpHeld}
+            error={error}
+            pickupLocations={
+              (dock === "book" ? bookingBoard : board)?.pickupLocations ?? []
+            }
+            allowUnresolvedPickup={
+              (dock === "book" ? bookingBoard : board)?.allowUnresolvedPickup
+            }
+            currency={collectionCurrency}
+            onClose={() => {
+              setWalkUpItem(null);
+              setWalkUpHeld(null);
+            }}
+            onCreate={(input) => void createWalkUp(input)}
+            onPay={(input) => void payWalkUp(input)}
+          />
+        ) : null}
+      </FormModal>
+      <FormModal
+        visible={Boolean(weatherItem)}
+        title="Weather / close"
+        subtitle={weatherItem?.product_name}
+        onClose={() => setWeatherItem(null)}
+      >
+        {weatherItem ? (
+          <WeatherSheet
+            item={weatherItem}
+            busy={busy}
+            onClose={() => setWeatherItem(null)}
+            onSave={(status, reason) =>
+              void saveWeather(weatherItem, status, reason)
+            }
+          />
+        ) : null}
+      </FormModal>
       <OptionSheet
         title="Update trip status"
         visible={statusOpen}
         selected={active?.trip_run_state ?? undefined}
-        options={tripStatusChoices.map((item) => ({
+        options={selectableTripStatuses(active?.trip_run_state).map((item) => ({
           value: item.value,
           label: item.label,
         }))}
@@ -2155,8 +2363,32 @@ export default function App() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#f3f7f6" },
+  boot: {
+    alignItems: "center",
+    backgroundColor: "#11343B",
+    flex: 1,
+    gap: 16,
+    justifyContent: "center",
+  },
+  bootMark: { height: 88, width: 88, borderRadius: 20 },
+  bootBrand: {
+    color: "#71E2C7",
+    fontSize: 18,
+    fontWeight: "800",
+    letterSpacing: 4,
+  },
+  lockShade: { flex: 1, backgroundColor: "#0e4f4a" },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  login: { flex: 1, justifyContent: "center", padding: 28, gap: 14 },
+  login: {
+    alignSelf: "center",
+    flexGrow: 1,
+    gap: 14,
+    justifyContent: "center",
+    maxWidth: 440,
+    paddingHorizontal: 28,
+    paddingVertical: 36,
+    width: "100%",
+  },
   header: {
     backgroundColor: "white",
     borderBottomColor: "#dce7e4",
@@ -2233,12 +2465,14 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
   },
   quiet: { backgroundColor: "#e7f2f0" },
+  compact: { paddingHorizontal: 10, paddingVertical: 7 },
   disabled: { opacity: 0.5 },
   buttonText: {
     color: "white",
     fontWeight: "700",
   },
   quietText: { color: "#075f59" },
+  compactText: { fontSize: 13 },
   error: { color: "#b42318" },
   errorBanner: { backgroundColor: "#fee4e2", color: "#b42318", padding: 12 },
   queueBanner: { backgroundColor: "#fff3d8", color: "#836322", padding: 12 },
@@ -2261,7 +2495,27 @@ const styles = StyleSheet.create({
   },
   personName: { color: "#17353a", fontWeight: "700" },
   grow: { flex: 1 },
+  profileActions: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    justifyContent: "flex-end",
+  },
+  pinBadge: {
+    backgroundColor: "#e7f2f0",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  pinBadgeText: { color: "#075f59", fontSize: 13, fontWeight: "800" },
   rowActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  signActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    justifyContent: "flex-end",
+  },
   startSheet: { gap: 10, marginTop: 8 },
   warn: { color: "#b42318", fontWeight: "700", lineHeight: 20 },
   empty: { alignItems: "center", gap: 6, paddingVertical: 64 },
@@ -2318,6 +2572,49 @@ const styles = StyleSheet.create({
   },
   countValue: { color: "#17353a", fontSize: 18, fontWeight: "800" },
   countLabel: { color: "#667b7f", fontSize: 11, fontWeight: "700" },
+  guestsMeta: {
+    color: "#667b7f",
+    lineHeight: 20,
+    textAlign: "center",
+  },
+  guestsHead: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+  },
+  guestSearch: {
+    flex: 1,
+    fontSize: 15,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  leadRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  settledTag: {
+    color: "#087b72",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  jumpTop: {
+    alignItems: "center",
+    backgroundColor: "#087b72",
+    borderRadius: 22,
+    bottom: 88,
+    elevation: 4,
+    height: 44,
+    justifyContent: "center",
+    position: "absolute",
+    right: 18,
+    shadowColor: "#061f23",
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    width: 44,
+  },
+  jumpTopText: { color: "white", fontSize: 20, fontWeight: "800" },
   statusChip: {
     alignItems: "center",
     alignSelf: "flex-start",

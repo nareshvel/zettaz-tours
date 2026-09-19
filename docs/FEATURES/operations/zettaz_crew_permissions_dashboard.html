@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-900 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zettaz Crew — Default Roles & Permissions</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Inter Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#f0f6ff',
+              100: '#e0edff',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+              900: '#1e3a8a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+    .badge-yes { @apply bg-emerald-500/10 text-emerald-400 border border-emerald-500/20; }
+    .badge-no { @apply bg-slate-800 text-slate-400 border border-slate-700; }
+    .badge-cond { @apply bg-amber-500/10 text-amber-400 border border-amber-500/20; }
+  </style>
+</head>
+<body class="h-full font-sans antialiased bg-slate-950 text-slate-200 flex flex-col md:flex-row overflow-hidden">
+
+  <!-- Sidebar Navigation -->
+  <aside class="w-full md:w-64 bg-slate-900 border-r border-slate-800 flex-shrink-0 flex flex-col justify-between">
+    <div>
+      <!-- Brand Header -->
+      <div class="p-5 border-b border-slate-800 flex items-center gap-3">
+        <div class="p-2 bg-brand-600 rounded-lg text-white font-bold shadow-lg shadow-brand-500/30">
+          <i data-lucide="shield-check" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-slate-100 tracking-wide text-lg leading-tight">Zettaz Crew</h1>
+          <p class="text-xs text-slate-400">Roles & Permissions Matrix</p>
+        </div>
+      </div>
+
+      <!-- Navigation Links -->
+      <nav class="p-3 space-y-1">
+        <button onclick="switchTab('overview')" id="nav-overview" class="nav-btn active w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-xl text-slate-300 hover:bg-slate-800 transition">
+          <i data-lucide="layout-dashboard" class="w-4 h-4 text-brand-400"></i>
+          Overview & Workflow
+        </button>
+        <button onclick="switchTab('matrix')" id="nav-matrix" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-xl text-slate-300 hover:bg-slate-800 transition">
+          <i data-lucide="table" class="w-4 h-4 text-emerald-400"></i>
+          System Matrix
+        </button>
+        <button onclick="switchTab('grants')" id="nav-grants" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-xl text-slate-300 hover:bg-slate-800 transition">
+          <i data-lucide="key" class="w-4 h-4 text-purple-400"></i>
+          Default Grants
+        </button>
+        <button onclick="switchTab('catalogue')" id="nav-catalogue" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-xl text-slate-300 hover:bg-slate-800 transition">
+          <i data-lucide="book-open" class="w-4 h-4 text-amber-400"></i>
+          Permission Catalogue
+        </button>
+        <button onclick="switchTab('decisions')" id="nav-decisions" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-xl text-slate-300 hover:bg-slate-800 transition">
+          <i data-lucide="help-circle" class="w-4 h-4 text-rose-400"></i>
+          Open Decisions
+        </button>
+      </nav>
+    </div>
+
+    <!-- Metadata Panel Sidebar Footer -->
+    <div class="p-4 border-t border-slate-800 bg-slate-900/50">
+      <div class="text-xs text-slate-400 space-y-2">
+        <div class="flex items-center justify-between">
+          <span>Last Updated:</span>
+          <span class="text-slate-200 font-medium">17 Sep 2026</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span>Audience:</span>
+          <span class="px-2 py-0.5 rounded bg-brand-500/20 text-brand-300 font-semibold text-[10px]">Owner</span>
+        </div>
+        <div class="pt-2 border-t border-slate-800 text-[11px] text-slate-500 flex items-center gap-1.5">
+          <i data-lucide="file-code" class="w-3.5 h-3.5 text-slate-400"></i>
+          <span class="truncate">contracts.ts + migrations</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content Area -->
+  <main class="flex-1 flex flex-col h-full overflow-hidden bg-slate-950">
+
+    <!-- Top Global Header / Search -->
+    <header class="p-4 bg-slate-900/80 border-b border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 backdrop-blur-sm z-10">
+      <div class="relative w-full sm:w-96">
+        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+        <input type="text" id="global-search" placeholder="Search roles, permissions, actions..." 
+          class="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition">
+      </div>
+
+      <!-- Quick Badges Header -->
+      <div class="flex items-center gap-2 overflow-x-auto w-full sm:w-auto">
+        <span class="px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs text-slate-300 flex items-center gap-1.5 shrink-0">
+          <span class="w-2 h-2 rounded-full bg-emerald-400"></span> Single Binary
+        </span>
+        <span class="px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs text-slate-300 flex items-center gap-1.5 shrink-0">
+          <i data-lucide="tablet" class="w-3.5 h-3.5 text-brand-400"></i> Tablet: ≥700pt
+        </span>
+      </div>
+    </header>
+
+    <!-- Scrollable Content View -->
+    <div class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6" id="content-container">
+
+      <!-- SECTION: Overview & Workflow -->
+      <section id="sec-overview" class="space-y-6">
+        
+        <!-- Callout Banner -->
+        <div class="p-5 bg-gradient-to-r from-brand-900/30 via-slate-900 to-slate-900 border border-brand-500/30 rounded-2xl relative overflow-hidden">
+          <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div class="space-y-1 max-w-2xl">
+              <span class="text-xs font-semibold tracking-wider text-brand-400 uppercase">System Core Architecture</span>
+              <h2 class="text-xl font-bold text-white">Zettaz Crew — Access & Permission Model</h2>
+              <p class="text-sm text-slate-300">
+                Zettaz Crew runs as <strong class="text-white">one binary</strong>. Navigation alone never grants access. Server authorization strictly requires an <strong class="text-brand-300">active crew assignment</strong> on the departure for field roles.
+              </p>
+            </div>
+            <div class="bg-slate-950/80 p-3 rounded-xl border border-slate-800 text-xs space-y-1 shrink-0">
+              <div class="text-slate-400">Source of Truth:</div>
+              <code class="text-brand-300 font-mono block">packages/shared/src/contracts.ts</code>
+              <div class="text-slate-500 text-[10px] mt-1">+ System-role migrations (052, 080, 086, 089)</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- How To Change A Default Steps -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <h3 class="font-semibold text-slate-100 flex items-center gap-2">
+              <i data-lucide="git-pull-request" class="w-5 h-5 text-brand-400"></i>
+              How to Change a Default Grant Workflow
+            </h3>
+            <span class="text-xs text-slate-400">4-Step Protocol</span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <!-- Step 1 -->
+            <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80 space-y-2 relative">
+              <div class="w-7 h-7 rounded-lg bg-brand-500/10 text-brand-400 flex items-center justify-center text-xs font-bold border border-brand-500/20">1</div>
+              <h4 class="text-sm font-medium text-slate-200">Edit Code Grants</h4>
+              <p class="text-xs text-slate-400">Edit <code class="text-brand-300 font-mono">grants</code> contract in <code class="text-slate-300">contracts.ts</code>.</p>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80 space-y-2 relative">
+              <div class="w-7 h-7 rounded-lg bg-brand-500/10 text-brand-400 flex items-center justify-center text-xs font-bold border border-brand-500/20">2</div>
+              <h4 class="text-sm font-medium text-slate-200">Add SQL Migration</h4>
+              <p class="text-xs text-slate-400">Add numbered SQL migration. Never rewrite an applied migration.</p>
+            </div>
+
+            <!-- Step 3 -->
+            <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80 space-y-2 relative">
+              <div class="w-7 h-7 rounded-lg bg-brand-500/10 text-brand-400 flex items-center justify-center text-xs font-bold border border-brand-500/20">3</div>
+              <h4 class="text-sm font-medium text-slate-200">Session Reset</h4>
+              <p class="text-xs text-slate-400">Staff must <strong class="text-amber-400">sign out & in</strong> to pick up newly assigned grants.</p>
+            </div>
+
+            <!-- Step 4 -->
+            <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80 space-y-2 relative">
+              <div class="w-7 h-7 rounded-lg bg-brand-500/10 text-brand-400 flex items-center justify-center text-xs font-bold border border-brand-500/20">4</div>
+              <h4 class="text-sm font-medium text-slate-200">Update Docs</h4>
+              <p class="text-xs text-slate-400">Update dashboard documentation tables in the same pull request.</p>
+            </div>
+          </div>
+
+          <div class="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 flex items-center gap-3 text-xs text-amber-300">
+            <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 text-amber-400"></i>
+            <span><strong>Guardrail:</strong> Do not hard-code partner products, prices, or partner rules into these presets. Custom tenant roles remain tenant-controlled.</span>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- SECTION: System Roles vs Crew App Matrix -->
+      <section id="sec-matrix" class="space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 class="text-lg font-bold text-slate-100">System Roles vs Crew App Capability Matrix</h3>
+            <p class="text-xs text-slate-400">Behavior and access level across functional areas of the app</p>
+          </div>
+          <!-- Filter Badges -->
+          <div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0" id="matrix-filter-container">
+            <button onclick="filterMatrix('all')" class="matrix-filter-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-brand-600 text-white">All Roles</button>
+            <button onclick="filterMatrix('field')" class="matrix-filter-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 text-slate-400 hover:text-slate-200">Field Roles</button>
+            <button onclick="filterMatrix('desk')" class="matrix-filter-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 text-slate-400 hover:text-slate-200">Desk / Mgmt</button>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs border-collapse" id="matrix-table">
+              <thead>
+                <tr class="bg-slate-950/80 border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
+                  <th class="p-3.5 sticky left-0 bg-slate-950 z-10 border-r border-slate-800 min-w-[140px]">Role</th>
+                  <th class="p-3.5 min-w-[140px]">Phone Today</th>
+                  <th class="p-3.5 min-w-[150px]">Scan / Waiver / Check-in</th>
+                  <th class="p-3.5 min-w-[120px]">Boarding Pay</th>
+                  <th class="p-3.5 min-w-[130px]">Trip Status / Start</th>
+                  <th class="p-3.5 min-w-[140px]">Tablet Day Board</th>
+                  <th class="p-3.5 min-w-[100px]">Walk-up</th>
+                  <th class="p-3.5 min-w-[110px]">Weather Hold</th>
+                  <th class="p-3.5 min-w-[130px]">Print/Share Pickup</th>
+                  <th class="p-3.5 min-w-[120px]">Offline Snapshot</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60 font-medium text-slate-300" id="matrix-tbody">
+                <!-- Javascript will populate rows -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION: Default Grants Tags View -->
+      <section id="sec-grants" class="space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-lg font-bold text-slate-100">Default Grants by System Role</h3>
+            <p class="text-xs text-slate-400">Directly mapped from system contracts and migration updates</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="grants-grid">
+          <!-- Populated by JS -->
+        </div>
+      </section>
+
+      <!-- SECTION: Permission Catalogue -->
+      <section id="sec-catalogue" class="space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-lg font-bold text-slate-100">Crew Permission Catalogue</h3>
+            <p class="text-xs text-slate-400">Key permissions relevant to Crew operations and capabilities unlocked</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="catalogue-grid">
+          <!-- Populated by JS -->
+        </div>
+      </section>
+
+      <!-- SECTION: Departure Assignments & Open Decisions -->
+      <section id="sec-decisions" class="space-y-6">
+        
+        <!-- Assignment Roles Info Box -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
+          <div class="flex items-center gap-2 text-brand-400 font-bold">
+            <i data-lucide="badge-info" class="w-5 h-5"></i>
+            Departure Assignment Roles vs Staff Roles
+          </div>
+          <p class="text-sm text-slate-300 leading-relaxed">
+            Departure assignment roles (e.g. <code class="text-brand-300 bg-slate-950 px-1.5 py-0.5 rounded">guide</code>, <code class="text-brand-300 bg-slate-950 px-1.5 py-0.5 rounded">driver</code>, <code class="text-brand-300 bg-slate-950 px-1.5 py-0.5 rounded">skipper</code>) are <strong>job labels on departure_assignments.assignment_role</strong>. They are distinct from the system Staff Role.
+          </p>
+          <div class="p-3 bg-slate-950 rounded-xl border border-slate-800/80 text-xs text-slate-400">
+            <strong>Example:</strong> A person with the Staff role <span class="text-white">Driver</span> who is assigned as <span class="text-white">skipper</span> for a departure will still only see that assigned trip on their "Today" screen.
+          </div>
+        </div>
+
+        <!-- Open Decisions Interactive Panel -->
+        <div class="bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 rounded-2xl p-5 space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div>
+              <h3 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                <i data-lucide="help-circle" class="w-5 h-5 text-rose-400"></i>
+                Open System Decisions (Owner Review)
+              </h3>
+              <p class="text-xs text-slate-400">Key permission architecture decisions pending owner approval</p>
+            </div>
+            <span class="px-2.5 py-1 bg-rose-500/10 text-rose-400 border border-rose-500/20 text-xs font-semibold rounded-full">Action Needed</span>
+          </div>
+
+          <div class="space-y-3">
+            <!-- Decision 1 -->
+            <div class="p-4 bg-slate-900/80 rounded-xl border border-slate-800 flex items-start gap-3">
+              <input type="checkbox" id="dec1" class="mt-1 accent-brand-500 w-4 h-4 rounded cursor-pointer">
+              <label for="dec1" class="text-xs text-slate-300 cursor-pointer space-y-1 block">
+                <span class="font-semibold text-slate-100 text-sm block">Reservations Default Grants for Dock Walk-up</span>
+                Whether Reservations should get <code class="text-brand-300 font-mono bg-slate-950 px-1 py-0.5 rounded">crew.trip.read</code> by default so dock walk-up works on mobile phones as well as tablets.
+              </label>
+            </div>
+
+            <!-- Decision 2 -->
+            <div class="p-4 bg-slate-900/80 rounded-xl border border-slate-800 flex items-start gap-3">
+              <input type="checkbox" id="dec2" class="mt-1 accent-brand-500 w-4 h-4 rounded cursor-pointer">
+              <label for="dec2" class="text-xs text-slate-300 cursor-pointer space-y-1 block">
+                <span class="font-semibold text-slate-100 text-sm block">Finance Crew Pay Access without Trip Assignment</span>
+                Whether Finance staff should be able to open Crew Pay without requiring a specific crew assignment.
+              </label>
+            </div>
+
+            <!-- Decision 3 -->
+            <div class="p-4 bg-slate-900/80 rounded-xl border border-slate-800 flex items-start gap-3">
+              <input type="checkbox" id="dec3" checked class="mt-1 accent-brand-500 w-4 h-4 rounded cursor-pointer">
+              <label for="dec3" class="text-xs text-slate-300 cursor-pointer space-y-1 block">
+                <span class="font-semibold text-slate-100 text-sm block">Custom Roles Scope Policy</span>
+                Custom roles created under Staff → Roles are not listed in this matrix; copy a system role and modify grants there rather than hard-coding tenant overrides in code.
+              </label>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="fixed bottom-5 right-5 bg-slate-800 border border-brand-500/50 text-slate-100 px-4 py-2.5 rounded-xl shadow-2xl text-xs flex items-center gap-2 transform translate-y-20 opacity-0 transition-all duration-300 z-50">
+    <i data-lucide="check-circle" class="w-4 h-4 text-brand-400"></i>
+    <span id="toast-msg">Copied permission to clipboard</span>
+  </div>
+
+  <script>
+    // System Roles Matrix Data
+    const matrixData = [
+      {
+        role: 'Guide',
+        category: 'field',
+        phoneToday: 'Assigned trips only',
+        scanWaiver: 'Yes, assigned',
+        boardingPay: 'Assigned',
+        tripStatus: 'Assigned',
+        tabletDayBoard: 'No (manifest.read absent)',
+        walkUp: 'No',
+        weatherHold: 'No',
+        printPickup: 'No',
+        offlineSnapshot: 'Yes'
+      },
+      {
+        role: 'Driver / skipper',
+        category: 'field',
+        phoneToday: 'Assigned trips only',
+        scanWaiver: 'Yes, assigned',
+        boardingPay: 'Assigned',
+        tripStatus: 'Assigned',
+        tabletDayBoard: 'No',
+        walkUp: 'No',
+        weatherHold: 'No',
+        printPickup: 'No',
+        offlineSnapshot: 'Yes'
+      },
+      {
+        role: 'Crew',
+        category: 'field',
+        phoneToday: 'Assigned trips only',
+        scanWaiver: 'Yes, assigned',
+        boardingPay: 'Assigned',
+        tripStatus: 'Assigned',
+        tabletDayBoard: 'No',
+        walkUp: 'No',
+        weatherHold: 'No',
+        printPickup: 'No',
+        offlineSnapshot: 'Yes'
+      },
+      {
+        role: 'Captain',
+        category: 'field',
+        phoneToday: 'Assigned trips only',
+        scanWaiver: 'Yes, assigned',
+        boardingPay: 'Assigned',
+        tripStatus: 'Assigned',
+        tabletDayBoard: 'No',
+        walkUp: 'No',
+        weatherHold: 'No',
+        printPickup: 'No',
+        offlineSnapshot: 'Yes'
+      },
+      {
+        role: 'Dispatcher',
+        category: 'desk',
+        phoneToday: 'Assigned trips if also crew',
+        scanWaiver: 'Yes if assigned',
+        boardingPay: 'If assigned',
+        tripStatus: 'If assigned',
+        tabletDayBoard: 'Yes',
+        walkUp: 'No',
+        weatherHold: 'Yes',
+        printPickup: 'Yes',
+        offlineSnapshot: 'If crew.trip.read (yes)'
+      },
+      {
+        role: 'Operations manager',
+        category: 'desk',
+        phoneToday: 'Assigned trips if also crew',
+        scanWaiver: 'Yes if assigned',
+        boardingPay: 'If assigned',
+        tripStatus: 'If assigned',
+        tabletDayBoard: 'Yes',
+        walkUp: 'No',
+        weatherHold: 'Yes',
+        printPickup: 'Yes',
+        offlineSnapshot: 'Yes'
+      },
+      {
+        role: 'Owner',
+        category: 'desk',
+        phoneToday: 'Assigned trips if also crew',
+        scanWaiver: 'Yes if assigned',
+        boardingPay: 'If assigned',
+        tripStatus: 'If assigned',
+        tabletDayBoard: 'Yes',
+        walkUp: 'Yes (bookings.write)',
+        weatherHold: 'Yes',
+        printPickup: 'Yes',
+        offlineSnapshot: 'Yes'
+      },
+      {
+        role: 'Administrator',
+        category: 'desk',
+        phoneToday: 'Assigned trips if also crew',
+        scanWaiver: 'Yes if assigned',
+        boardingPay: 'If assigned',
+        tripStatus: 'If assigned',
+        tabletDayBoard: 'Yes',
+        walkUp: 'Yes',
+        weatherHold: 'Yes',
+        printPickup: 'Yes',
+        offlineSnapshot: 'Yes'
+      },
+      {
+        role: 'Reservations',
+        category: 'desk',
+        phoneToday: 'Empty unless assigned & crew.trip.read',
+        scanWaiver: 'No by default',
+        boardingPay: 'No (payment.write on web)',
+        tripStatus: 'No',
+        tabletDayBoard: 'No',
+        walkUp: 'Tablet + bookings.write (Today 403 w/o crew.trip.read)',
+        weatherHold: 'No',
+        printPickup: 'Print on web; Crew needs print.jobs.* + board session',
+        offlineSnapshot: 'No'
+      },
+      {
+        role: 'Finance',
+        category: 'desk',
+        phoneToday: 'Empty (no crew.trip.read)',
+        scanWaiver: 'No',
+        boardingPay: 'Web payments; Crew needs checkin.write/payment.write',
+        tripStatus: 'No',
+        tabletDayBoard: 'No',
+        walkUp: 'No',
+        weatherHold: 'No',
+        printPickup: 'Print on web',
+        offlineSnapshot: 'No'
+      },
+      {
+        role: 'Auditor',
+        category: 'desk',
+        phoneToday: 'Empty',
+        scanWaiver: 'No',
+        boardingPay: 'No',
+        tripStatus: 'No',
+        tabletDayBoard: 'Profile / read-only web',
+        walkUp: 'No',
+        weatherHold: 'No',
+        printPickup: 'No',
+        offlineSnapshot: 'No'
+      },
+      {
+        role: 'Resource manager',
+        category: 'desk',
+        phoneToday: 'Empty',
+        scanWaiver: 'No',
+        boardingPay: 'No',
+        tripStatus: 'No',
+        tabletDayBoard: 'No',
+        walkUp: 'No',
+        weatherHold: 'No',
+        printPickup: 'No',
+        offlineSnapshot: 'No'
+      },
+      {
+        role: 'Partner manager',
+        category: 'desk',
+        phoneToday: 'Empty',
+        scanWaiver: 'No',
+        boardingPay: 'No',
+        tripStatus: 'No',
+        tabletDayBoard: 'No',
+        walkUp: 'No',
+        weatherHold: 'No',
+        printPickup: 'No',
+        offlineSnapshot: 'No'
+      }
+    ];
+
+    // Permission Catalogue Data
+    const permissionCatalogue = [
+      { key: 'crew.trip.read', desc: 'Sign-in to Today, device enroll, offline snapshot, trip-run events, scan-token resolve' },
+      { key: 'checkin.write', desc: 'Passenger arrived / board / no-show, start trip (with assignment for field roles), boarding Pay' },
+      { key: 'manifest.read', desc: 'Tablet Day Board of all tenant departures that day' },
+      { key: 'bookings.write', desc: 'Tablet walk-up hold + confirm' },
+      { key: 'operations.write', desc: 'Weather hold / close / reopen' },
+      { key: 'print.jobs.create', desc: 'Record a pickup-list print job when sharing' },
+      { key: 'print.jobs.read', desc: 'Read pickup-list print jobs' },
+      { key: 'payment.write', desc: 'Alternate Pay gate (desk finance collecting at boarding)' },
+      { key: 'members.write', desc: 'Revoke another person’s enrolled device' }
+    ];
+
+    // Grants Map Data
+    const defaultGrants = [
+      {
+        role: 'owner',
+        grants: ['config.write', 'members.write', 'catalog.write', 'catalog.read', 'bookings.write', 'bookings.read', 'inventory.overbook', 'payment.write', 'payment.correct', 'manifest.read', 'operations.write', 'waiver.template.publish', 'resources.write', 'documents.expiry.manage', 'assignments.write', 'safety.assignment.override', 'crew.trip.read', 'checkin.write', 'print.templates.manage', 'print.jobs.create', 'print.jobs.read', 'partner.manage', 'partner.collection.record', 'partner.collection.verify', 'partner.statement.read', 'integration.manage', 'integration.inbox.read', 'notifications.request', 'notifications.read', 'audit.read']
+      },
+      {
+        role: 'admin',
+        grants: ['config.write', 'catalog.write', 'catalog.read', 'bookings.write', 'bookings.read', 'manifest.read', 'operations.write', 'resources.write', 'documents.expiry.manage', 'assignments.write', 'crew.trip.read', 'checkin.write', 'print.templates.manage', 'print.jobs.create', 'print.jobs.read', 'partner.manage', 'integration.manage', 'integration.inbox.read', 'notifications.request', 'notifications.read']
+      },
+      {
+        role: 'reservations',
+        grants: ['catalog.read', 'bookings.write', 'bookings.read', 'payment.write', 'manifest.read', 'print.jobs.create', 'print.jobs.read', 'partner.collection.record', 'notifications.request', 'notifications.read']
+      },
+      {
+        role: 'dispatcher',
+        grants: ['catalog.read', 'bookings.read', 'manifest.read', 'operations.write', 'assignments.write', 'crew.trip.read', 'checkin.write', 'print.jobs.create', 'print.jobs.read']
+      },
+      {
+        role: 'finance',
+        grants: ['catalog.read', 'bookings.read', 'payment.write', 'payment.correct', 'audit.read', 'print.jobs.create', 'print.jobs.read', 'partner.collection.record', 'partner.collection.verify', 'partner.statement.read']
+      },
+      {
+        role: 'auditor',
+        grants: ['catalog.read', 'bookings.read', 'manifest.read', 'audit.read', 'partner.statement.read', 'integration.inbox.read', 'notifications.read']
+      },
+      {
+        role: 'guide / driver / crew / captain',
+        grants: ['crew.trip.read', 'checkin.write']
+      },
+      {
+        role: 'resource_manager',
+        grants: ['catalog.read', 'manifest.read', 'resources.write', 'documents.expiry.manage']
+      },
+      {
+        role: 'operations_manager',
+        grants: ['catalog.read', 'bookings.read', 'inventory.overbook', 'manifest.read', 'operations.write', 'resources.write', 'documents.expiry.manage', 'assignments.write', 'crew.trip.read', 'checkin.write', 'print.jobs.create', 'print.jobs.read']
+      },
+      {
+        role: 'partner_manager',
+        grants: ['catalog.read', 'bookings.read', 'partner.manage']
+      }
+    ];
+
+    // Helper to render badge based on value text
+    function getBadgeClass(text) {
+      const lower = text.toLowerCase();
+      if (lower.startsWith('yes')) return 'badge-yes';
+      if (lower.startsWith('no')) return 'badge-no';
+      return 'badge-cond';
+    }
+
+    // Render Matrix Table
+    function renderMatrix(filter = 'all', searchQuery = '') {
+      const tbody = document.getElementById('matrix-tbody');
+      tbody.innerHTML = '';
+
+      const filtered = matrixData.filter(item => {
+        const matchesCategory = filter === 'all' || item.category === filter;
+        const matchesSearch = searchQuery === '' || 
+          item.role.toLowerCase().includes(searchQuery) ||
+          Object.values(item).some(val => val.toLowerCase().includes(searchQuery));
+        return matchesCategory && matchesSearch;
+      });
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="10" class="p-6 text-center text-slate-500">No matching system roles found</td></tr>`;
+        return;
+      }
+
+      filtered.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-800/40 transition-colors';
+
+        tr.innerHTML = `
+          <td class="p-3.5 font-bold text-slate-100 sticky left-0 bg-slate-900 border-r border-slate-800">${row.role}</td>
+          <td class="p-3.5"><span class="px-2 py-1 rounded-md text-[11px] ${getBadgeClass(row.phoneToday)}">${row.phoneToday}</span></td>
+          <td class="p-3.5"><span class="px-2 py-1 rounded-md text-[11px] ${getBadgeClass(row.scanWaiver)}">${row.scanWaiver}</span></td>
+          <td class="p-3.5"><span class="px-2 py-1 rounded-md text-[11px] ${getBadgeClass(row.boardingPay)}">${row.boardingPay}</span></td>
+          <td class="p-3.5"><span class="px-2 py-1 rounded-md text-[11px] ${getBadgeClass(row.tripStatus)}">${row.tripStatus}</span></td>
+          <td class="p-3.5"><span class="px-2 py-1 rounded-md text-[11px] ${getBadgeClass(row.tabletDayBoard)}">${row.tabletDayBoard}</span></td>
+          <td class="p-3.5"><span class="px-2 py-1 rounded-md text-[11px] ${getBadgeClass(row.walkUp)}">${row.walkUp}</span></td>
+          <td class="p-3.5"><span class="px-2 py-1 rounded-md text-[11px] ${getBadgeClass(row.weatherHold)}">${row.weatherHold}</span></td>
+          <td class="p-3.5"><span class="px-2 py-1 rounded-md text-[11px] ${getBadgeClass(row.printPickup)}">${row.printPickup}</span></td>
+          <td class="p-3.5"><span class="px-2 py-1 rounded-md text-[11px] ${getBadgeClass(row.offlineSnapshot)}">${row.offlineSnapshot}</span></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // Render Grants Grid
+    function renderGrants(searchQuery = '') {
+      const container = document.getElementById('grants-grid');
+      container.innerHTML = '';
+
+      const filtered = defaultGrants.filter(item => {
+        return searchQuery === '' || 
+          item.role.toLowerCase().includes(searchQuery) ||
+          item.grants.some(g => g.toLowerCase().includes(searchQuery));
+      });
+
+      filtered.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3';
+        
+        const tagsHtml = item.grants.map(grant => {
+          const isCrewKey = grant.startsWith('crew.') || grant.startsWith('checkin.');
+          const bg = isCrewKey ? 'bg-brand-500/10 text-brand-300 border-brand-500/20' : 'bg-slate-950 text-slate-300 border-slate-800';
+          return `<button onclick="copyToClipboard('${grant}')" class="px-2 py-1 rounded-md text-[11px] font-mono border ${bg} hover:border-slate-600 transition flex items-center gap-1 group">
+            <span>${grant}</span>
+            <i data-lucide="copy" class="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 text-slate-400"></i>
+          </button>`;
+        }).join('');
+
+        card.innerHTML = `
+          <div class="flex items-center justify-between border-b border-slate-800/80 pb-2">
+            <h4 class="font-bold text-slate-100 capitalize text-sm">${item.role}</h4>
+            <span class="text-[10px] text-slate-500 font-mono">${item.grants.length} permissions</span>
+          </div>
+          <div class="flex flex-wrap gap-1.5">
+            ${tagsHtml}
+          </div>
+        `;
+        container.appendChild(card);
+      });
+      lucide.createIcons();
+    }
+
+    // Render Catalogue Cards
+    function renderCatalogue(searchQuery = '') {
+      const container = document.getElementById('catalogue-grid');
+      container.innerHTML = '';
+
+      const filtered = permissionCatalogue.filter(item => {
+        return searchQuery === '' || 
+          item.key.toLowerCase().includes(searchQuery) ||
+          item.desc.toLowerCase().includes(searchQuery);
+      });
+
+      filtered.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between gap-3 hover:border-slate-700 transition';
+        card.innerHTML = `
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <code class="text-xs font-mono font-bold text-brand-400 bg-brand-500/10 px-2 py-0.5 rounded border border-brand-500/20">${item.key}</code>
+              <button onclick="copyToClipboard('${item.key}')" class="text-slate-500 hover:text-slate-300 transition">
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+            <p class="text-xs text-slate-300 leading-relaxed">${item.desc}</p>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+      lucide.createIcons();
+    }
+
+    // Switch active Tab
+    function switchTab(tabId) {
+      document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('bg-slate-800', 'text-white'));
+      const activeNav = document.getElementById(`nav-${tabId}`);
+      if (activeNav) activeNav.classList.add('bg-slate-800', 'text-white');
+
+      // Scroll to relevant section smoothly
+      const targetSec = document.getElementById(`sec-${tabId}`);
+      if (targetSec) {
+        targetSec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+
+    // Matrix Filter Helper
+    let currentMatrixFilter = 'all';
+    function filterMatrix(cat) {
+      currentMatrixFilter = cat;
+      document.querySelectorAll('.matrix-filter-btn').forEach(btn => {
+        btn.classList.remove('bg-brand-600', 'text-white');
+        btn.classList.add('bg-slate-800', 'text-slate-400');
+      });
+      event.target.classList.remove('bg-slate-800', 'text-slate-400');
+      event.target.classList.add('bg-brand-600', 'text-white');
+      
+      const query = document.getElementById('global-search').value.toLowerCase();
+      renderMatrix(currentMatrixFilter, query);
+    }
+
+    // Copy to clipboard notification
+    function copyToClipboard(text) {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-msg').innerText = `Copied "${text}"`;
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      setTimeout(() => {
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 2500);
+    }
+
+    // Global Search Listener
+    document.getElementById('global-search').addEventListener('input', (e) => {
+      const query = e.target.value.toLowerCase().trim();
+      renderMatrix(currentMatrixFilter, query);
+      renderGrants(query);
+      renderCatalogue(query);
+    });
+
+    // Initial Load
+    window.onload = function() {
+      lucide.createIcons();
+      renderMatrix();
+      renderGrants();
+      renderCatalogue();
+    };
+  </script>
+</body>
+</html>

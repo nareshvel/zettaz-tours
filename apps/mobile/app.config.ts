@@ -11,14 +11,16 @@ const config: ExpoConfig = {
   name: "Zettaz Crew",
   slug: "zettaz-crew",
   scheme: "zettaz-crew",
-  version: "1.0.0",
-  orientation: "portrait",
+  version: "1.0.1",
+  orientation: "default",
   userInterfaceStyle: "light",
   icon: "./assets/icon.png",
+  primaryColor: "#11343B",
   ios: {
     supportsTablet: true,
     bundleIdentifier: "com.zettaz.crew",
-    buildNumber: "1",
+    buildNumber: "2",
+    icon: "./assets/icon.png",
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSCameraUsageDescription:
@@ -76,7 +78,7 @@ const config: ExpoConfig = {
       {
         backgroundColor: "#11343B",
         image: "./assets/splash-icon.png",
-        imageWidth: 220,
+        imageWidth: 148,
       },
     ],
   ],

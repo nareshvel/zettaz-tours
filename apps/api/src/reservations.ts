@@ -294,13 +294,18 @@ export class ReservationService {
           attribution[0]?.collection_mode === "partner_invoice" ||
           attribution[0]?.collection_mode === "partner_collects_for_tenant";
         const paid = await this.finance.paid(tx, actor, bookingId);
+        const tabOk =
+          data.dockTab === true && booking.source === "walk_in";
         if (
           !partnerSettlement &&
+          !tabOk &&
           BigInt(paid) * 100n <
             BigInt(quote.totalMinor) * BigInt(quote.minimumPaidPercent)
         )
           throw new ConflictException("Required payment has not settled");
-        await this.inventory.consume(tx, actor, booking.hold_id);
+        await this.inventory.consume(tx, actor, booking.hold_id, {
+          allowAfterSchedule: booking.source === "walk_in",
+        });
         await tx.query(
           `UPDATE bookings SET state='confirmed',version=version+1 WHERE tenant_id=$1 AND id=$2`,
           [actor.tenantId, bookingId],

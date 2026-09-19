@@ -19,6 +19,8 @@ import { randomUUID } from "node:crypto";
 import { DateTime } from "luxon";
 import { z } from "zod";
 import {
+  bookingConcessionSchema,
+  bookingSchema,
   isFieldCrewRole,
   partySchema,
   paymentSchema,
@@ -59,6 +61,12 @@ const walkUpCreate = z
     leadName: z.string().trim().min(1).max(120),
     leadEmail: z.string().email().max(254),
     leadPhone: z.string().trim().max(40).default(""),
+    pickup: bookingSchema.shape.pickup.optional(),
+    stay: bookingSchema.shape.stay.optional(),
+    guestNames: z.array(z.string().trim().max(120)).max(30).optional(),
+    concession: bookingConcessionSchema.optional(),
+    collection: z.enum(["now", "tab", "link"]).optional(),
+    paymentMethod: z.string().trim().min(2).max(40).optional(),
     payment: paymentSchema.optional(),
   })
   .strict();
@@ -75,23 +83,28 @@ const crewPrintSchema = z
   })
   .strict();
 
-function pendingRoster(party: Record<string, number>, leadName: string) {
+function pendingRoster(
+  party: Record<string, number>,
+  leadName: string,
+  guestNames: string[] = [],
+) {
   const passengers: {
     name: string;
     category: string;
     isMinor: boolean;
     identityPending: boolean;
   }[] = [];
+  const extras = guestNames.map((name) => name.trim()).filter(Boolean);
+  let extraIndex = 0;
   for (const [category, count] of Object.entries(party)) {
     for (let i = 0; i < count; i++) {
       const first = passengers.length === 0;
+      const named = first ? leadName : extras[extraIndex++];
       passengers.push({
-        name: first
-          ? leadName
-          : `Guest ${passengers.length + 1} · name required`,
+        name: named ?? `Guest ${passengers.length + 1} · name required`,
         category,
         isMinor: /(child|infant|minor|kid)/i.test(category),
-        identityPending: !first,
+        identityPending: !named,
       });
     }
   }
@@ -135,8 +148,27 @@ export class CrewService {
       ]);
       const date =
         input.date ?? DateTime.now().setZone(tenant.timezone).toISODate();
+      const deskToday = actor.role === "owner" || actor.role === "admin";
       const { rows: trips } = await tx.query(
-        `SELECT d.id,d.starts_at,d.local_date,d.operational_status,p.name AS product_name,
+        deskToday
+          ? `SELECT d.id,d.starts_at,d.local_date,d.operational_status,p.name AS product_name,
+          p.cover_path,
+          r.state AS trip_run_state,
+          COALESCE(
+            ARRAY_AGG(a.assignment_role ORDER BY a.assignment_role)
+              FILTER (WHERE a.crew_actor_id IS NOT NULL),
+            '{}'::text[]
+          ) AS assignment_roles
+         FROM departures d
+         JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id
+         LEFT JOIN trip_runs r ON r.tenant_id=d.tenant_id AND r.departure_id=d.id
+         LEFT JOIN departure_assignments a
+           ON a.tenant_id=d.tenant_id AND a.departure_id=d.id
+           AND a.status='active' AND a.crew_actor_id=$2
+         WHERE d.tenant_id=$1 AND d.local_date=$3
+         GROUP BY d.id,d.starts_at,d.local_date,d.operational_status,p.name,p.cover_path,r.state
+         ORDER BY d.starts_at,d.id`
+          : `SELECT d.id,d.starts_at,d.local_date,d.operational_status,p.name AS product_name,
           p.cover_path,
           r.state AS trip_run_state,
           array_agg(a.assignment_role ORDER BY a.assignment_role) AS assignment_roles
@@ -302,14 +334,16 @@ export class CrewService {
       key,
       input,
       async (tx) => {
-        const assigned = await tx.query(
-          "SELECT 1 FROM departure_assignments WHERE tenant_id=$1 AND crew_actor_id=$2 AND departure_id=$3 AND status='active'",
-          [actor.tenantId, actor.actorId, departure],
-        );
-        if (!assigned.rowCount)
-          throw new BadRequestException(
-            "Crew can update only an assigned departure",
+        if (fieldRole(actor.role)) {
+          const assigned = await tx.query(
+            "SELECT 1 FROM departure_assignments WHERE tenant_id=$1 AND crew_actor_id=$2 AND departure_id=$3 AND status='active'",
+            [actor.tenantId, actor.actorId, departure],
           );
+          if (!assigned.rowCount)
+            throw new BadRequestException(
+              "Crew can update only an assigned departure",
+            );
+        }
         const prior = (
           await tx.query(
             "SELECT state,version FROM trip_runs WHERE tenant_id=$1 AND departure_id=$2 FOR UPDATE",
@@ -436,6 +470,13 @@ export class CrewService {
               [actor.tenantId],
             )
           ).rows[0] ?? null,
+        pickupLocations: (
+          await tx.query(
+            "SELECT id,name FROM pickup_locations WHERE tenant_id=$1 AND active ORDER BY name,id",
+            [actor.tenantId],
+          )
+        ).rows,
+        allowUnresolvedPickup: Boolean(tenant.config?.allowUnresolvedPickup),
       };
     });
     const board = await this.dispatch.board(actor, { date: meta.date });
@@ -459,6 +500,8 @@ export class CrewService {
       paymentMethods: meta.paymentMethods,
       collectionCurrency: meta.collectionCurrency,
       waiverTemplate: meta.waiverTemplate,
+      pickupLocations: meta.pickupLocations,
+      allowUnresolvedPickup: meta.allowUnresolvedPickup,
       capabilities: {
         walkUp: actor.permissions.includes("bookings.write"),
         weather: actor.permissions.includes("operations.write"),
@@ -516,7 +559,7 @@ export class CrewService {
       );
       if (booking.source !== "walk_in")
         throw new BadRequestException(
-          "Only walk-up reservations can be completed here",
+          "Only walk-in reservations can be completed here",
         );
       if (booking.state === "confirmed")
         return {
@@ -542,28 +585,52 @@ export class CrewService {
       };
     }
     const input = parse(walkUpCreate, raw);
-    const hold = await this.inventory.create(actor, `${key}:hold`, {
-      departureId: input.departureId,
-      party: input.party,
-    });
+    const hold = await this.inventory.create(
+      actor,
+      `${key}:hold`,
+      {
+        departureId: input.departureId,
+        party: input.party,
+      },
+      { allowAfterSchedule: true },
+    );
     const booking = await this.reservations.create(actor, `${key}:booking`, {
       holdId: hold.holdId,
       leadName: input.leadName,
       leadEmail: input.leadEmail,
       leadPhone: input.leadPhone,
       source: "walk_in",
-      pickup: { kind: "none" },
-      stay: { kind: "none" },
+      pickup: input.pickup ?? { kind: "none" },
+      stay: input.stay ?? { kind: "none" },
+      ...(input.concession ? { concession: input.concession } : {}),
     });
     await this.passengers.replace(actor, booking.bookingId, `${key}:roster`, {
-      passengers: pendingRoster(input.party, input.leadName),
+      passengers: pendingRoster(
+        input.party,
+        input.leadName,
+        input.guestNames ?? [],
+      ),
     });
-    if (input.payment) {
+    if (input.collection === "link")
+      throw new BadRequestException(
+        "Stripe payment links are not enabled yet. Collect cash now or put this booking on a tab.",
+      );
+    const quote = (await this.db.transaction(actor, (tx) =>
+      this.inventory.hold(tx, actor, hold.holdId),
+    )).quote as { totalMinor: number; currency: string };
+    if ((input.collection === "now" || input.payment) && quote.totalMinor > 0) {
       await this.reservations.payment(
         actor,
         booking.bookingId,
         `${key}:pay`,
-        input.payment,
+        {
+          amountMinor: quote.totalMinor,
+          currency: quote.currency,
+          method: input.payment?.method ?? input.paymentMethod ?? "cash",
+          status: "settled",
+          occurredAt: new Date().toISOString(),
+          reason: input.payment?.reason ?? "Walk-in collection",
+        },
       );
     }
     try {
@@ -572,9 +639,12 @@ export class CrewService {
           actor,
           booking.bookingId,
           `${key}:confirm`,
-          { version: booking.version },
+          {
+            version: booking.version,
+            dockTab: input.collection === "tab",
+          },
         )),
-        quote: hold.quote,
+        quote,
         needsPayment: false,
       };
     } catch (reason) {
@@ -587,7 +657,7 @@ export class CrewService {
           bookingId: booking.bookingId,
           state: "held",
           version: booking.version,
-          quote: hold.quote,
+          quote,
           needsPayment: true,
         };
       throw reason;

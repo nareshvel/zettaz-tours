@@ -575,7 +575,10 @@ export const paymentAdjustmentSchema = z
   })
   .strict();
 export const confirmSchema = z
-  .object({ version: z.number().int().positive() })
+  .object({
+    version: z.number().int().positive(),
+    dockTab: z.boolean().optional(),
+  })
   .strict();
 export type Quote = {
   lines: {

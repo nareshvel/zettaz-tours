@@ -6,7 +6,7 @@
 
 Zettaz Crew is **one** binary. Navigation never grants access. The server still requires an **active crew assignment** on that departure for field roles (guide, driver, crew, captain) before check-in, waiver, start-trip, trip events, or boarding Pay.
 
-Empty **Today** is correct when the signed-in person is not assigned as crew. Desk tools (Day Board, walk-up, weather) appear on a **tablet** (≥700 pt) when the role has `manifest.read`.
+Empty **Today** is correct for field roles (guide, driver, crew, captain) when the signed-in person is not assigned as crew. **Owner** and **administrator** see every departure for that local date, assigned or not. Desk tools (Day Board, walk-in, weather) appear on the **Board** tab when the role has `manifest.read` (phone and tablet).
 
 ---
 
@@ -31,8 +31,8 @@ Do not hard-code Rock Adventures products, prices, or partner rules into these p
 | **Captain** | Assigned trips only | Yes, assigned | Assigned | Assigned | No | No | No | No | Yes |
 | **Dispatcher** | Assigned trips if also crew | Yes if assigned | If assigned | If assigned | Yes | No | Yes | Yes | If `crew.trip.read` (yes) |
 | **Operations manager** | Assigned trips if also crew | Yes if assigned | If assigned | If assigned | Yes | No | Yes | Yes | Yes |
-| **Owner** | Assigned trips if also crew | Yes if assigned | If assigned | If assigned | Yes | Yes (`bookings.write`) | Yes | Yes | Yes |
-| **Administrator** | Assigned trips if also crew | Yes if assigned | If assigned | If assigned | Yes | Yes | Yes | Yes | Yes |
+| **Owner** | All tenant trips today | Yes, even if unassigned | Yes | Yes | Yes | Yes (`bookings.write`) | Yes | Yes | Yes |
+| **Administrator** | All tenant trips today | Yes, even if unassigned | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | **Reservations** | Empty unless also assigned **and** given `crew.trip.read` (not in the default) | No by default | No (has `payment.write` on web, not crew.trip.read) | No | No | Walk-up is tablet + `bookings.write` but **Today 403** without `crew.trip.read` | No | Print on web; Crew print needs `print.jobs.*` **and** a board session | No |
 | **Finance** | Empty (no `crew.trip.read`) | No | Web payments; Crew Pay needs `checkin.write` or `payment.write` **and** a loaded trip | No | No | No | No | Print on web | No |
 | **Auditor** | Empty | No | No | No | Profile / read-only web | No | No | No | No |
@@ -50,7 +50,7 @@ If Reservations or Finance should use Crew at the dock, grant `crew.trip.read` (
 | `crew.trip.read` | Sign-in to Today, device enroll, offline snapshot, trip-run events, scan-token resolve |
 | `checkin.write` | Passenger arrived / board / no-show, start trip (with assignment for field roles), boarding Pay |
 | `manifest.read` | Tablet Day Board of **all** tenant departures that day |
-| `bookings.write` | Tablet walk-up hold + confirm |
+| `bookings.write` | **Booking** tab sell flow (walk-in source, including future dates) |
 | `operations.write` | Weather hold / close / reopen |
 | `print.jobs.create` + `print.jobs.read` | Record a pickup-list print job when sharing |
 | `payment.write` | Alternate Pay gate (desk finance collecting at boarding) |

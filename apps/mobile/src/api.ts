@@ -30,9 +30,11 @@ export function networkMessage(reason: unknown) {
   const text = reason instanceof Error ? reason.message : String(reason);
   if (
     reason instanceof TypeError ||
-    /network request failed|failed to fetch|aborted|timed out/i.test(text)
+    /network request failed|failed to fetch|aborted|timed out|could not connect|unexpectedexception/i.test(
+      text,
+    )
   )
-    return "Can't reach Zettaz. Check your connection and try again.";
+    return "Can't reach Zettaz. On Simulator, keep `npm run workspace:dev` running. On a device, the API must listen on your Mac's LAN address.";
   return text || "Request failed";
 }
 

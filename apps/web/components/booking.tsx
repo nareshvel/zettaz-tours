@@ -364,6 +364,38 @@ function partyBadgeTone(category: string) {
   return "adult";
 }
 
+function matchStayPickupLocation(
+  stayName: string,
+  locations: { name: string }[],
+) {
+  const needle = stayName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!needle) return null;
+  const scored = locations
+    .map((location) => {
+      const hay = location.name
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!hay) return null;
+      if (hay === needle) return { name: location.name, score: 3 };
+      if (hay.includes(needle) || needle.includes(hay))
+        return { name: location.name, score: 2 };
+      return null;
+    })
+    .filter((row): row is { name: string; score: number } => Boolean(row));
+  const exact = scored.find((row) => row.score === 3);
+  if (exact) return exact.name;
+  const contains = scored.filter((row) => row.score === 2);
+  return contains.length === 1 ? contains[0].name : null;
+}
+
 function readableStay(stay?: Booking["stay"]) {
   if (!stay || stay.kind === "none") return "Not provided";
   if (stay.kind === "cruise")
@@ -758,11 +790,12 @@ export function NewReservation({
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     lead: true,
     roster: false,
-    pickup: amendMode,
     stay: amendMode,
+    pickup: amendMode,
     concession: !amendMode,
     contacts: amendMode,
   });
+  const stayPickupMatchRef = useRef<string | null>(null);
   const holdMutation = useMutation(),
     bookingMutation = useMutation(),
     rosterMutation = useMutation(),
@@ -780,6 +813,33 @@ export function NewReservation({
     (selectedProductId !== "all-scheduled" ? 1 : 0) +
     (timeWindow !== "all" ? 1 : 0) +
     (showSoldOut ? 0 : 1);
+  useEffect(() => {
+    if (stayKind !== "hotel" || pickupKind !== "selected") return;
+    const hotelName =
+      stays.data?.accommodations.find((item) => item.id === stayReferenceId)
+        ?.name ??
+      stayPropertyName ??
+      "";
+    const match = matchStayPickupLocation(
+      hotelName,
+      pickupLocations.data ?? [],
+    );
+    if (!match) return;
+    setLocation((current) => {
+      if (!current || current === stayPickupMatchRef.current) {
+        stayPickupMatchRef.current = match;
+        return match;
+      }
+      return current;
+    });
+  }, [
+    stayKind,
+    stayReferenceId,
+    stayPropertyName,
+    pickupKind,
+    stays.data,
+    pickupLocations.data,
+  ]);
   useEffect(() => {
     if (!finderFiltersOpen) return;
     function onPointer(event: MouseEvent) {
@@ -2413,100 +2473,6 @@ export function NewReservation({
                   </BookingAccordion>
                 )}
                 <BookingAccordion
-                  id="pickup"
-                  title="Pickup"
-                  hint="Optional logistics"
-                  open={Boolean(openSections.pickup)}
-                  onToggle={toggleSection}
-                >
-                  {/* Disposition and location are one decision — "who is
-                      collecting this guest, and from where" — so they sit side
-                      by side rather than stacking the answer under the
-                      question. The location column is simply absent when no
-                      pickup is arranged. */}
-                  <div className="form-grid">
-                    <Field label="Pickup disposition">
-                      <select
-                        value={pickupKind}
-                        onChange={(e) =>
-                          setPickupKind(
-                            e.target.value as
-                              "none" | "selected" | "unresolved",
-                          )
-                        }
-                      >
-                        <option value="none">No pickup needed</option>
-                        <option value="selected">Pickup arranged</option>
-                        <option value="unresolved">Pickup to arrange</option>
-                      </select>
-                    </Field>
-                    {pickupKind === "selected" && (
-                      <Field
-                        label="Pickup location"
-                        hint="From the tenant's pickup locations. Add a missing one under Settings › Pickup locations."
-                      >
-                        <select
-                          required
-                          value={location}
-                          onChange={(e) => setLocation(e.target.value)}
-                        >
-                          <option value="">Select a pickup location</option>
-                          {(pickupLocations.data ?? []).map((item) => (
-                            <option key={item.id} value={item.name}>
-                              {item.name}
-                              {item.address ? ` — ${item.address}` : ""}
-                            </option>
-                          ))}
-                          {/* An older booking may name a place that has since
-                              been renamed or retired. Keeping it as an option
-                              means amending some other field cannot silently
-                              rewrite where the guest is being collected. */}
-                          {location &&
-                            !(pickupLocations.data ?? []).some(
-                              (item) => item.name === location,
-                            ) && (
-                              <option value={location}>
-                                {location} (not in settings)
-                              </option>
-                            )}
-                        </select>
-                      </Field>
-                    )}
-                  </div>
-                  {pickupKind === "selected" &&
-                    pickupLocations.data &&
-                    !pickupLocations.data.length && (
-                      <Notice>
-                        No pickup locations have been set up yet. Add them under
-                        Settings › Pickup locations so staff pick from a known
-                        list instead of typing.
-                      </Notice>
-                    )}
-                  {pickupKind !== "none" && (
-                    <Field
-                      label={
-                        pickupKind === "unresolved"
-                          ? "Pickup follow-up note"
-                          : "Pickup instructions"
-                      }
-                    >
-                      <textarea
-                        maxLength={500}
-                        required={pickupKind === "unresolved"}
-                        value={instructions}
-                        onChange={(e) => setInstructions(e.target.value)}
-                      />
-                    </Field>
-                  )}
-                  {pickupKind === "unresolved" &&
-                    !hold?.quote.allowUnresolvedPickup && (
-                      <Notice>
-                        This tenant requires an arranged pickup before
-                        confirmation.
-                      </Notice>
-                    )}
-                </BookingAccordion>
-                <BookingAccordion
                   id="stay"
                   title="Guest stay"
                   hint="Cruise call or hotel"
@@ -2629,6 +2595,100 @@ export function NewReservation({
                       )}
                     </div>
                   )}
+                </BookingAccordion>
+                <BookingAccordion
+                  id="pickup"
+                  title="Pickup"
+                  hint="Optional logistics"
+                  open={Boolean(openSections.pickup)}
+                  onToggle={toggleSection}
+                >
+                  {/* Disposition and location are one decision — "who is
+                      collecting this guest, and from where" — so they sit side
+                      by side rather than stacking the answer under the
+                      question. The location column is simply absent when no
+                      pickup is arranged. */}
+                  <div className="form-grid">
+                    <Field label="Pickup disposition">
+                      <select
+                        value={pickupKind}
+                        onChange={(e) =>
+                          setPickupKind(
+                            e.target.value as
+                              "none" | "selected" | "unresolved",
+                          )
+                        }
+                      >
+                        <option value="none">No pickup needed</option>
+                        <option value="selected">Requested pickup</option>
+                        <option value="unresolved">Pickup to arrange</option>
+                      </select>
+                    </Field>
+                    {pickupKind === "selected" && (
+                      <Field
+                        label="Pickup location"
+                        hint="From the tenant's pickup locations. Add a missing one under Settings › Pickup locations."
+                      >
+                        <select
+                          required
+                          value={location}
+                          onChange={(e) => setLocation(e.target.value)}
+                        >
+                          <option value="">Select a pickup location</option>
+                          {(pickupLocations.data ?? []).map((item) => (
+                            <option key={item.id} value={item.name}>
+                              {item.name}
+                              {item.address ? ` — ${item.address}` : ""}
+                            </option>
+                          ))}
+                          {/* An older booking may name a place that has since
+                              been renamed or retired. Keeping it as an option
+                              means amending some other field cannot silently
+                              rewrite where the guest is being collected. */}
+                          {location &&
+                            !(pickupLocations.data ?? []).some(
+                              (item) => item.name === location,
+                            ) && (
+                              <option value={location}>
+                                {location} (not in settings)
+                              </option>
+                            )}
+                        </select>
+                      </Field>
+                    )}
+                  </div>
+                  {pickupKind === "selected" &&
+                    pickupLocations.data &&
+                    !pickupLocations.data.length && (
+                      <Notice>
+                        No pickup locations have been set up yet. Add them under
+                        Settings › Pickup locations so staff pick from a known
+                        list instead of typing.
+                      </Notice>
+                    )}
+                  {pickupKind !== "none" && (
+                    <Field
+                      label={
+                        pickupKind === "unresolved"
+                          ? "Pickup follow-up note"
+                          : "Pickup instructions"
+                      }
+                    >
+                      <textarea
+                        maxLength={500}
+                        required={pickupKind === "unresolved"}
+                        value={instructions}
+                        onChange={(e) => setInstructions(e.target.value)}
+                      />
+                    </Field>
+                  )}
+                  {pickupKind === "unresolved" &&
+                    !hold?.quote.allowUnresolvedPickup && (
+                      <Notice>
+                        This tenant requires an arranged pickup before
+                        confirmation.
+                      </Notice>
+                    )}
                 </BookingAccordion>
                 {!amendMode && (
                   <BookingAccordion

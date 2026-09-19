@@ -3281,6 +3281,16 @@ test("crew mobile façade exposes only assigned trips and restricts crew check-i
     (await get(`/crew/v1/today?date=${today.body.date}`, finance)).status,
     403,
   );
+  const ownerToday = await get(
+    `/crew/v1/today?date=${today.body.date}`,
+    t.token,
+  );
+  assert.equal(ownerToday.status, 200, JSON.stringify(ownerToday.body));
+  const ownerIds = ownerToday.body.trips.map(
+    (trip: { id: string }) => trip.id,
+  );
+  assert.ok(ownerIds.includes(dep.departureId));
+  assert.ok(ownerIds.includes(other.departureId));
   const otherTenant = await get(
     `/crew/v1/today?date=${today.body.date}`,
     b.token,
@@ -3706,7 +3716,12 @@ test("crew tablet board, walk-up, and weather stay hidden from guides", async ()
     (item: { id: string }) => item.id === dep.departureId,
   );
   assert.ok(row, JSON.stringify(board.body));
-  assert.equal(row.crew[0].name, "Mock Tablet Guide");
+  assert.ok(row.crew[0].name, "Mock Tablet Guide");
+  assert.equal(
+    row.categories.some((category: { slug: string }) => category.slug === "child"),
+    true,
+    JSON.stringify(row.categories),
+  );
   const deskBoard = await get(
     `/crew/v1/board?date=${dayRow.day}`,
     reservations,
@@ -3727,9 +3742,12 @@ test("crew tablet board, walk-up, and weather stay hidden from guides", async ()
   );
   const walkUp = await post(`/crew/v1/walk-ups`, reservations, {
     departureId: dep.departureId,
-    party: { adult: 1 },
+    party: { adult: 1, child: 1 },
     leadName: "Walk Up Guest",
     leadEmail: "walkup@example.invalid",
+    leadPhone: "+12685550100",
+    pickup: { kind: "none" },
+    stay: { kind: "none" },
   });
   assert.equal(walkUp.status, 201, JSON.stringify(walkUp.body));
   assert.equal(walkUp.body.state, "confirmed");
@@ -3825,6 +3843,43 @@ test("crew tablet walk-up collects then confirms when a deposit is required", as
   });
   assert.equal(paid.status, 201, JSON.stringify(paid.body));
   assert.equal(paid.body.state, "confirmed");
+});
+
+test("crew walk-in tab confirms with balance due", async () => {
+  const t = await setupTenant(`crew-tab-${randomUUID().slice(0, 8)}`, {
+    ...mockConfig,
+    minimumPaidPercent: 100,
+  });
+  const dep = await departure(t.token);
+  const tab = await post("/crew/v1/walk-ups", t.token, {
+    departureId: dep.departureId,
+    party: { adult: 1 },
+    leadName: "Tab Guest",
+    leadEmail: "tab@example.invalid",
+    collection: "tab",
+  });
+  assert.equal(tab.status, 201, JSON.stringify(tab.body));
+  assert.equal(tab.body.state, "confirmed");
+});
+
+test("crew walk-in confirms after scheduled start until the trip has left", async () => {
+  const t = await setupTenant(`crew-latewalk-${randomUUID().slice(0, 8)}`, {
+    ...mockConfig,
+    minimumPaidPercent: 0,
+  });
+  const dep = await departure(t.token);
+  await admin.query(
+    "UPDATE departures SET starts_at=clock_timestamp() - interval '1 hour' WHERE id=$1",
+    [dep.departureId],
+  );
+  const walkUp = await post("/crew/v1/walk-ups", t.token, {
+    departureId: dep.departureId,
+    party: { adult: 1 },
+    leadName: "Late Dock Guest",
+    leadEmail: "late@example.invalid",
+  });
+  assert.equal(walkUp.status, 201, JSON.stringify(walkUp.body));
+  assert.equal(walkUp.body.state, "confirmed");
 });
 
 test("crew offline enrolls a device, leases assigned trips, and deduplicates queued commands", async () => {

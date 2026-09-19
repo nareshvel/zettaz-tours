@@ -65,7 +65,12 @@ export class InventoryService {
       );
     return dep;
   }
-  async availability(tx: Tx, actor: Actor, departureId: string) {
+  async availability(
+    tx: Tx,
+    actor: Actor,
+    departureId: string,
+    options?: { allowAfterSchedule?: boolean },
+  ) {
     // One SQL snapshot prevents a concurrent confirm being counted both as hold and commitment.
     const {
       rows: [r],
@@ -76,11 +81,12 @@ export class InventoryService {
       [actor.tenantId, departureId],
     );
     if (!r) throw new NotFoundException();
+    const pastStart = new Date(r.starts_at).getTime() <= Date.now();
     return {
       ...r,
       available:
-        new Date(r.starts_at).getTime() <= Date.now() ||
-        r.operational_status !== "open"
+        r.operational_status !== "open" ||
+        (pastStart && !options?.allowAfterSchedule)
           ? 0
           : r.available,
     };
@@ -177,7 +183,12 @@ export class InventoryService {
       throw new BadRequestException("Booking amount exceeds supported range");
     return { quote, seats };
   }
-  create(actor: Actor, key: string, input: unknown) {
+  create(
+    actor: Actor,
+    key: string,
+    input: unknown,
+    options?: { allowAfterSchedule?: boolean },
+  ) {
     const data = parse(holdSchema, input);
     return this.db.command(actor, "hold.create", key, data, async (tx) => {
       const settings = await tenant(tx, actor);
@@ -192,7 +203,18 @@ export class InventoryService {
       } = await tx.query("SELECT $1::timestamptz>clock_timestamp() AS future", [
         dep.starts_at,
       ]);
-      if (!future.future)
+      if (options?.allowAfterSchedule) {
+        const {
+          rows: [run],
+        } = await tx.query(
+          "SELECT state FROM trip_runs WHERE tenant_id=$1 AND departure_id=$2",
+          [actor.tenantId, data.departureId],
+        );
+        if (["departed", "completed", "cancelled"].includes(run?.state ?? ""))
+          throw new ConflictException(
+            "Walk-in is closed because this trip has already left",
+          );
+      } else if (!future.future)
         throw new ConflictException("Departure has already started");
       if (dep.operational_status !== "open")
         throw new ConflictException("Departure is not available for sale");
@@ -202,7 +224,9 @@ export class InventoryService {
         data.departureId,
         data.party,
       );
-      const free = await this.availability(tx, actor, data.departureId);
+      const free = await this.availability(tx, actor, data.departureId, {
+        allowAfterSchedule: options?.allowAfterSchedule,
+      });
       if (seats > free.available)
         throw new ConflictException("Insufficient seats");
       const holdId = randomUUID();
@@ -326,7 +350,12 @@ export class InventoryService {
       };
     });
   }
-  async consume(tx: Tx, actor: Actor, holdId: string) {
+  async consume(
+    tx: Tx,
+    actor: Actor,
+    holdId: string,
+    options?: { allowAfterSchedule?: boolean },
+  ) {
     const initial = await this.hold(tx, actor, holdId);
     const departure = await this.departure(
       tx,
@@ -339,14 +368,29 @@ export class InventoryService {
     const hold = await this.hold(tx, actor, holdId);
     if (!hold.live || hold.consumed)
       throw new ConflictException("Hold expired or already consumed");
+    if (options?.allowAfterSchedule) {
+      const {
+        rows: [run],
+      } = await tx.query(
+        "SELECT state FROM trip_runs WHERE tenant_id=$1 AND departure_id=$2",
+        [actor.tenantId, hold.departure_id],
+      );
+      if (["departed", "completed", "cancelled"].includes(run?.state ?? ""))
+        throw new ConflictException(
+          "Walk-in is closed because this trip has already left",
+        );
+    }
     const authorized = Boolean(hold.overbook_authorized_by);
+    const startGuard = options?.allowAfterSchedule
+      ? ""
+      : " AND starts_at>clock_timestamp()";
     const { rowCount } = authorized
       ? await tx.query(
-          "UPDATE departures SET overbooked=overbooked+$3 WHERE tenant_id=$1 AND id=$2 AND starts_at>clock_timestamp()",
+          `UPDATE departures SET overbooked=overbooked+$3 WHERE tenant_id=$1 AND id=$2${startGuard}`,
           [actor.tenantId, hold.departure_id, hold.seats],
         )
       : await tx.query(
-          "UPDATE departures SET committed=committed+$3 WHERE tenant_id=$1 AND id=$2 AND committed+$3<=capacity AND starts_at>clock_timestamp()",
+          `UPDATE departures SET committed=committed+$3 WHERE tenant_id=$1 AND id=$2 AND committed+$3<=capacity${startGuard}`,
           [actor.tenantId, hold.departure_id, hold.seats],
         );
     if (!rowCount) throw new ConflictException("Departure unavailable");

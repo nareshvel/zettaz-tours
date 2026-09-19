@@ -81,6 +81,7 @@ import {
   Loading,
   More,
   Notice,
+  SearchBox,
   SectionHeading,
   Status,
   TenantDateInput,
@@ -4277,6 +4278,8 @@ export function Team({ session }: { session: Session }) {
     [grantNotice, setGrantNotice] = useState(""),
     [pendingRevoke, setPendingRevoke] = useState<Member | null>(null),
     [docsFor, setDocsFor] = useState<Member | null>(null),
+    [staffSearch, setStaffSearch] = useState(""),
+    [tokenCopied, setTokenCopied] = useState(false),
     [docBusy, setDocBusy] = useState(false),
     [docError, setDocError] = useState(""),
     [docForm, setDocForm] = useState({
@@ -4394,6 +4397,7 @@ export function Team({ session }: { session: Session }) {
     }>("admin/v1/staff/" + m.id + "/grant-access", {});
     if (result) {
       setInvitationToken(result.token);
+      setTokenCopied(false);
       setGrantNotice(
         result.emailed
           ? `Activation email sent to ${m.email}.`
@@ -4429,6 +4433,16 @@ export function Team({ session }: { session: Session }) {
     docsFor && documents.data
       ? documents.data.filter((d) => d.crew_actor_id === docsFor.id)
       : [];
+  const staffNeedle = staffSearch.trim().toLowerCase();
+  const visibleMembers = staffNeedle
+    ? members.items.filter((m) =>
+        [m.name, m.email, m.phone, roleName(m.role)]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(staffNeedle),
+      )
+    : members.items;
 
   async function saveDocument() {
     if (!docsFor) return;
@@ -4532,6 +4546,11 @@ export function Team({ session }: { session: Session }) {
             Roles & permissions
           </Link>
         </div>
+        <SearchBox
+          value={staffSearch}
+          onChange={setStaffSearch}
+          placeholder="Search staff"
+        />
         <button
           type="button"
           className="button catalog-add-btn"
@@ -4567,12 +4586,13 @@ export function Team({ session }: { session: Session }) {
                   onClick={async () => {
                     try {
                       await navigator.clipboard.writeText(invitationToken);
+                      setTokenCopied(true);
                     } catch {
-                      /* ignore */
+                      setTokenCopied(false);
                     }
                   }}
                 >
-                  Copy token
+                  {tokenCopied ? "Copied" : "Copy token"}
                 </button>
                 <button
                   type="button"
@@ -4580,6 +4600,7 @@ export function Team({ session }: { session: Session }) {
                   onClick={() => {
                     setInvitationToken("");
                     setGrantNotice("");
+                    setTokenCopied(false);
                   }}
                 >
                   Done
@@ -4617,6 +4638,7 @@ export function Team({ session }: { session: Session }) {
         {members.busy && !members.items.length ? (
           <Loading />
         ) : members.items.length ? (
+          visibleMembers.length ? (
           <>
             <div className="table-scroll resource-table">
               <table>
@@ -4631,7 +4653,7 @@ export function Team({ session }: { session: Session }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {members.items.map((m) => (
+                  {visibleMembers.map((m) => (
                     <tr key={m.id}>
                       <td>
                         <strong>
@@ -4750,7 +4772,7 @@ export function Team({ session }: { session: Session }) {
               </table>
             </div>
             <div className="resource-cards">
-              {members.items.map((m) => (
+              {visibleMembers.map((m) => (
                 <article key={m.id} className="resource-card">
                   <div className="resource-card-head">
                     <strong>
@@ -4790,11 +4812,35 @@ export function Team({ session }: { session: Session }) {
                         Documents
                       </button>
                     )}
+                    {m.role !== "owner" &&
+                      m.id !== session.actorId &&
+                      (m.active ? (
+                        <button
+                          type="button"
+                          className="text-link danger-text"
+                          onClick={() => setPendingRevoke(m)}
+                        >
+                          Revoke
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="text-link"
+                          onClick={() => void restore(m)}
+                        >
+                          Restore
+                        </button>
+                      ))}
                   </div>
                 </article>
               ))}
             </div>
           </>
+          ) : (
+            <Empty title="No staff match">
+              <p>Try a different name, email, or role.</p>
+            </Empty>
+          )
         ) : (
           <Empty title="No staff members yet">
             Add the first team member, then grant workspace access.

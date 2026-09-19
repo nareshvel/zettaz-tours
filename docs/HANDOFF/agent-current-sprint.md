@@ -14,7 +14,7 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 
 1. **Crew app.** Phases 1–4 on production `cad0ed8`. EAS **preview** + **production** binaries exist. iOS **1.0.1 (2)** is on App Store Connect (`6813693098`). Android **Internal testing 2 (1.0.1)** is live. Owner still: TestFlight/Unlisted review notes, screenshots, reviewer demo user, **4.8 airplane-mode**. **Do not start Phase 5.**
 2. **Operations menu group** remains functionally complete pending testing. Do not open new Ops web feature work unless testing finds a bug.
-3. **Non-Ops:** Customers, Audit, and Document library polish are on production (`cad0ed8`; owner visual still outstanding). **Profile polish follow-up** is local (uncommitted). **Crew field-pass UI** is local — needs commit + VPS + new EAS to match store binaries. **19 Sep settings:** General, Taxes, Guest stays, Payment integrations (honest deferred), document storage heading, Finance Partners list. Remaining owner visual: those tabs + Reports/Finance/Staff/Fleet.
+3. **Non-Ops:** Customers, Audit, and Document library polish are on production (`cad0ed8`; owner visual still outstanding). **Profile polish follow-up** is local (uncommitted). **Crew field-pass UI** is local — needs commit + VPS + new EAS to match store binaries. Tenant settings + Finance Partners committed `ba74009`. **Staff & access** search + phone revoke/restore in the follow-up commit. Next engineering: Fleet (Team & resources) or Reports.
 4. **Hold Subscription messaging.**
 
 ---

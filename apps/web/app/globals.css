@@ -11779,6 +11779,10 @@ a.briefing-tile:hover {
   scrollbar-width: thin;
   max-width: 100%;
 }
+.resource-view-bar .search {
+  flex: 1;
+  min-width: 10rem;
+}
 .resource-cards {
   display: none;
   gap: 0;

@@ -79,7 +79,6 @@ export class ProblemFilter implements ExceptionFilter {
   catch(error: unknown, host: ArgumentsHost) {
     const res = host.switchToHttp().getResponse<Response>();
     const code = (error as { code?: string }).code;
-    console.error("[API 500]", (error as Error).message, code ?? "");
     let status = error instanceof HttpException ? error.getStatus() : 500;
     if (
       code === "23505" ||
@@ -95,6 +94,9 @@ export class ProblemFilter implements ExceptionFilter {
       code === "23502"
     )
       status = 400;
+    if (status >= 500) {
+      console.error((error as Error).message, code ?? "");
+    }
     const detail =
       error instanceof HttpException
         ? error.getResponse()

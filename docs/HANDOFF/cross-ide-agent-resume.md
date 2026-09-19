@@ -40,7 +40,7 @@ Stack is locked: NestJS modular monolith, Next.js workspace, Expo crew app, Post
 See [agent-current-sprint.md](agent-current-sprint.md). Short form (19 Sep):
 
 1. **Crew store binaries** iOS ASC `6813693098` 1.0.1 (2); Play Internal 1.0.1/2. Engineering Phases 1–4 on production. Owner: Unlisted/review notes, screenshots, **4.8 airplane-mode**.
-2. **Do not start Phase 5** (kiosk, GPS, card-present, push, white-label).
+2. **Phase 5.1 guest kiosk** engineering 19 Sep. GPS, Terminal, push, white-label still gated.
 3. **Operations menu group closed** pending further testing.
 4. **Customers / Audit / Document library** polish (owner visual outstanding). 19 Sep admin/finance/settings polish is local (`f40fb94` plus Localization/integrations/stays). Agent polish sequence complete unless owner names a surface. Owner visual outstanding.
 5. **Subscription messaging implemented 19 Sep.** **Hold** finance money in/out later ([finance-money-in-out-later.md](../STRATEGY/finance-money-in-out-later.md)). Owner visual is the remaining web pass.

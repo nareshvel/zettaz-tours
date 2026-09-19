@@ -11,7 +11,7 @@ The web workspace and connected crew client provide broad development functional
 
 The API stores versioned waiver templates, append-only passenger/guardian waiver evidence, stay details, pending passenger identity, and passenger clearance states. The web manifest can record waiver/check-in evidence, collect remaining guest balances via an on-manifest Pay sheet, and clear partner invoice/collect bookings by policy. The Expo client lists assigned trips and passengers, scans check-in tokens, captures pending passenger names and cruise/hotel/private/local stay information, renders the active waiver, collects a drawn signature, and records check-in/trip events. Remaining Crew increments (field pickups, Pay, tablet dock, then offline) are sequenced in [crew-app-delivery.md](crew-app-delivery.md) and must not start until that plan is owner-accepted. See [boarding balance collection](../FEATURES/operations/boarding-balance-collection.md).
 
-**Next owner-directed surface:** remaining **owner visual** on polished pages (see rows 3–19). **Subscription messaging** implemented 19 Sep (row 17). **Operations** closed pending testing. Crew store: iOS ASC `6813693098` 1.0.1 (2); Play Internal 1.0.1/2. **Do not start Phase 5.** See [agent-current-sprint.md](../HANDOFF/agent-current-sprint.md).
+**Next owner-directed surface:** remaining **owner visual** on polished pages (see rows 3–19). **Subscription messaging** implemented 19 Sep (row 17). **Crew Phase 5.1 kiosk** engineering 19 Sep; GPS/Terminal/push stay gated. **Operations** closed pending testing. See [agent-current-sprint.md](../HANDOFF/agent-current-sprint.md).
 
 ## Delivery order
 

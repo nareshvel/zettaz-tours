@@ -1,7 +1,7 @@
 # Zettaz Crew — delivery plan
 
-**Updated:** 17 September 2026  
-**Status:** Owner-accepted 17 September 2026. Phases 1–4 on production (`cad0ed8`). Store binaries 19 Sep: iOS App Store Connect `6813693098` 1.0.1 (2); Play Internal 1.0.1/2. Phase 5 Track B is not scheduled.  
+**Updated:** 19 September 2026  
+**Status:** Owner-accepted 17 September 2026. Phases 1–4 on production (`cad0ed8`). Store binaries 19 Sep: iOS App Store Connect `6813693098` 1.0.1 (2); Play Internal 1.0.1/2. **Phase 5 reopened 19 Sep for guest kiosk lock only.** GPS, card-present, push, white-label, and a consumer app stay gated.  
 **Audience:** owner + any IDE agent  
 **Scope authority:** [launch-contract.md](launch-contract.md) · **epic:** E08/E07 in [delivery.md](delivery.md) · **facade:** [crew-mobile-facade.md](../FEATURES/operations/crew-mobile-facade.md)
 
@@ -188,17 +188,17 @@ Calendar is **from owner acceptance of this file**, not from chat history. Indic
 
 **Exit:** Documented airplane-mode test + sync. GPS still off. Engineering for 4.1–4.7 is on production (`cad0ed8`). Task 4.8 is the owner’s EAS + airplane-mode pass.
 
-### Phase 5 — Track B / evidence-gated (do not schedule until Track A field is live)
+### Phase 5 — Track B / evidence-gated (kiosk reopened 19 Sep)
 
-| Item | Gate |
-| --- | --- |
-| Kiosk lock (guest-facing tablet) | Phase 2–3 stable |
-| Card-present | Stripe Terminal eligibility |
-| GPS / ETAs | Privacy + legal write-up |
-| Push | Product decision |
-| Offline hardening / media resume at scale | After first season |
-| White-label Crew binary | E16 |
-| Native consumer app | Explicit non-goal until Track B checkout |
+| Item | Gate | Status |
+| --- | --- | --- |
+| Kiosk lock (guest-facing tablet) | Phase 2–3 stable | Engineering 19 Sep — PIN exit, scan/waiver only. Evidence: [crew-app-phase-5-evidence.md](../TESTING/crew-app-phase-5-evidence.md). Device pass + EAS still owner. |
+| Card-present | Stripe Terminal eligibility | Do not start |
+| GPS / ETAs | Privacy + legal write-up | Do not start |
+| Push | Product decision | Do not start |
+| Offline hardening / media resume at scale | After first season | Do not start |
+| White-label Crew binary | E16 | Do not start |
+| Native consumer app | Explicit non-goal until Track B checkout | Do not start |
 
 ---
 
@@ -236,4 +236,4 @@ Google Places/routing, Plan pickups Phase 2 (multi-product van), live GPS, consu
 
 ## Start gate
 
-Owner accepted 17 September 2026. Owner override the same day: complete Phases 1–4 before EAS full test. Phases 1–4 are on production (`cad0ed8`). Rebuild EAS preview now. Do not start Phase 5.
+Owner accepted 17 September 2026. Phases 1–4 are on production (`cad0ed8`). Phase 5 kiosk lock reopened 19 Sep; GPS / Terminal / push / white-label remain gated.

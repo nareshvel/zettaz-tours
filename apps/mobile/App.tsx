@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Alert,
   AppState,
+  BackHandler,
   Image,
   Linking,
   Pressable,
@@ -15,6 +16,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { call, crewLoadMessage, isUnauthorized, requestKey } from "./src/api";
@@ -86,6 +88,13 @@ import {
   tripStatusLabel,
   type TabId,
 } from "./src/chrome";
+import {
+  armKiosk,
+  canStartKiosk,
+  disarmKiosk,
+  kioskArmed,
+  KioskHome,
+} from "./src/kiosk";
 
 const STAY_NAME_OTHER = "__other__";
 type WaiverTemplate = {
@@ -229,6 +238,10 @@ export default function App() {
   const [statusOpen, setStatusOpen] = useState(false);
   const [stayOpen, setStayOpen] = useState(false);
   const [stayNameOpen, setStayNameOpen] = useState(false);
+  const [kiosk, setKiosk] = useState(false);
+  const [kioskExit, setKioskExit] = useState(false);
+  const [kioskPin, setKioskPin] = useState("");
+  const { width } = useWindowDimensions();
   const tokenRef = useRef<string | null>(null);
   const signingRef = useRef(false);
   const listRef = useRef<ScrollView>(null);
@@ -239,11 +252,28 @@ export default function App() {
     SecureStore.getItemAsync(SESSION_KEY)
       .then(async (session) => {
         setToken(session);
-        if (session && (await hasPin())) setLocked(true);
+        if (session && (await kioskArmed())) setKiosk(true);
+        else if (session && (await hasPin())) setLocked(true);
         setCanBiometric(await biometricAvailable());
       })
       .finally(() => setReady(true));
   }, []);
+  useEffect(() => {
+    if (!kiosk) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (scanning) {
+        setScanning(false);
+        return true;
+      }
+      if (signing) {
+        setSigning(null);
+        return true;
+      }
+      setKioskExit(true);
+      return true;
+    });
+    return () => sub.remove();
+  }, [kiosk, scanning, signing]);
   async function clearSession() {
     await SecureStore.deleteItemAsync(SESSION_KEY);
     setToken(null);
@@ -259,8 +289,11 @@ export default function App() {
     setWalkUpItem(null);
     setWalkUpHeld(null);
     setLocked(false);
+    setKiosk(false);
+    setKioskExit(false);
     setOfflineMode(false);
     setQueueSize(0);
+    await disarmKiosk();
   }
   async function loadProfile(session: string) {
     try {
@@ -1074,7 +1107,68 @@ export default function App() {
       })();
     }
   }
-  const footer = (
+  const kioskAllowed = canStartKiosk({
+    width,
+    role: profile?.role,
+    permissions: profile?.permissions,
+  });
+  async function startKiosk() {
+    if (!pinEnabled) {
+      setError("Add a crew unlock PIN on My profile before guest kiosk.");
+      setShowProfile(true);
+      setOfflineSetup(true);
+      return;
+    }
+    await armKiosk();
+    setKiosk(true);
+    setShowProfile(false);
+    setActive(null);
+    setPaying(null);
+    setScanning(false);
+    setSigning(null);
+    setKioskPin("");
+    setError("");
+  }
+  async function confirmKioskExit() {
+    if (!(await verifyPin(kioskPin))) {
+      setError("That PIN does not match.");
+      return;
+    }
+    await disarmKiosk();
+    setKiosk(false);
+    setKioskExit(false);
+    setKioskPin("");
+    setError("");
+  }
+  const kioskExitModal = (
+    <FormModal
+      visible={kioskExit}
+      title="Staff exit"
+      subtitle="Enter the crew PIN for this device. Guests cannot leave this screen."
+      onClose={() => {
+        setKioskExit(false);
+        setKioskPin("");
+      }}
+    >
+      <TextInput
+        style={styles.input}
+        keyboardType="number-pad"
+        secureTextEntry
+        placeholder="Device PIN"
+        value={kioskPin}
+        onChangeText={setKioskPin}
+        maxLength={8}
+      />
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <Button
+        disabled={kioskPin.length < 4}
+        onPress={() => void confirmKioskExit()}
+      >
+        Leave guest check-in
+      </Button>
+    </FormModal>
+  );
+  const footer = kiosk ? null : (
     <TabBar
       active={activeTab}
       showScan={canCheckin}
@@ -1294,9 +1388,15 @@ export default function App() {
             No image is saved. Only the opaque code is sent to the server.
           </Text>
           <Button quiet onPress={() => setScanning(false)}>
-            Cancel
+            {kiosk ? "Back" : "Cancel"}
           </Button>
+          {kiosk ? (
+            <Button quiet onPress={() => setKioskExit(true)}>
+              Staff exit
+            </Button>
+          ) : null}
         </View>
+        {kioskExitModal}
       </SafeAreaView>
     );
   if (signing) {
@@ -1342,6 +1442,11 @@ export default function App() {
           <Button quiet onPress={() => setSigning(null)}>
             Close
           </Button>
+          {kiosk ? (
+            <Button quiet onPress={() => setKioskExit(true)}>
+              Staff exit
+            </Button>
+          ) : null}
         </View>
         {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
         <ScrollView
@@ -1601,6 +1706,26 @@ export default function App() {
           }}
           onClose={() => setStayNameOpen(false)}
         />
+        {kioskExitModal}
+      </SafeAreaView>
+    );
+  }
+  if (kiosk) {
+    return (
+      <SafeAreaView style={styles.screen}>
+        <StatusBar style="dark" />
+        {error && !kioskExit ? (
+          <Text style={styles.errorBanner}>{error}</Text>
+        ) : null}
+        <KioskHome
+          tenantName={profile?.tenant.name ?? ""}
+          onScan={() => void openScanner()}
+          onStaffExit={() => {
+            setError("");
+            setKioskExit(true);
+          }}
+        />
+        {kioskExitModal}
       </SafeAreaView>
     );
   }
@@ -1811,6 +1936,11 @@ export default function App() {
                 {pinEnabled ? "Unlock PIN on" : "Add unlock PIN"}
               </Text>
             </Pressable>
+            {kioskAllowed ? (
+              <Button compact quiet onPress={() => void startKiosk()}>
+                Guest kiosk
+              </Button>
+            ) : null}
             <Button
               compact
               quiet

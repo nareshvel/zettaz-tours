@@ -12,7 +12,7 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 
 ## Owner priority (19 September 2026 — stores shipped, non-Ops polish)
 
-1. **Crew app.** Phases 1–4 on production `cad0ed8`. EAS **preview** + **production** binaries exist. iOS **1.0.1 (2)** is on App Store Connect (`6813693098`). Android **Internal testing 2 (1.0.1)** is live. Owner still: TestFlight/Unlisted review notes, screenshots, reviewer demo user, **4.8 airplane-mode**. **Do not start Phase 5.**
+1. **Crew app.** Phases 1–4 on production. **Phase 5.1 guest kiosk** engineering 19 Sep (tablet PIN lock, scan/waiver only). GPS, card-present, push, white-label stay gated. Owner still: TestFlight/Unlisted notes, **4.8 airplane-mode**, kiosk device pass + EAS.
 2. **Operations menu group** remains functionally complete pending testing. Do not open new Ops web feature work unless testing finds a bug.
 3. **Non-Ops:** Tenant settings Localization / Booking integrations / Guest stays toolbar / hold-minutes / support-grant timestamps committed locally. **Next:** owner visual. Push and VPS pull only when the owner asks. **Do not start** finance money-in-out later.
 4. **Subscription messaging reopened 19 Sep** — billing-cycle / failed-payment / grace / post-suspension copy in `apps/web/components/subscription.tsx`. Finance money-in-out later stays held.
@@ -52,7 +52,7 @@ Phased delivery: [crew-app-delivery.md](../STRATEGY/crew-app-delivery.md).
 
 **On production (`cad0ed8`):** Phases 1–4 including encrypted offline (088) and Crew/Captain roles (089).
 
-**Now:** owner deploys `0acc028` (and later the Profile polish commit), builds a new EAS preview, and runs the full device test including one airplane-mode cycle. **Do not start Phase 5.**
+**Now:** owner deploys later local commits, builds a new EAS preview for kiosk + field-pass, and runs 4.8 airplane-mode plus a kiosk PIN cycle. GPS / Terminal / push stay gated.
 
 Evidence: [crew-app-phase-2-evidence.md](../TESTING/crew-app-phase-2-evidence.md), [crew-app-phase-3-evidence.md](../TESTING/crew-app-phase-3-evidence.md), [crew-app-phase-4-evidence.md](../TESTING/crew-app-phase-4-evidence.md).
 

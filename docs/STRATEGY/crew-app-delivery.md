@@ -1,7 +1,7 @@
 # Zettaz Crew — delivery plan
 
 **Updated:** 17 September 2026  
-**Status:** Owner-accepted 17 September 2026. Owner override 17 September 2026: complete Phases 1–4 before EAS full test. Phases 1–4 are on production (`cad0ed8`, migrations 088/089). Phase 5 Track B is not scheduled.  
+**Status:** Owner-accepted 17 September 2026. Phases 1–4 on production (`cad0ed8`). Store binaries 19 Sep: iOS App Store Connect `6813693098` 1.0.1 (2); Play Internal 1.0.1/2. Phase 5 Track B is not scheduled.  
 **Audience:** owner + any IDE agent  
 **Scope authority:** [launch-contract.md](launch-contract.md) · **epic:** E08/E07 in [delivery.md](delivery.md) · **facade:** [crew-mobile-facade.md](../FEATURES/operations/crew-mobile-facade.md)
 

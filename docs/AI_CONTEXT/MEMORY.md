@@ -2,12 +2,12 @@
 
 Keep under 200 lines. Update after sessions that change standing decisions.
 
-**Last updated:** 2026-09-17
+**Last updated:** 2026-09-19
 
 ## Current focus (agents)
 
 - **Sprint board:** [../HANDOFF/agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) — prefer over chat history.
-- **Owner priority (17 Sep):** Crew Phases 1–4 on production. Field-pass UI (covers, tabs, status sheet, waiver sign, auto-offline) is local; needs VPS + new EAS. **Do not start Phase 5.** Owner-editable Crew role matrix: [../FEATURES/operations/crew-roles-and-permissions.md](../FEATURES/operations/crew-roles-and-permissions.md).
+- **Owner priority (19 Sep):** Crew store binaries live (ASC 6813693098 · Play Internal 1.0.1/2). Field-pass UI still local. **Do not start Phase 5.** 4.8 airplane-mode is owner. Next web: owner visual on remaining settings; General/Taxes/Stays/Partners toolbar pass 19 Sep.
 - **In progress (15 Sep):** Tenant settings pass — printing, waivers, integrations, localization, sidebar. See the 15 September section below.
 - **Crew app (17 Sep):** Phases 1–4 engineering on production. Rebuild EAS; 4.8 airplane-mode is owner after that install. Phase 5 Track B stays unscheduled.
 - **Deploy:** VPS at tip `cad0ed8` via `./deploy.sh` (migrations through **089**, Pending: 0). `origin/main` `0acc028` not yet on VPS.

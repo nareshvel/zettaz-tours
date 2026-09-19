@@ -3218,11 +3218,17 @@ export function Settings({
                     </select>
                   </Field>
                 </div>
-                <h2>Authorized contact</h2>
-                <p className="policy-copy">
-                  This contact will receive future verification requests for
-                  critical account changes.
-                </p>
+                <div className="settings-card-head compact-card-head">
+                  <UserRound size={20} />
+                  <div>
+                    <h2>Authorized contact</h2>
+                    <p>
+                      Receives verification requests for critical account
+                      changes. This is the tenant, not a guest emergency
+                      contact.
+                    </p>
+                  </div>
+                </div>
                 <div className="form-grid">
                   <Field label="Name">
                     <input
@@ -3297,7 +3303,7 @@ export function Settings({
                 <div className="form-grid">
                   <Field
                     label="Hold duration · seconds"
-                    hint="Between 30 and 1,800 seconds."
+                    hint={`Between 30 and 1,800 seconds (${Math.round(config.holdSeconds / 60)} min at the current value).`}
                   >
                     <input
                       type="number"
@@ -3380,6 +3386,18 @@ export function Settings({
                     }
                   />
                 </div>
+                <dl className="locale-preview">
+                  <div>
+                    <dt>On a new hold of {money(10000, config.bookingCurrency)}</dt>
+                    <dd>
+                      {config.taxBasisPoints === 0
+                        ? "No tax is added."
+                        : config.taxInclusive
+                          ? `Guest pays ${money(10000, config.bookingCurrency)} including ${config.taxBasisPoints / 100}% tax.`
+                          : `Guest pays ${money(10000, config.bookingCurrency)} plus ${config.taxBasisPoints / 100}% tax.`}
+                    </dd>
+                  </div>
+                </dl>
                 <div className="form-divider" />
               </section>
             )}
@@ -3635,20 +3653,23 @@ export function Settings({
                 <PrintersSettings session={session} />
                 <section>
                   <div className="form-divider" />
-                  <h2>
-                    Document storage
-                    <InfoTip label="document storage">
-                      Signed waiver PDFs are written to a short-lived hot store,
-                      then synced out to the tenant archive target so production
-                      disk can be cleared. Hot copies auto-purge within 7 days.
-                      Longer retention requires a purchased storage plan (not
-                      enabled yet). Drive adapters stay feature-flagged until
-                      OAuth credentials are approved.
-                    </InfoTip>
-                  </h2>
-                  <p className="policy-copy">
-                    Where signed waivers are kept, and for how long.
-                  </p>
+                  <div className="settings-card-head compact-card-head">
+                    <FileText size={20} />
+                    <div>
+                      <h2>
+                        Document storage
+                        <InfoTip label="document storage">
+                          Signed waiver PDFs are written to a short-lived hot
+                          store, then synced out to the tenant archive target so
+                          production disk can be cleared. Hot copies auto-purge
+                          within 7 days. Longer retention requires a purchased
+                          storage plan (not enabled yet). Drive adapters stay
+                          feature-flagged until OAuth credentials are approved.
+                        </InfoTip>
+                      </h2>
+                      <p>Where signed waivers are kept, and for how long.</p>
+                    </div>
+                  </div>
                   <div className="form-grid">
                     <Field label="Hot store">
                       <select
@@ -3736,16 +3757,47 @@ export function Settings({
               </>
             )}
             {tab === "payments" && (
-              <section className="settings-future">
-                <CreditCard size={20} />
-                <div>
-                  <h2>Payment integrations</h2>
-                  <p>
-                    Tenant collection providers, Stripe Connect, gateway
-                    selection and settlement rules will appear here after
-                    finance policy decisions are recorded.
-                  </p>
+              <section>
+                <div className="settings-card-head">
+                  <CreditCard size={20} />
+                  <div>
+                    <h2>Payment integrations</h2>
+                    <p>
+                      Online card checkout waits on Stripe Connect eligibility.
+                      Cash, manual methods, and partner settlement already
+                      work on reservations, the manifest, and Crew.
+                    </p>
+                  </div>
                 </div>
+                <Notice>
+                  Card-present / Stripe Terminal is not in Track A. Do not
+                  capture card numbers in this workspace or in Crew.
+                </Notice>
+                <dl className="locale-preview">
+                  <div>
+                    <dt>Manual and cash</dt>
+                    <dd>
+                      Staff record an allowed collection method on the
+                      reservation or at boarding. Crew Pay uses the same
+                      boarding rules as the web manifest.
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Partner invoice / collect</dt>
+                    <dd>
+                      Those bookings confirm without a guest payment. Claims
+                      live under{" "}
+                      <Link href="/finance/partners">Finance → Partners</Link>.
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Stripe Connect Checkout</dt>
+                    <dd>
+                      Not connected. Needs merchant eligibility, USD settlement,
+                      and live webhooks — not a toggle on this page.
+                    </dd>
+                  </div>
+                </dl>
               </section>
             )}
             {tab === "waivers" && <WaiverSettings session={session} />}
@@ -3775,7 +3827,17 @@ export function Settings({
             ) : null}
             {tab === "commercial" && (
               <section>
-                <h2>Collection methods & booking sources</h2>
+                <div className="settings-card-head compact-card-head">
+                  <Handshake size={20} />
+                  <div>
+                    <h2>Collection methods &amp; booking sources</h2>
+                    <p>
+                      What staff can record as a payment method, and where a
+                      booking is attributed. Channel brands stay on partner
+                      records.
+                    </p>
+                  </div>
+                </div>
                 <CodeListEditor
                   label="Allowed manual collection methods"
                   hint="Built-in methods cannot be removed. Guest payment via reseller is a guest-to-operator ledger entry when the guest paid through a reseller channel — not a substitute for Partner collects / Partner invoice claims."

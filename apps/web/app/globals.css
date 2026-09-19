@@ -14056,6 +14056,17 @@ a.briefing-tile:hover {
   flex-shrink: 0;
   flex-wrap: wrap;
 }
+.finance-panel-toolbar .search {
+  flex: 1;
+  min-width: 8rem;
+}
+.finance-list-filter {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.finance-list-filter select {
+  width: 100%;
+}
 .finance-list-scroll {
   flex: 1;
   overflow-y: auto;
@@ -14081,6 +14092,30 @@ a.briefing-tile:hover {
   font-weight: 600;
   font-size: 0.875rem;
   color: var(--ink);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.finance-list-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+}
+.finance-list-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.finance-list-item-inactive {
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+.finance-list-scroll .empty {
+  margin: 16px 12px;
 }
 .finance-list-item-meta {
   font-size: 0.75rem;

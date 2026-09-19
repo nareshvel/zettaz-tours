@@ -51,6 +51,15 @@ export function StaysSettings({ session }: { session: Session }) {
 
   const stays = options.data?.accommodations ?? [];
   const onVessels = tab === "vessels";
+  const stayNeedle = search.trim().toLowerCase();
+  const visibleStays = stayNeedle
+    ? stays.filter((stay) =>
+        [stay.name, stay.address]
+          .join(" ")
+          .toLowerCase()
+          .includes(stayNeedle),
+      )
+    : stays;
 
   function openVessel() {
     setVesselForm(emptyVessel);
@@ -109,9 +118,9 @@ export function StaysSettings({ session }: { session: Session }) {
         <div>
           <h2>Vessels &amp; properties</h2>
           <p>
-            Where a guest arrived from. Optional on a booking, shown on the
-            waiver and used for emergency contact. Most entries are shared and
-            already filled in — add one only if it is missing.
+            Optional on a booking, shown on the waiver, and used for emergency
+            contact. Shared ships and hotels are already listed — add one only
+            if it is missing.
           </p>
         </div>
         {canWrite && (
@@ -142,6 +151,9 @@ export function StaysSettings({ session }: { session: Session }) {
             onClick={() => setTab("vessels")}
           >
             Vessels
+            {vessels.data && vessels.data.length > 0 && (
+              <span className="tab-count">{vessels.data.length}</span>
+            )}
           </button>
           <button
             type="button"
@@ -155,13 +167,11 @@ export function StaysSettings({ session }: { session: Session }) {
             )}
           </button>
         </div>
-        {onVessels && (
-          <SearchBox
-            value={search}
-            onChange={setSearch}
-            placeholder="Search vessels"
-          />
-        )}
+        <SearchBox
+          value={search}
+          onChange={setSearch}
+          placeholder={onVessels ? "Search vessels" : "Search properties"}
+        />
       </div>
 
       {notice && <Notice>{notice}</Notice>}
@@ -212,13 +222,20 @@ export function StaysSettings({ session }: { session: Session }) {
         <Notice error>{options.error}</Notice>
       ) : !options.data ? (
         <Loading />
-      ) : !stays.length ? (
-        <Empty title="No properties yet">
+      ) : !visibleStays.length ? (
+        <Empty
+          title={
+            stayNeedle
+              ? "No properties match"
+              : "No properties yet"
+          }
+        >
           <p>
-            Add the hotels and rentals your guests stay at so pickups can be
-            planned against a known address.
+            {stayNeedle
+              ? "Try a different name, or add this hotel if it is genuinely missing."
+              : "Add the hotels and rentals your guests stay at so pickups can be planned against a known address."}
           </p>
-          {canWrite && (
+          {canWrite && !stayNeedle && (
             <button type="button" className="button" onClick={openStay}>
               <Plus size={16} /> Add property
             </button>
@@ -226,7 +243,7 @@ export function StaysSettings({ session }: { session: Session }) {
         </Empty>
       ) : (
         <div className="settings-list">
-          {stays.map((stay) => (
+          {visibleStays.map((stay) => (
             <article key={stay.id}>
               <div>
                 <strong>

@@ -10,7 +10,6 @@ import {
   ListFilter,
   Pencil,
   Plus,
-  Search,
 } from "lucide-react";
 import type { Session } from "@/lib/types";
 import { dateOnly, label, money, useMutation, useResource } from "@/lib/client";
@@ -21,6 +20,7 @@ import {
   TenantDateInput,
   Loading,
   Notice,
+  SearchBox,
   Toggle,
 } from "./common";
 
@@ -1729,59 +1729,27 @@ export function FinancePartners({
       {/* Left panel */}
       <div className="finance-list-panel">
         <div className="finance-panel-toolbar">
-          <div
-            className="finance-panel-search"
-            style={{ position: "relative", flex: 1 }}
-          >
-            <Search
-              size={14}
-              style={{
-                position: "absolute",
-                left: 8,
-                top: "50%",
-                transform: "translateY(-50%)",
-                color: "var(--muted)",
-                pointerEvents: "none",
-              }}
-            />
-            <input
-              style={{
-                width: "100%",
-                paddingLeft: 28,
-                height: 32,
-                fontSize: "0.82rem",
-                border: "1px solid var(--line)",
-                borderRadius: 6,
-                background: "var(--bg)",
-                boxSizing: "border-box",
-              }}
-              placeholder="Search partners…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+          <SearchBox
+            value={search}
+            onChange={setSearch}
+            placeholder="Search partners"
+          />
           <button
-            className="button small primary"
+            type="button"
+            className="button small primary catalog-add-btn"
             onClick={openCreate}
-            title="Add partner"
+            aria-label="Add partner"
           >
             <Plus size={14} />
+            <span className="button-label">Add</span>
           </button>
         </div>
-        <div
-          style={{ padding: "6px 12px", borderBottom: "1px solid var(--line)" }}
-        >
+        <div className="finance-list-filter">
           <select
-            style={{
-              width: "100%",
-              fontSize: "0.78rem",
-              border: "1px solid var(--line)",
-              borderRadius: 6,
-              padding: "4px 8px",
-              background: "var(--bg)",
-            }}
+            className="compact-control"
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
+            aria-label="Partner type"
           >
             <option value="">All types</option>
             <option value="ota">OTA</option>
@@ -1794,18 +1762,19 @@ export function FinancePartners({
           {partnersError && <Notice error>{partnersError}</Notice>}
           {!partners && <Loading />}
           {partners && filtered.length === 0 && (
-            <div
-              style={{
-                padding: "24px 14px",
-                textAlign: "center",
-                color: "var(--muted)",
-                fontSize: "0.82rem",
-              }}
+            <Empty
+              title={
+                search || typeFilter
+                  ? "No partners match"
+                  : "No partners yet"
+              }
             >
-              {search || typeFilter
-                ? "No partners match your filters."
-                : "No partners yet. Add one to get started."}
-            </div>
+              <p>
+                {search || typeFilter
+                  ? "Clear search or type to see the rest of the list."
+                  : "Add the OTAs, hotels, and agencies that sell your departures."}
+              </p>
+            </Empty>
           )}
           {filtered.map((p) => (
             <div
@@ -1813,43 +1782,16 @@ export function FinancePartners({
               className={`finance-list-item ${selectedId === p.id ? "active" : ""}`}
               onClick={() => setSelectedId(p.id)}
             >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 4,
-                }}
-              >
-                <span
-                  className="finance-list-item-name"
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {p.name}
-                </span>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    flexShrink: 0,
-                  }}
-                >
+              <div className="finance-list-item-row">
+                <span className="finance-list-item-name">{p.name}</span>
+                <div className="finance-list-item-actions">
                   {p.partner_type && (
-                    <span
-                      className="ledger-badge settled"
-                      style={{ fontSize: "0.6rem" }}
-                    >
+                    <span className="ledger-badge settled">
                       {label(p.partner_type)}
                     </span>
                   )}
                   <button
+                    type="button"
                     className="button small secondary icon-only partner-list-edit-btn"
                     title={`Edit ${p.name}`}
                     onClick={(e) => {
@@ -1866,9 +1808,7 @@ export function FinancePartners({
                 {commissionSummary(p, fallback)}
               </span>
               {p.status === "inactive" && (
-                <span style={{ fontSize: "0.68rem", color: "#9ca3af" }}>
-                  Inactive
-                </span>
+                <span className="finance-list-item-inactive">Inactive</span>
               )}
             </div>
           ))}

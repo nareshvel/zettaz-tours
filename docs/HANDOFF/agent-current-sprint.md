@@ -1,6 +1,6 @@
 # Agent current sprint board
 
-**Updated:** 17 September 2026 · **Audience:** any IDE agent (Cursor, Claude, Codex, Devin, ChatGPT)
+**Updated:** 19 September 2026 · **Audience:** any IDE agent (Cursor, Claude, Codex, Devin, ChatGPT)
 
 This is the **single “what next” page**. Read it before inventing a deploy or backlog plan from chat history.
 
@@ -10,11 +10,11 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 
 ---
 
-## Owner priority (17 September 2026 — non-Ops after Crew field pass)
+## Owner priority (19 September 2026 — stores shipped, non-Ops polish)
 
-1. **Crew app.** Phases 1–4 are on production `cad0ed8`. Retained waiver PDF + Crew sync-centre sign-out are on `origin/main` at `0acc028` (no new numbered migration). Owner deploys that tip, then builds EAS preview and runs the full device test including airplane-mode (4.8). **Do not start Phase 5.**
+1. **Crew app.** Phases 1–4 on production `cad0ed8`. EAS **preview** + **production** binaries exist. iOS **1.0.1 (2)** is on App Store Connect (`6813693098`). Android **Internal testing 2 (1.0.1)** is live. Owner still: TestFlight/Unlisted review notes, screenshots, reviewer demo user, **4.8 airplane-mode**. **Do not start Phase 5.**
 2. **Operations menu group** remains functionally complete pending testing. Do not open new Ops web feature work unless testing finds a bug.
-3. **Non-Ops:** Customers, Audit, and Document library polish are on production (`cad0ed8`; owner visual still outstanding). **Profile polish follow-up** is local (uncommitted) — see [profile-polish-evidence.md](../TESTING/profile-polish-evidence.md). **Crew field-pass UI** (covers, tabs, status sheet, waiver sign, auto-offline) is local — see [crew-field-pass-ui-evidence.md](../TESTING/crew-field-pass-ui-evidence.md). Next: remaining Administration owner visual (General & branding, Taxes, Guest stays, Partners). Reports already polished.
+3. **Non-Ops:** Customers, Audit, and Document library polish are on production (`cad0ed8`; owner visual still outstanding). **Profile polish follow-up** is local (uncommitted). **Crew field-pass UI** is local — needs commit + VPS + new EAS to match store binaries. **19 Sep settings:** General, Taxes, Guest stays, Payment integrations (honest deferred), document storage heading, Finance Partners list. Remaining owner visual: those tabs + Reports/Finance/Staff/Fleet.
 4. **Hold Subscription messaging.**
 
 ---

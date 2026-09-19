@@ -32,6 +32,11 @@
   },
   "submit": {
     "production": {
+      "ios": {
+        "appleId": "nareshvelusamy@msn.com",
+        "ascAppId": "6813693098",
+        "appleTeamId": "7688G2MP45"
+      },
       "android": {
         "track": "internal",
         "releaseStatus": "draft"

@@ -1,6 +1,6 @@
 # Cross-IDE agent resume guide
 
-**Updated:** 17 September 2026  
+**Updated:** 19 September 2026  
 **Audience:** ChatGPT Codex, Cursor, Claude, Devin, or another IDE agent continuing this project
 
 This file is the portable resume packet for Zettaz Tours & Charters. Use it when work moves between tools, then update it when a session changes the implementation state, task order, or a standing decision.
@@ -37,12 +37,12 @@ Stack is locked: NestJS modular monolith, Next.js workspace, Expo crew app, Post
 
 ## Current task sequence
 
-See [agent-current-sprint.md](agent-current-sprint.md). Short form (17 Sep):
+See [agent-current-sprint.md](agent-current-sprint.md). Short form (19 Sep):
 
-1. **Crew Phases 1–4 engineering** on production (`cad0ed8`). Owner rebuilds EAS, full device test including airplane-mode.
+1. **Crew store binaries** iOS ASC `6813693098` 1.0.1 (2); Play Internal 1.0.1/2. Engineering Phases 1–4 on production. Owner: Unlisted/review notes, screenshots, **4.8 airplane-mode**.
 2. **Do not start Phase 5** (kiosk, GPS, card-present, push, white-label).
 3. **Operations menu group closed** pending further testing.
-4. **Customers / Audit / Document library polish** on production (owner visual outstanding). **Profile polish follow-up** local. Next non-Ops: remaining Administration owner visual.
+4. **Customers / Audit / Document library** polish on production (owner visual outstanding). **Profile + Crew field-pass** local. Settings General/Taxes/Stays + Finance Partners list pass 19 Sep.
 5. **Hold** Subscription messaging polish.
 
 Pasteable Claude brief: [claude-handoff-2026-09-14.md](claude-handoff-2026-09-14.md).

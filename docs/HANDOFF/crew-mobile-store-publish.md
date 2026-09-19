@@ -1,44 +1,74 @@
 # Crew mobile store publish
 
-**Updated:** 17 September 2026  
+**Updated:** 19 September 2026  
 **Audience:** owner + agent preparing TestFlight / Play Internal, then unlisted production
 
 Zettaz Crew is a **staff-only** connected check-in app. Do not list it as a consumer booking app. Preferred production shape: Apple **Unlisted** (or Custom App) + Google Play **Internal / Closed** testing.
 
-Connected 1.0 is in scope for the store listing. Remaining Crew increments (field pickups, Pay, tablet, then offline) are sequenced in [crew-app-delivery.md](../STRATEGY/crew-app-delivery.md). Encrypted offline, crew-mobile Pay, GPS, and retained waiver PDFs stay deferred until that plan’s later phases.
+## Status (19 Sep 2026)
 
-## What engineering already did
+| Track | Status |
+| --- | --- |
+| Expo | `@zettazglobal/zettaz-crew` · `06c5ee72-752e-4e24-8519-a148f57b84d3` |
+| iOS | **Uploaded** 1.0.1 (2) to App Store Connect **6813693098**. Fill listing / Unlisted / review as needed. |
+| Android | **Internal testing live** — release **2 (1.0.1)** on `com.zettaz.crew`. Manual AAB (no Play service-account JSON). |
+| Preview | Internal APK/IPA: Android `6b84a7dc-…` · iOS `b1a161d9-…` |
 
-- Production phones call `https://tours.zettaz.com/api/mobile/…`, an allowlisted Next.js proxy to Nest (Bearer token, no cookie CSRF). Deploy the web app before testers open a store build.
-- EAS profiles: `preview` (internal APK / device build) and `production`.
-- Icons, splash, Play feature graphic, privacy/terms/support links, password reset, pull-to-refresh, and honest offline errors.
-- Native IDs: iOS/Android `com.zettaz.crew`, version `1.0.0`.
+Production AAB (versionCode **2**):  
+https://expo.dev/accounts/zettazglobal/projects/zettaz-crew/builds/0f243799-d490-47db-9eb0-622e03f8c6dc
 
-## Owner accounts (cannot be done in git)
+Android keystore: EAS **`CJ7CrFnFQD`**. Never generate a new one for `com.zettaz.crew`.
 
-1. [Expo](https://expo.dev) account — **done 17 Sep:** logged in as `zettazglobal`, project `@zettazglobal/zettaz-crew`, id `06c5ee72-752e-4e24-8519-a148f57b84d3` in `app.config.ts` (`eas init` cannot write a dynamic config).
-2. Apple Developer Program ($99/year) → App Store Connect app **Zettaz Crew**, bundle `com.zettaz.crew`.
-3. Google Play Console ($25 one-time) → app **Zettaz Crew**, package `com.zettaz.crew`.
-4. Create a **reviewer demo** staff user on production with `crew.trip.read` / `checkin.write`, assigned to a departure on the review day. Put the email/password only in App Review notes — not in git.
+## Org constants (same Zettaz accounts as iRestrack)
 
-## Build
+| Item | Value |
+| --- | --- |
+| App name | Zettaz Crew |
+| Bundle / package | `com.zettaz.crew` |
+| Apple Team | `7688G2MP45` |
+| Apple ID | `nareshvelusamy@msn.com` |
+| ASC app ID | `6813693098` |
+| ASC API key | `5MZ797VJ2A` |
+| Play org | **Zettaz** (login often `nareshvelusamy1@gmail.com`) |
+| Expo | `zettazglobal` |
 
-After a web deploy that includes `/api/mobile`:
+## Android — skip `eas submit` (Play JSON missing)
+
+iRestrack never configured Play API upload either. `eas submit --platform android` will keep asking for a Google Service Account file. **Ctrl+C** and upload the AAB by hand.
+
+1. Play Console → org **Zettaz** → **Create app** if **Zettaz Crew** / `com.zettaz.crew` does not exist yet (new package; do not upload into iRestrack).
+2. Finish the first-app dashboard items Google blocks on: privacy policy `https://tours.zettaz.com/privacy`, Data safety (table below), content rating, target audience, store listing (copy below + `apps/mobile/store/feature-graphic.png`).
+3. **Test and release → Internal testing → Create new release** → upload the AAB from the production build link above (or Expo → download `.aab`).
+4. Add testers (your Gmail). Install from the Play Internal link — not the preview APK if you are validating the store binary.
+5. After QA, promote Internal → Closed / Production if you want it wider.
+
+Optional later (so `eas submit` works): Play Console → **Users and permissions** / **API access** → create a **Google Cloud service account** with Play Console permission on this app → download JSON → keep it **out of git** → `eas credentials -p android` → set the service-account key. Until then, always manual AAB.
+
+## iOS — after processing
+
+1. [TestFlight](https://appstoreconnect.apple.com/apps/6813693098/testflight/ios) → wait until build **1.0.1 (2)** is **Complete**.
+2. Fill App Store listing (copy below). Prefer **Unlisted**.
+3. Attach the build → **Add for Review**. Reviewer demo staff user belongs in review notes only.
 
 ```sh
 cd apps/mobile
-npx eas-cli build --profile preview --platform all
+eas submit --profile production --platform ios --latest
 ```
 
-Install the preview on a physical iPhone and Android. Then:
+## Owner still needed
 
-```sh
-npx eas-cli build --profile production --platform all
-npx eas-cli submit --profile production --platform android
-npx eas-cli submit --profile production --platform ios
-```
+- Production reviewer staff user (email/password in review notes, not git)
+- Store screenshots from device
+- Apple listing: Unlisted + Submit for Review when TestFlight build is Complete
+- Airplane-mode drill (Crew 4.8) on a store or preview install
+- VPS deploy of local Crew field-pass / booking work if production phones should match this tree
 
-iOS submit needs an App Store Connect app record. Android submit uses the `internal` track as a draft until you promote it.
+## What engineering already did
+
+- Production phones call `https://tours.zettaz.com/api/mobile/…`, an allowlisted Next.js proxy to Nest (Bearer token, no cookie CSRF).
+- EAS `preview` (internal APK) and `production` (AAB / App Store IPA). `eas.json` iOS submit has `ascAppId`.
+- Icons, splash, Play feature graphic, privacy/terms/support links.
+- Native IDs: iOS/Android `com.zettaz.crew`, marketing version `1.0.1`.
 
 ## Listing copy
 
@@ -51,7 +81,7 @@ iOS submit needs an App Store Connect app record. Android submit uses the `inter
 | Privacy | https://tours.zettaz.com/privacy |
 | Terms | https://tours.zettaz.com/terms |
 | Support | mailto:support@zettaz.com |
-| Marketing URL | https://tours.zettaz.com |
+| Marketing URL |    |
 
 **Short description (Play, 80 chars):**  
 Staff check-in, waivers, and trip status for Zettaz Tours operators.

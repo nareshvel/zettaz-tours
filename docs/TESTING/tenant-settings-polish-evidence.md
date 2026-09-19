@@ -15,7 +15,11 @@
   - Localization explains why booking / collection / reporting currencies are read-only (Track A same-currency; FX out of scope).
   - Taxes & commercial explains the rate is applied exclusively on new-hold subtotals; inclusive pricing is not modeled.
   - Desktop aside meta/facts type slightly smaller; mobile/tablet tab-to-content spacing tightened.
-- **Follow-up 17 September 2026:** when a tenant logo is already on file, the helper under the dropzone says to click the image to replace it.
+- **Follow-up 19 September 2026 (2):**
+  - Payment integrations is an honest Track A status (cash/partner live, Connect not a toggle, Terminal deferred) with a link to Finance → Partners.
+  - Taxes: collection methods / booking sources use the same card heading.
+  - Printers: document storage heading matches other settings cards.
+  - Finance Partners: empty state uses `Empty`; list rows no longer use inline layout styles.
 
 ## Owner acceptance still needed
 

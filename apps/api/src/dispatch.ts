@@ -101,7 +101,7 @@ export class DispatchService {
     const query = parse(boardQuery, raw);
     return this.db.transaction(actor, async (tx) => {
       const { rows } = await tx.query(
-        `SELECT d.id,d.starts_at,d.capacity,d.capacity_adult,d.capacity_child,(d.committed+d.overbooked)::int AS committed,d.overbooked,d.operational_status,d.operational_reason,d.operational_version,p.name AS product_name,p.cover_path,
+        `SELECT d.id,d.starts_at,d.capacity,d.capacity_adult,d.capacity_child,(d.committed+d.overbooked)::int AS committed,(d.committed_adults+d.overbooked_adults)::int AS committed_adults,(d.committed_children+d.overbooked_children)::int AS committed_children,d.overbooked,d.operational_status,d.operational_reason,d.operational_version,p.name AS product_name,p.cover_path,
         GREATEST(0,d.capacity-(d.committed+d.overbooked))::int AS available,
         GREATEST(0,d.capacity_adult-d.committed_adults-d.overbooked_adults)::int AS available_adults,
         CASE WHEN d.capacity_child IS NULL THEN NULL ELSE GREATEST(0,d.capacity_child-d.committed_children-d.overbooked_children)::int END AS available_children,

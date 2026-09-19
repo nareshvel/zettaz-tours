@@ -446,6 +446,8 @@ export type DispatchRow = {
   available_adults?: number;
   available_children?: number | null;
   committed: number;
+  committed_adults?: number;
+  committed_children?: number;
   product_name: string;
   confirmed_bookings: number;
   confirmed_guests: number;

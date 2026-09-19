@@ -21,7 +21,7 @@ import type {
   RebookingPreview,
   Session,
 } from "@/lib/types";
-import { occupancyFillCopy, occupancyPressure, remainingPlacesCopy } from "@/lib/types";
+import { occupancyPressure } from "@/lib/types";
 import {
   dateTime,
   downloadApiFile,
@@ -44,6 +44,7 @@ import {
   TenantDateInput,
 } from "./common";
 import { StartTripButton } from "./start-trip";
+import { OccupancyMeters } from "./occupancy-meters";
 
 function fillPressure(d: {
   committed: number;
@@ -240,25 +241,7 @@ export function OperationsBoard({ session }: { session: Session }) {
                     )}
                   </div>
                 </div>
-                <div
-                  className={
-                    "capacity-meter is-" +
-                    fillPressure(d)
-                  }
-                >
-                  <span
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        d.capacity ? (d.committed / d.capacity) * 100 : 0,
-                      )}%`,
-                    }}
-                  />
-                  <small>
-                    {occupancyFillCopy(d)}
-                    {d.available != null ? ` · ${remainingPlacesCopy(d)}` : ""}
-                  </small>
-                </div>
+                <OccupancyMeters departure={d} />
                 <div className="dispatch-metrics">
                   <div>
                     <strong>{d.confirmed_guests}</strong>

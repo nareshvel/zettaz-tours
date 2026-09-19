@@ -4349,7 +4349,7 @@ td small {
 .calendar-departure.is-full {
   background: color-mix(in srgb, var(--danger) 10%, white);
 }
-.dispatch-card .capacity-meter {
+.dispatch-card .occupancy-meters {
   margin: 0 0 12px;
 }
 .dispatch-card.is-filling {

@@ -18,6 +18,8 @@ All commercial totals use the tenant reporting currency. Cross-currency conversi
 
 CSV is generated from the rows on screen. Later catalog items (P&amp;L, commission summary, partner PDF, accounting export, sales by product) are labelled not in this launch and have no fake numbers.
 
+Tenant isolation for period overview, partner aging, and expense summary is covered in `apps/api/test/first-slice.test.ts`.
+
 ## Boundary
 
 Reports are operational read models. They do not create accounting entries, infer provider settlement, calculate tax filings, or schedule emails. Rich analytics, a warehouse, QBO live sync, and print-agent report PDFs remain Track B.

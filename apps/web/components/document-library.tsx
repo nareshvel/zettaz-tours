@@ -1,6 +1,7 @@
 "use client";
 import {
   useEffect,
+  useId,
   useMemo,
   useState,
   type Dispatch,
@@ -8,15 +9,19 @@ import {
 } from "react";
 import {
   Download,
+  Eye,
   FileText,
   HardDrive,
   Plus,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
+import { createPortal } from "react-dom";
 import {
   downloadApiFile,
   errorText,
+  fetchApiFile,
   formatMediumDate,
   useMutation,
   useResource,
@@ -605,6 +610,11 @@ export function StaffDocumentAddFields({
   setForm,
   locale,
   dateFormat,
+  typeSuggestions,
+  requireFields = true,
+  heading = "New document",
+  description = "Type, expiry, and optional evidence file.",
+  hideHead = false,
 }: {
   form: {
     documentType: string;
@@ -622,25 +632,43 @@ export function StaffDocumentAddFields({
   >;
   locale: string;
   dateFormat: "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD";
+  typeSuggestions?: string[];
+  /** When false, fields are not HTML-required so a parent form can save other sections. */
+  requireFields?: boolean;
+  heading?: string;
+  description?: string;
+  hideHead?: boolean;
 }) {
+  const listId = useId();
+  const suggestions = typeSuggestions ?? [];
   return (
     <section className="staff-docs-section">
-      <div className="staff-form-section-head">
-        <Upload size={16} aria-hidden="true" />
-        <div>
-          <h3>New document</h3>
-          <p>Type, expiry, and optional evidence file.</p>
+      {!hideHead && (
+        <div className="staff-form-section-head">
+          <Upload size={16} aria-hidden="true" />
+          <div>
+            <h3>{heading}</h3>
+            <p>{description}</p>
+          </div>
         </div>
-      </div>
+      )}
       <div className="form-grid">
-        <Field label="Document type" required>
+        <Field label="Document type" required={requireFields}>
           <input
-            required
+            required={requireFields}
+            list={suggestions.length ? listId : undefined}
             value={form.documentType}
             onChange={(e) =>
               setForm((v) => ({ ...v, documentType: e.target.value }))
             }
           />
+          {suggestions && suggestions.length > 0 && (
+            <datalist id={listId}>
+              {suggestions.map((item) => (
+                <option key={item} value={item} />
+              ))}
+            </datalist>
+          )}
         </Field>
         <TenantDateInput
           label="Expires on"
@@ -681,65 +709,324 @@ export function StaffDocumentArchive({
   busy,
   onDownload,
   onRemove,
+  onView,
+  compact = false,
+  showMeter = true,
 }: {
   docs: ComplianceDocument[];
   usage: LibraryUsage | null;
   busy?: boolean;
   onDownload: (doc: ComplianceDocument) => void;
   onRemove: (id: string) => void;
+  onView?: (doc: ComplianceDocument) => void;
+  compact?: boolean;
+  showMeter?: boolean;
 }) {
+  const list =
+    docs.length === 0 ? (
+      <p className="staff-form-note">No documents on file yet.</p>
+    ) : (
+      <ul className="staff-doc-list">
+        {docs.map((doc) => (
+          <li key={doc.id}>
+            <div>
+              <strong>{doc.document_type}</strong>
+              <small>
+                Expires {formatMediumDate(doc.expires_on)}
+                {doc.has_file
+                  ? ` · ${doc.file_name || "File"} · ${formatBytes(doc.byte_size ?? 0)}`
+                  : " · No file"}
+              </small>
+            </div>
+            <div className="row-actions">
+              {doc.has_file && onView && (
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={`View ${doc.document_type}`}
+                  onClick={() => onView(doc)}
+                >
+                  <Eye size={16} />
+                </button>
+              )}
+              {doc.has_file && (
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={`Download ${doc.file_name || doc.document_type}`}
+                  onClick={() => onDownload(doc)}
+                >
+                  <Download size={16} />
+                </button>
+              )}
+              <button
+                type="button"
+                className="icon-button danger"
+                aria-label={`Remove ${doc.document_type}`}
+                disabled={busy}
+                onClick={() => onRemove(doc.id)}
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    );
   return (
     <>
-      <StorageMeter usage={usage} />
-      <section className="staff-docs-section">
-        <div className="staff-form-section-head">
-          <FileText size={16} aria-hidden="true" />
-          <div>
-            <h3>Existing documents</h3>
-            <p>Expired documents can block trip assignments.</p>
-          </div>
-        </div>
-        {docs.length === 0 ? (
-          <p className="staff-form-note">No documents on file yet.</p>
-        ) : (
-          <ul className="staff-doc-list">
-            {docs.map((doc) => (
-              <li key={doc.id}>
-                <div>
-                  <strong>{doc.document_type}</strong>
-                  <small>
-                    Expires {formatMediumDate(doc.expires_on)}
-                    {doc.has_file
-                      ? ` · ${doc.file_name || "File"} · ${formatBytes(doc.byte_size ?? 0)}`
-                      : " · No file"}
-                  </small>
-                </div>
-                <div className="row-actions">
-                  {doc.has_file && (
-                    <button
-                      type="button"
-                      className="icon-button"
-                      aria-label={`Download ${doc.file_name || doc.document_type}`}
-                      onClick={() => onDownload(doc)}
-                    >
-                      <Download size={16} />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="icon-button danger"
-                    aria-label={`Remove ${doc.document_type}`}
-                    disabled={busy}
-                    onClick={() => onRemove(doc.id)}
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      {compact ? (
+        <>
+          {list}
+          {showMeter ? <StorageMeter usage={usage} /> : null}
+        </>
+      ) : (
+        <>
+          {showMeter ? <StorageMeter usage={usage} /> : null}
+          <section className="staff-docs-section">
+            <div className="staff-form-section-head">
+              <FileText size={16} aria-hidden="true" />
+              <div>
+                <h3>Existing documents</h3>
+                <p>Expired documents can block trip assignments.</p>
+              </div>
+            </div>
+            {list}
+          </section>
+        </>
+      )}
     </>
+  );
+}
+
+function previewKind(contentType: string, fileName: string) {
+  const type = contentType.toLowerCase();
+  const name = fileName.toLowerCase();
+  if (type.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/.test(name)) {
+    return "image" as const;
+  }
+  if (type === "application/pdf" || name.endsWith(".pdf")) {
+    return "pdf" as const;
+  }
+  return "other" as const;
+}
+
+export function DocumentViewDialog({
+  open,
+  title,
+  docs,
+  activeId,
+  onClose,
+}: {
+  open: boolean;
+  title: string;
+  docs: ComplianceDocument[];
+  activeId?: string;
+  onClose: () => void;
+}) {
+  const titleId = useId();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const [contentType, setContentType] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const selected =
+    docs.find((doc) => doc.id === selectedId) ??
+    docs.find((doc) => doc.id === activeId) ??
+    docs.find((doc) => doc.has_file) ??
+    docs[0] ??
+    null;
+
+  useEffect(() => {
+    if (!open) return;
+    setSelectedId(
+      activeId ??
+        docs.find((doc) => doc.has_file)?.id ??
+        docs[0]?.id ??
+        null,
+    );
+  }, [open, activeId, docs]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  useEffect(() => {
+    if (!open || !selected?.has_file) {
+      setBusy(false);
+      setError("");
+      setObjectUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      return;
+    }
+    let cancelled = false;
+    setBusy(true);
+    setError("");
+    setObjectUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    void fetchApiFile(
+      `ops/v1/compliance-documents/${selected.id}/file`,
+      selected.file_name || "document",
+    )
+      .then(({ blob }) => {
+        const url = URL.createObjectURL(blob);
+        if (cancelled) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        setContentType(blob.type || selected.content_type || "");
+        setObjectUrl(url);
+      })
+      .catch((err) => {
+        if (!cancelled) setError((err as Error).message);
+      })
+      .finally(() => {
+        if (!cancelled) setBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    open,
+    selected?.id,
+    selected?.has_file,
+    selected?.file_name,
+    selected?.content_type,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [objectUrl]);
+
+  if (!open) return null;
+  if (typeof document === "undefined") return null;
+
+  const kind = previewKind(contentType, selected?.file_name || "");
+  const showNav = docs.length > 1;
+
+  return createPortal(
+    <div className="confirm-dialog-root" role="presentation">
+      <div className="confirm-dialog-scrim" aria-hidden="true" />
+      <div
+        className="panel confirm-dialog-sheet form-dialog-sheet document-view-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+      >
+        <header className="confirm-dialog-head">
+          <div>
+            <h2 id={titleId}>{title}</h2>
+            {selected ? (
+              <div className="muted confirm-dialog-desc">
+                {selected.document_type}
+                {selected.file_name ? ` · ${selected.file_name}` : ""}
+                {selected.expires_on
+                  ? ` · expires ${formatMediumDate(selected.expires_on)}`
+                  : ""}
+              </div>
+            ) : (
+              <div className="muted confirm-dialog-desc">
+                No documents on file yet.
+              </div>
+            )}
+          </div>
+          <div className="document-view-head-actions">
+            {selected?.has_file && (
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={`Download ${selected.file_name || selected.document_type}`}
+                onClick={() =>
+                  void downloadApiFile(
+                    `ops/v1/compliance-documents/${selected.id}/file`,
+                    selected.file_name || "document",
+                  )
+                }
+              >
+                <Download size={16} />
+              </button>
+            )}
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Close"
+              onClick={onClose}
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </header>
+        <div className="document-view-body">
+          {docs.length === 0 ? (
+            <p className="staff-form-note document-view-empty">
+              No documents on file yet.
+            </p>
+          ) : (
+            <div
+              className={"document-view-layout" + (showNav ? "" : " solo")}
+            >
+              {showNav && (
+                <nav className="document-view-nav" aria-label="Documents">
+                  {docs.map((doc) => (
+                    <button
+                      key={doc.id}
+                      type="button"
+                      className={
+                        selected?.id === doc.id ? "is-active" : undefined
+                      }
+                      onClick={() => setSelectedId(doc.id)}
+                    >
+                      <strong>{doc.document_type}</strong>
+                      <small>
+                        {doc.has_file
+                          ? doc.file_name || "File attached"
+                          : "No file"}
+                      </small>
+                    </button>
+                  ))}
+                </nav>
+              )}
+              <div className="document-view-stage">
+                {!selected?.has_file ? (
+                  <p className="staff-form-note">No file attached to view.</p>
+                ) : busy ? (
+                  <Loading />
+                ) : error ? (
+                  <Notice error>{error}</Notice>
+                ) : objectUrl && kind === "image" ? (
+                  <img
+                    src={objectUrl}
+                    alt={selected.file_name || selected.document_type}
+                  />
+                ) : objectUrl && kind === "pdf" ? (
+                  <iframe
+                    title={selected.file_name || selected.document_type}
+                    src={objectUrl}
+                  />
+                ) : objectUrl ? (
+                  <p className="staff-form-note">
+                    This file type cannot be previewed here. Download it
+                    instead.
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }

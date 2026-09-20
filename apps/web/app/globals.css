@@ -11103,6 +11103,9 @@ a.briefing-tile:hover {
   .report-shell-toolbar {
     display: none !important;
   }
+  .reports-hub {
+    display: block;
+  }
   .workspace-main {
     margin: 0;
   }
@@ -11300,6 +11303,238 @@ a.briefing-tile:hover {
 .form-dialog-sheet.staff-docs-dialog {
   width: min(640px, calc(100vw - 24px));
   max-height: min(92vh, 860px);
+}
+.form-dialog-sheet.fleet-asset-dialog {
+  width: min(880px, calc(100vw - 24px));
+  height: min(92vh, 920px);
+  max-height: min(92vh, 920px);
+}
+.fleet-asset-dialog .confirm-dialog-head {
+  padding: 18px 24px 14px;
+}
+.fleet-asset-dialog .confirm-dialog-head h2 {
+  font-size: 1.2rem;
+}
+.fleet-asset-dialog .confirm-dialog-desc {
+  max-width: 42rem;
+  margin-top: 4px;
+  line-height: 1.45;
+}
+.fleet-asset-dialog .confirm-dialog-fields {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  gap: 0;
+  padding: 0;
+}
+.fleet-asset-dialog .confirm-dialog-actions {
+  padding: 14px 24px 18px;
+}
+.fleet-asset-dialog .confirm-dialog-after {
+  flex: 0 1 auto;
+  max-height: min(36vh, 280px);
+}
+.fleet-asset-dialog .confirm-dialog-after .library-storage-meter {
+  margin: 16px 24px 0;
+}
+.fleet-asset-dialog .staff-form-section {
+  padding: 18px 24px;
+}
+.fleet-identity-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px 16px;
+  align-items: start;
+}
+.fleet-identity-grid .field,
+.fleet-identity-grid .tenant-date-control {
+  margin-bottom: 0;
+}
+.fleet-identity-grid .fleet-span-2 {
+  grid-column: span 2;
+  min-width: 0;
+}
+.fleet-identity-grid .fleet-span-3 {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.fleet-identity-grid textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+.fleet-identity-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.fleet-identity-toolbar .staff-form-section-head {
+  margin-bottom: 0;
+  min-width: 0;
+}
+.fleet-identity-toolbar .fleet-active-toggle {
+  flex: none;
+  margin: 2px 0 0;
+  align-items: center;
+  flex-direction: row-reverse;
+  text-align: right;
+}
+.fleet-papers-block {
+  border-top: 1px solid var(--line);
+}
+.fleet-papers-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.fleet-papers-toolbar .staff-form-section-head {
+  margin-bottom: 0;
+}
+.fleet-papers-toolbar .button {
+  flex: none;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.fleet-papers-block .staff-doc-list {
+  margin-bottom: 12px;
+}
+.fleet-papers-block .library-storage-meter {
+  margin: 12px 0 0;
+}
+.form-dialog-sheet.fleet-doc-dialog {
+  width: min(560px, calc(100vw - 24px));
+}
+.fleet-doc-dialog .staff-docs-section {
+  padding: 0;
+  border-bottom: 0;
+}
+.confirm-dialog-root:has(.document-view-dialog) {
+  z-index: 95;
+}
+.form-dialog-sheet.document-view-dialog {
+  width: min(960px, calc(100vw - 24px));
+  height: min(84vh, 820px);
+  max-height: min(92vh, 900px);
+}
+.document-view-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.document-view-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.document-view-empty {
+  margin: 18px 24px;
+}
+.document-view-layout {
+  display: grid;
+  grid-template-columns: minmax(168px, 220px) minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+.document-view-layout.solo {
+  grid-template-columns: 1fr;
+}
+.document-view-nav {
+  overflow: auto;
+  border-right: 1px solid var(--line);
+  padding: 10px;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  background: #fbfcfc;
+}
+.document-view-nav button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font: inherit;
+  cursor: pointer;
+  display: grid;
+  gap: 2px;
+}
+.document-view-nav button strong {
+  font-size: 13px;
+}
+.document-view-nav button small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.document-view-nav button:hover,
+.document-view-nav button.is-active {
+  background: #eef3f3;
+}
+.document-view-stage {
+  min-height: 0;
+  overflow: auto;
+  background: #141c1e;
+  display: grid;
+  place-items: center;
+}
+.document-view-stage iframe {
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+  border: 0;
+  background: #fff;
+}
+.document-view-stage img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.document-view-stage .staff-form-note,
+.document-view-stage .notice {
+  margin: 16px;
+}
+@media (max-width: 760px) {
+  .document-view-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .document-view-nav {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    grid-auto-flow: column;
+    overflow-x: auto;
+  }
+}
+@media (max-width: 760px) {
+  .form-dialog-sheet.fleet-asset-dialog {
+    width: min(520px, calc(100vw - 24px));
+  }
+  .fleet-identity-grid {
+    grid-template-columns: 1fr;
+  }
+  .fleet-identity-grid .fleet-span-2,
+  .fleet-identity-grid .fleet-span-3 {
+    grid-column: auto;
+  }
+  .fleet-papers-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .fleet-identity-toolbar {
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .fleet-identity-toolbar .fleet-active-toggle {
+    margin-left: auto;
+  }
 }
 .staff-docs-dialog .confirm-dialog-fields {
   flex: 0 0 auto;
@@ -12104,6 +12339,14 @@ a.briefing-tile:hover {
   min-width: 0;
   max-width: none;
 }
+.fleet-asset-bar {
+  justify-content: flex-start;
+}
+.fleet-asset-bar .search {
+  flex: 1 1 0;
+  width: auto;
+  min-height: 44px;
+}
 .staff-list-tools > .button {
   flex-shrink: 0;
   margin-left: 0;
@@ -12112,6 +12355,29 @@ a.briefing-tile:hover {
 .finance-expense-bar {
   width: 100%;
   margin: 0 0 20px;
+}
+.fleet-status-filter {
+  flex: 0 0 auto;
+  align-self: center;
+  box-sizing: border-box;
+  width: 7.25rem;
+  max-width: 7.25rem;
+  min-width: 7.25rem;
+  min-height: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background-color: white;
+  padding: 0 32px 0 12px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2365777b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  cursor: pointer;
 }
 .finance-expense-bar {
   margin: 0;
@@ -12145,6 +12411,38 @@ a.briefing-tile:hover {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+.resource-table .text-link small {
+  display: block;
+  font-weight: 500;
+  color: var(--muted);
+}
+.asset-doc-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+.asset-doc-count svg {
+  color: var(--muted);
+}
+.resource-table td:last-child {
+  width: 1%;
+  white-space: nowrap;
+}
+.resource-table .row-actions {
+  gap: 2px;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+}
+button.resource-name-btn {
+  color: inherit;
+  font-weight: inherit;
+  white-space: nowrap;
+}
+button.resource-name-btn:hover {
+  color: var(--teal);
 }
 .resource-card small {
   color: var(--muted);
@@ -12319,6 +12617,26 @@ a.briefing-tile:hover {
   overflow: auto;
   border-top: 1px solid var(--line);
   background: #fbfcfc;
+}
+.form-dialog-sheet.fleet-asset-dialog {
+  width: min(880px, calc(100vw - 24px));
+  height: min(92vh, 920px);
+  max-height: min(92vh, 920px);
+}
+.form-dialog-sheet.fleet-doc-dialog {
+  width: min(560px, calc(100vw - 24px));
+}
+.fleet-asset-dialog .confirm-dialog-fields {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  gap: 0;
+  padding: 0;
+}
+.fleet-asset-dialog .confirm-dialog-after {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: min(36vh, 280px);
 }
 .confirm-dialog-head {
   display: flex;

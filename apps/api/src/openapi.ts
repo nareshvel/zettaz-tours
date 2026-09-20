@@ -104,6 +104,18 @@ const routes: [string, string, z.ZodType | null, string][] = [
     "List partner obligation statement lines",
   ],
   [
+    "/finance/v1/finance-aging",
+    "get",
+    null,
+    "Read unpaid partner balances bucketed by age as of a tenant date",
+  ],
+  [
+    "/finance/v1/expenses",
+    "get",
+    null,
+    "List operating expenses and category totals for a date range",
+  ],
+  [
     "/crew/v1/today",
     "get",
     null,

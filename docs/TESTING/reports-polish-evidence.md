@@ -25,11 +25,13 @@
 - Insights → Reports is a grouped catalog (Operations, Money, Partners, Later). `/reports` loads Period overview by default. Live reports use a period menu plus icon-only Export and Print.
 - Period overview, partner aging, and expense summary are registered. `/finance/reports` redirects to `/reports`. Finance Overview links to aging and expense summary.
 - Later items (P&L, commission summary, partner PDF, accounting export) stay labelled, not clickable.
+- Toolbar: one period/filter button (aging filters collapse to one menu on phone), icon-only Export/Print, equal-height controls.
+- Catalog copy is short; Period overview has no FX subtitle. `/finance/reports` still redirects to `/reports`.
 
 ## Automated evidence
 
 - `npm run typecheck --workspace=@zettaz/web` after this follow-up (passed).
-- Browser `/reports` without a session still lands on the public marketing home, so chip interaction was not exercised here.
+- API: `report totals use tenant-scoped published commercial and operational facts`; `partner aging and expense summary reports stay tenant-scoped`.
 
 ## Owner acceptance still needed
 

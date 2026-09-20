@@ -14,17 +14,18 @@ Answer for Track A **shared tours**: multiple bookings already share one departu
 
 | Layer | Example | System role |
 | --- | --- | --- |
-| Sellable capacity | Schedule capacity 36 on “Tuk-Tuk Rainforest & Beach Hopping” | Holds and confirmed bookings consume seats |
-| Fleet assets | 18 tuk-tuk resources | Assigned on the departure for readiness / conflict / compliance |
+| Sellable capacity | Schedule occupancy from **Units on this run** × per-unit seats | Holds and confirmed bookings consume seats |
+| Named fleet assets | One row per tuk-tuk/boat; **passenger seats** on that unit | Assigned on the departure for readiness, conflict, compliance |
+| Coverage (readiness) | Sum of assigned unit seats vs booked occupancy | Warning on Fleet and Catalog → Assignments; does not sell-block |
 
-You do **not** create 18 products to take 18 bookings on a shared departure.
+You do **not** create 18 products to take 18 bookings on a shared departure. You **do** create 18 fleet rows if you have 18 named units to assign.
 
 ## Configuration checklist
 
 1. Confirm the product is a **shared** fixed-departure tour (not private charter).
 2. Set schedule **adult capacity**, **maximum occupancy**, and optional **child capacity** to the totals you will sell for that departure time (e.g. 18 tuk-tuks × 4 adults + 2 children = 72 / 36 / 108). Do not leave occupancy as “18” because there are 18 vehicles unless the sellable unit is one vehicle-slot.
-3. Register vehicles under **Fleet**.
-4. Assign vehicles on the departure as bookings fill (ops readiness; Catalog → Assignments).
+3. Register each vehicle as its own row under **Fleet** (passenger seats = this unit, not how many you own).
+4. Assign vehicles on the departure as bookings fill (ops readiness; Catalog → Assignments). Assigned seats vs booked occupancy is shown as a coverage warning only.
 5. If each party must own a whole vehicle exclusively → stop; that needs the charter/resource inventory model (deferred unless promoted).
 
 **Naming:** Fleet = operational assets. Inventory (elsewhere in docs) = sellable seats. Do not conflate.

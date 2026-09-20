@@ -21,6 +21,7 @@ import { access } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Actor } from "../../../packages/shared/src/contracts";
+import { FLEET_KIND_IDS } from "../../../packages/shared/src/fleet";
 import { Database, record } from "./database";
 import {
   absoluteLibraryPath,
@@ -37,8 +38,11 @@ const resourceSchema = z
       .trim()
       .regex(/^[a-z][a-z0-9_-]{1,49}$/),
     name: z.string().trim().min(1).max(120),
-    type: z.string().trim().min(1).max(50),
+    type: z.enum(FLEET_KIND_IDS),
     capacity: z.number().int().positive().max(100000).nullable().default(null),
+    make: z.string().trim().max(80).default(""),
+    model: z.string().trim().max(80).default(""),
+    identifier: z.string().trim().max(80).default(""),
     notes: z.string().trim().max(1000).default(""),
   })
   .strict();
@@ -128,7 +132,7 @@ export class ResourceService {
       async (tx) =>
         (
           await tx.query(
-            "SELECT id,code,name,type,capacity,notes,active FROM operational_resources WHERE tenant_id=$1 ORDER BY active DESC,name,id",
+            "SELECT id,code,name,type,capacity,make,model,identifier,notes,active FROM operational_resources WHERE tenant_id=$1 ORDER BY active DESC,name,id",
             [actor.tenantId],
           )
         ).rows,
@@ -191,7 +195,7 @@ export class ResourceService {
     return this.db.command(actor, "resource.create", key, input, async (tx) => {
       const id = randomUUID();
       await tx.query(
-        "INSERT INTO operational_resources(tenant_id,id,code,name,type,capacity,notes) VALUES($1,$2,$3,$4,$5,$6,$7)",
+        "INSERT INTO operational_resources(tenant_id,id,code,name,type,capacity,make,model,identifier,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
         [
           actor.tenantId,
           id,
@@ -199,6 +203,9 @@ export class ResourceService {
           input.name,
           input.type,
           input.capacity,
+          input.make,
+          input.model,
+          input.identifier,
           input.notes,
         ],
       );
@@ -212,14 +219,14 @@ export class ResourceService {
       const {
         rows: [before],
       } = await tx.query(
-        "SELECT id,code,name,type,capacity,notes,active FROM operational_resources WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
+        "SELECT id,code,name,type,capacity,make,model,identifier,notes,active FROM operational_resources WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
         [actor.tenantId, id],
       );
       if (!before) throw new NotFoundException("Resource not found");
       try {
         await tx.query(
           `UPDATE operational_resources
-              SET code=$3,name=$4,type=$5,capacity=$6,notes=$7,active=$8
+              SET code=$3,name=$4,type=$5,capacity=$6,make=$7,model=$8,identifier=$9,notes=$10,active=$11
             WHERE tenant_id=$1 AND id=$2`,
           [
             actor.tenantId,
@@ -228,6 +235,9 @@ export class ResourceService {
             input.name,
             input.type,
             input.capacity,
+            input.make,
+            input.model,
+            input.identifier,
             input.notes,
             input.active,
           ],
@@ -256,7 +266,7 @@ export class ResourceService {
         const {
           rows: [before],
         } = await tx.query(
-          "SELECT id,code,name,type,capacity,notes,active FROM operational_resources WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
+          "SELECT id,code,name,type,capacity,make,model,identifier,notes,active FROM operational_resources WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
           [actor.tenantId, id],
         );
         if (!before) throw new NotFoundException("Resource not found");
@@ -710,9 +720,11 @@ export class ResourceService {
     return this.db.transaction(actor, async (tx) => {
       const { rows } = await tx.query(
         `SELECT a.id,a.departure_id,a.assignment_role,a.status,a.starts_at,a.ends_at,a.override_reason,
-            r.id AS resource_id,r.name AS resource_name,
+            r.id AS resource_id,r.name AS resource_name,r.capacity AS resource_capacity,
             c.membership_actor_id AS crew_actor_id,c.operational_name AS crew_name,
-            d.starts_at AS departure_starts_at,d.local_date,p.name AS product_name
+            d.starts_at AS departure_starts_at,to_char(d.local_date,'YYYY-MM-DD') AS local_date,p.name AS product_name,
+            d.capacity AS departure_capacity,
+            (d.committed+d.overbooked)::int AS departure_committed
            FROM departure_assignments a
            JOIN departures d ON d.tenant_id=a.tenant_id AND d.id=a.departure_id
            JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id

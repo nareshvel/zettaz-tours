@@ -1,6 +1,6 @@
 # Agent current sprint board
 
-**Updated:** 19 September 2026 · **Audience:** any IDE agent (Cursor, Claude, Codex, Devin, ChatGPT)
+**Updated:** 20 September 2026 · **Audience:** any IDE agent (Cursor, Claude, Codex, Devin, ChatGPT)
 
 This is the **single “what next” page**. Read it before inventing a deploy or backlog plan from chat history.
 
@@ -10,12 +10,12 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 
 ---
 
-## Owner priority (19 September 2026 — stores shipped, non-Ops polish)
+## Owner priority (20 September 2026 — Assets then Staff & access; Subscription + Zettaz Pay after)
 
 1. **Crew app.** Phases 1–4 on production. **Phase 5.1 guest kiosk** and **Phase 3.5 Share PDF** engineering 19 Sep. GPS, card-present, push, white-label stay gated. Owner still: TestFlight/Unlisted notes, **4.8 airplane-mode**, kiosk PIN + Share PDF on iPad, new EAS.
 2. **Operations menu group** remains functionally complete pending testing. Do not open new Ops web feature work unless testing finds a bug.
-3. **Non-Ops:** Finance leftover (aging gateway, claims UI, finance role list, categories, Settings Partners, expense summary, expense payments) implemented 19 Sep. Accounting export remains specified only — [accounting-export.md](../FEATURES/finance/accounting-export.md). **Do not start** money-in-out Phases 2–4 or QBO OAuth until named here.
-4. **Subscription messaging reopened 19 Sep** — billing-cycle / failed-payment / grace / post-suspension copy in `apps/web/components/subscription.tsx`.
+3. **Assets (was Fleet)** engineering + agent visual 20 Sep: kinds, identity sheet, papers list, add/view document modals, document count on rows, Edit/Remove icons, coverage warn, status filter default Active, nav/header rename, page intro removed. **Owner still clicks through on their machine.** Commit/push requested; production needs owner `./deploy.sh` (migration **093**).
+4. **Next:** **Staff & access** remaining polish. Then **Subscription** (SaaS Billing) and **Zettaz Pay** (client-facing payment-gateway brand for traveler collections; Stripe Connect underneath — not SaaS fees). Do not start money-in-out Phases 2–4 or QBO OAuth until named here.
 
 ---
 
@@ -128,12 +128,14 @@ Work **outside** the Operations aside group. Suggested order (adjust with owner)
 - **Home / overview — My trips hidden for Day Board roles; setup checklist on Overview 19 Sep.** Evidence: [overview-polish-evidence.md](../TESTING/overview-polish-evidence.md). Owner visual still outstanding.
 
 ### 2. Insights
-- **Reports — chip-range follow-up 19 Sep; owner visual still outstanding.** Evidence: [reports-polish-evidence.md](../TESTING/reports-polish-evidence.md).
-- **Customers — polish implemented 17 Sep; owner visual still outstanding.** Evidence: [customers-polish-evidence.md](../TESTING/customers-polish-evidence.md). Next Insights item after owner pass is none; continue Administration remaining tabs.
+- **Reports — hub complete 19 Sep (catalog, period overview default, aging + expense summary, CSV/print). Owner visual still outstanding.** Evidence: [reports-polish-evidence.md](../TESTING/reports-polish-evidence.md). P&L, commission PDF, accounting export, and sales-by-product stay labelled later — do not build them here.
+- **Customers — polish implemented 17 Sep; owner visual still outstanding.** Evidence: [customers-polish-evidence.md](../TESTING/customers-polish-evidence.md).
+
+**Next non-Ops surface (owner 20 Sep):** **Staff & access** remaining polish. After that **Subscription** (profile billing) then **Zettaz Pay** (payment-gateway brand; Stripe Connect underneath).
 
 ### 3. Administration
 - Finance (overview, payments, partner statements — slim Track A) — leftover close-out 19 Sep (claims UI, expense payments, expense summary, Settings Partners). Owner visual outstanding. Evidence: [finance-polish-evidence.md](../TESTING/finance-polish-evidence.md). Accounting export: [accounting-export.md](../FEATURES/finance/accounting-export.md) (not built).
-- Fleet (assets / readiness) — polish 11 Sep; search + Add asset row 19 Sep; owner visual outstanding
+- Fleet (assets / readiness) — kinds + one asset sheet 20 Sep: nav/header **Assets**; jet ski/kayak/van/etc., make/model/registration, papers list + add/view document modals, document count on rows, Edit/Remove icons, Active/Inactive/All filter (default Active). Evidence: [team-resources-polish-evidence.md](../TESTING/team-resources-polish-evidence.md). Agent visual 20 Sep; owner click-through still needed.
 - Staff & access — polish 11 Sep; search + Add staff row 19 Sep; owner visual outstanding
 - **Document library — polish implemented 17 Sep.** Evidence: [document-library-polish-evidence.md](../TESTING/document-library-polish-evidence.md)
 - Tenant settings — Localization currency roles + Booking integrations + Guest stays search/add row + hold minutes + support-grant tenant dates 19 Sep. Remaining: **owner visual**.
@@ -141,7 +143,7 @@ Work **outside** the Operations aside group. Suggested order (adjust with owner)
 
 ### 4. Profile (account shell)
 - **Profile polish follow-up implemented 17 Sep.** Evidence: [profile-polish-evidence.md](../TESTING/profile-polish-evidence.md). Owner visual still outstanding. MFA still deferred honestly.
-- Subscription tab: **messaging implemented 19 Sep**; owner visual outstanding. Evidence: [subscription-polish-evidence.md](../TESTING/subscription-polish-evidence.md).
+- Subscription tab: **messaging implemented 19 Sep**; owner visual outstanding. Evidence: [subscription-polish-evidence.md](../TESTING/subscription-polish-evidence.md). **Zettaz Pay** is the client-facing payment gateway (Stripe Connect underneath), not this tab.
 
 For each surface: verify against [ui-waiver-launch-task-list.md](../STRATEGY/ui-waiver-launch-task-list.md), fix clear UX/functional gaps in one bounded pass, write/extend `docs/TESTING/*-evidence.md`, update row status.
 

@@ -155,6 +155,26 @@ test("resources are tenant-scoped, expired compliance blocks assignment, and che
     201,
     JSON.stringify(blockedResource.body),
   );
+  const ski = await post("/ops/v1/resources", t.token, {
+    code: `ski-${randomUUID().slice(0, 8)}`,
+    name: "Mock jet ski",
+    type: "jetski",
+    capacity: 2,
+    make: "Yamaha",
+    model: "VX",
+    identifier: "JS-100",
+    notes: "Synthetic watercraft",
+  });
+  assert.equal(ski.status, 201, JSON.stringify(ski.body));
+  assert.equal(ski.body.type, "jetski");
+  assert.equal(ski.body.identifier, "JS-100");
+  const listedKinds = await get("/ops/v1/resources", t.token);
+  assert.equal(listedKinds.status, 200);
+  assert.equal(
+    listedKinds.body.find((item: { id: string }) => item.id === ski.body.id)
+      ?.make,
+    "Yamaha",
+  );
   const expired = await post("/ops/v1/compliance-documents", t.token, {
     resourceId: blockedResource.body.id,
     documentType: "vehicle inspection",
@@ -234,6 +254,19 @@ test("resources are tenant-scoped, expired compliance blocks assignment, and che
     assignmentRole: "vessel",
   });
   assert.equal(assignment.status, 201, JSON.stringify(assignment.body));
+  const listedAssignments = await get("/ops/v1/assignments", t.token);
+  assert.equal(
+    listedAssignments.status,
+    200,
+    JSON.stringify(listedAssignments.body),
+  );
+  const boatAssignment = listedAssignments.body.find(
+    (item: { resource_id: string }) => item.resource_id === resource.body.id,
+  );
+  assert.ok(boatAssignment, JSON.stringify(listedAssignments.body));
+  assert.equal(boatAssignment.resource_capacity, 14);
+  assert.equal(typeof boatAssignment.departure_committed, "number");
+  assert.equal(typeof boatAssignment.departure_capacity, "number");
   assert.equal(
     (await del(`/ops/v1/resources/${resource.body.id}`, t.token)).status,
     200,
@@ -3098,6 +3131,72 @@ test("report totals use tenant-scoped published commercial and operational facts
   assert.equal(report.body.operations.departures, 1);
   assert.equal(report.body.operations.unassigned, 1);
   assert.equal((await get(path, b.token)).body.commercial.confirmed, 0);
+});
+
+test("partner aging and expense summary reports stay tenant-scoped", async () => {
+  const t = await setupTenant(`aging-report-${randomUUID().slice(0, 8)}`);
+  const partner = await post("/finance/v1/partners", t.token, {
+    name: "Aging Hotel",
+    email: `aging-${randomUUID()}@example.invalid`,
+  });
+  assert.equal(partner.status, 201, JSON.stringify(partner.body));
+  await admin.query(
+    `INSERT INTO partner_settlements (
+       tenant_id, partner_id, period_start, period_end, booking_count,
+       gross_amount_minor, commission_amount_minor, net_amount_minor,
+       commission_direction, currency, status, due_date, created_by
+     ) VALUES (
+       $1, $2, '2026-08-01', '2026-08-31', 1,
+       10000, 0, 5000,
+       'partner_owes_tenant', 'USD', 'draft', '2026-08-05', $3
+     )`,
+    [t.tenantId, partner.body.id, t.ownerId],
+  );
+  const aging = await get(
+    "/finance/v1/finance-aging?asOf=2026-09-19&direction=receivable",
+    t.token,
+  );
+  assert.equal(aging.status, 200, JSON.stringify(aging.body));
+  assert.equal(aging.body.as_of, "2026-09-19");
+  assert.equal(aging.body.direction, "receivable");
+  assert.equal(aging.body.rows.length, 1);
+  assert.equal(aging.body.rows[0].partner_name, "Aging Hotel");
+  assert.equal(aging.body.rows[0].direction, "receivable");
+  assert.equal(aging.body.rows[0].buckets[0].days_31_60_minor, 5000);
+  assert.equal(aging.body.rows[0].buckets[0].total_minor, 5000);
+  const outsider = await setupTenant(
+    `aging-other-${randomUUID().slice(0, 8)}`,
+  );
+  const isolated = await get(
+    "/finance/v1/finance-aging?asOf=2026-09-19",
+    outsider.token,
+  );
+  assert.equal(isolated.status, 200, JSON.stringify(isolated.body));
+  assert.equal(isolated.body.rows.length, 0);
+  const createdCat = await post("/finance/v1/expense-categories", t.token, {
+    name: "Fuel",
+    code: "FUEL-AGE",
+  });
+  assert.equal(createdCat.status, 201, JSON.stringify(createdCat.body));
+  const bill = await post("/finance/v1/expenses", t.token, {
+    expense_date: "2026-09-01",
+    category_id: createdCat.body.id,
+    amount_minor: 2000,
+    vendor: "Fuel dock",
+  });
+  assert.equal(bill.status, 201, JSON.stringify(bill.body));
+  const summary = await get(
+    "/finance/v1/expenses?dateFrom=2026-09-01&dateTo=2026-09-30",
+    t.token,
+  );
+  assert.equal(summary.status, 200, JSON.stringify(summary.body));
+  assert.equal(summary.body.category_totals.length, 1);
+  assert.equal(summary.body.category_totals[0].total_minor, 2000);
+  assert.equal(
+    (await get("/finance/v1/expenses?dateFrom=2026-09-01&dateTo=2026-09-30", outsider.token))
+      .body.category_totals.length,
+    0,
+  );
 });
 
 test("crew mobile façade exposes only assigned trips and restricts crew check-in to that assignment", async () => {

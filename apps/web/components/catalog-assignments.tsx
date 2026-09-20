@@ -27,6 +27,7 @@ import {
   useMutation,
   useResource,
 } from "@/lib/client";
+import { coverageSuffix, fleetSeatCoverage } from "@/lib/fleet-coverage";
 import {
   ConfirmDialog,
   Empty,
@@ -84,11 +85,14 @@ type Assignment = {
   override_reason: string | null;
   resource_id: string | null;
   resource_name: string | null;
+  resource_capacity: number | null;
   crew_actor_id: string | null;
   crew_name: string | null;
   departure_starts_at: string;
   local_date: string;
   product_name: string;
+  departure_capacity?: number;
+  departure_committed?: number;
 };
 
 type SubjectKind = "crew" | "resource";
@@ -857,6 +861,9 @@ export function CatalogAssignmentsPanel({
                             )}
                             {" · "}
                             {departure.committed}/{departure.capacity} occupancy
+                            {coverageSuffix(
+                              fleetSeatCoverage(assigned, departure.committed),
+                            )}
                           </p>
                         </div>
                         <button
@@ -1515,6 +1522,12 @@ function AssignmentPlannerSheet({
                                     session.tenant.timezone,
                                   )}{" "}
                                   · {departure.committed}/{departure.capacity}
+                                  {coverageSuffix(
+                                    fleetSeatCoverage(
+                                      assigned,
+                                      departure.committed,
+                                    ),
+                                  )}
                                 </small>
                                 {assigned.length > 0 && (
                                   <ul className="assignment-planner-tour-chips">

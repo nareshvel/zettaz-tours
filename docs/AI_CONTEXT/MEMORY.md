@@ -2,12 +2,12 @@
 
 Keep under 200 lines. Update after sessions that change standing decisions.
 
-**Last updated:** 2026-09-19
+**Last updated:** 2026-09-20
 
 ## Current focus (agents)
 
 - **Sprint board:** [../HANDOFF/agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) — prefer over chat history.
-- **Owner priority (19 Sep):** Crew store binaries live. **Phase 5.1 kiosk** + Crew **Share PDF** (pickup list / receipt) engineering 19 Sep. GPS/Terminal/push/white-label still gated. 4.8 airplane-mode is owner. **Hold** finance cashbook.
+- **Owner priority (20 Sep):** Finish Assets commit/push then **Staff & access**. After that **Subscription** (SaaS Billing) then **Zettaz Pay** (client-facing payment gateway brand; Stripe Connect underneath). GPS/Terminal/push still gated. **Hold** finance cashbook.
 - **In progress (15 Sep):** Tenant settings pass — printing, waivers, integrations, localization, sidebar. See the 15 September section below.
 - **Crew app (17–19 Sep):** Phases 1–4 on production. Phase 5.1 guest kiosk + Phase 3.5 server-PDF share 19 Sep. Rebuild EAS; 4.8 + kiosk PIN cycle are owner.
 - **Deploy:** VPS at tip `cad0ed8` via `./deploy.sh` (migrations through **089**, Pending: 0). `origin/main` `0acc028` not yet on VPS.
@@ -25,7 +25,7 @@ Keep under 200 lines. Update after sessions that change standing decisions.
 - **Requirements package:** [../STRATEGY/requirements-plan.md](../STRATEGY/requirements-plan.md) indexes module/feature map, proposed RBAC, admin/navigation, tenant payments, first-slice specification and acceptance checklist. Owner accepted recommendations for implementation with mock data. Production business inputs remain open.
 
 - **Requirements before scaffolding.** Requirements were reviewed and owner authorized coding with configurable mock data on 9 September 2026. Implement the first slice; production business facts remain unresolved.
-- **Separate payment domains.** Zettaz SaaS subscriptions remain separate from tenant booking money. Rock selected Stripe Connect direct charges as its default online collection path, with USD online booking/collection/reporting. XCD is allowed as recorded local/manual tender but cannot settle a USD balance without an approved rate snapshot. Provider eligibility, fees/disputes and card-present evidence remain. See [../DECISIONS/016-rock-launch-operations.md](../DECISIONS/016-rock-launch-operations.md).
+- **Separate payment domains.** Zettaz SaaS subscriptions (Stripe Billing on **My profile → Subscription**) stay separate from tenant traveler money. **Zettaz Pay** is the payment-gateway brand tenants and guests see for collections, receipts, and settlement of booking money. Stripe Connect is the processor behind that brand — not a name clients should have to learn. Card-present, eligibility, fees/disputes, and the XCD rate snapshot remain open. See [../DECISIONS/016-rock-launch-operations.md](../DECISIONS/016-rock-launch-operations.md).
 
 - **Docs layout** follows the Zettaz shared tree (STRATEGY, ARCHITECTURE, DECISIONS, AI_CONTEXT, CLIENTS, FEATURES, MODULES, TESTING, HANDOFF, ISSUES_FIXES). New files go in the matching folder, never at `docs/` root.
 - **Cross-IDE continuity:** [../HANDOFF/agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) is the single “what next” board; [../HANDOFF/cross-ide-agent-resume.md](../HANDOFF/cross-ide-agent-resume.md) is the fuller resume packet. Update both when next task or git/deploy truth changes; prefer the sprint board over chat history.

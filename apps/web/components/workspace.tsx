@@ -24,6 +24,7 @@ import {
   BarChart3,
   Route,
   CheckCircle2,
+  Car,
   FileText,
 } from "lucide-react";
 import type { DemoTenant, Session } from "@/lib/types";
@@ -158,8 +159,8 @@ const navigation = [
   },
   {
     href: "/resources",
-    name: "Fleet",
-    icon: UsersRound,
+    name: "Assets",
+    icon: Car,
     permission: "resources.write",
   },
   {

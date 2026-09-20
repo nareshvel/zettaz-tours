@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { AlertTriangle, Ban, Info } from "lucide-react";
 import { api, formatMediumDate } from "@/lib/client";
-import { Loading, Notice } from "./common";
+import { Loading, Notice, FormDialog } from "./common";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -79,6 +79,35 @@ function fmt(minor: number, currency: string): string {
   });
 }
 
+function orderedLimitEntries(limits: PlanLimits) {
+  const aliases: Record<string, string> = {
+    Locations: "Assets",
+    Storage: "Document storage",
+  };
+  const preferred = [
+    "Staff users",
+    "Assets",
+    "Tour products",
+    "Document storage",
+  ];
+  const mapped: PlanLimits = {};
+  for (const [key, value] of Object.entries(limits)) {
+    mapped[aliases[key] ?? key] = value;
+  }
+  const seen = new Set<string>();
+  const rows: [string, string | number][] = [];
+  for (const key of preferred) {
+    if (key in mapped) {
+      rows.push([key, mapped[key]]);
+      seen.add(key);
+    }
+  }
+  for (const [key, value] of Object.entries(mapped)) {
+    if (!seen.has(key)) rows.push([key, value]);
+  }
+  return rows;
+}
+
 function yearlySavingsPct(plan: Plan): number {
   const annualMonthly = plan.monthly_minor * 12;
   return Math.round(
@@ -133,9 +162,9 @@ function StatusBanner({
           : "You are on a free trial";
     body = trialDate
       ? endingSoon
-        ? `The trial lasts until ${trialDate}. Choose a plan below or add a payment method so the workspace keeps running when it ends. You are not charged until then.`
+        ? `The trial lasts until ${trialDate}. Subscribe to keep the workspace running when it ends. You are not charged until then.`
         : `The trial lasts until ${trialDate}. You are not charged until it ends. Emails go to the owner at 7 days and 1 day before.`
-      : "You are not charged until the trial ends. Choose a plan before access stops.";
+      : "You are not charged until the trial ends. Subscribe before access stops.";
   } else if (kind === "past_due") {
     tone = "danger";
     title = "Invoice payment failed";
@@ -145,14 +174,14 @@ function StatusBanner({
     tone = "danger";
     title = "Workspace suspended";
     body =
-      "Invoices stayed unpaid. Staff cannot keep operating this tenant until billing is restored. Open billing or choose a plan below.";
+      "Invoices stayed unpaid. Staff cannot keep operating this tenant until billing is restored. Open billing or subscribe again.";
   } else if (kind === "cancelled") {
     const stillOpen = daysLeft !== null && daysLeft > 0;
     tone = stillOpen ? "warning" : "danger";
     title = stillOpen ? "Subscription cancelled" : "Access has ended";
     body = stillOpen
       ? `Access continues until ${periodDate}. After that this tenant is treated as suspended until you choose a plan again.`
-      : "This tenant is suspended. Choose a plan below to reactivate.";
+      : "This tenant is suspended. Subscribe again to reactivate.";
   } else if (kind === "incomplete") {
     tone = "warning";
     title = "Checkout did not finish";
@@ -366,7 +395,7 @@ function PlanCard({
             marginBottom: 18,
           }}
         >
-          {Object.entries(plan.limits).map(([key, val]) => (
+          {orderedLimitEntries(plan.limits).map(([key, val]) => (
             <div key={key}>
               <div
                 style={{
@@ -422,6 +451,7 @@ function PlanCard({
       >
         {isCurrent ? (
           <button
+            type="button"
             style={{
               width: "100%",
               padding: "10px 16px",
@@ -438,6 +468,7 @@ function PlanCard({
           </button>
         ) : billingReady ? (
           <button
+            type="button"
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             onClick={onSelect}
@@ -460,6 +491,7 @@ function PlanCard({
           </button>
         ) : (
           <button
+            type="button"
             style={{
               width: "100%",
               padding: "10px 16px",
@@ -816,6 +848,7 @@ export function Subscription({
   const [loading, setLoading] = useState(true);
   const [portalLoading, setPortalLoading] = useState(false);
   const [upgradeTarget, setUpgradeTarget] = useState<Plan | null>(null);
+  const [planPickerOpen, setPlanPickerOpen] = useState(false);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
   const [switchedBanner, setSwitchedBanner] = useState<string | null>(null);
   const [portalError, setPortalError] = useState<string | null>(null);
@@ -897,21 +930,64 @@ export function Subscription({
   const isExistingSub = !!current?.stripe_subscription_id;
 
   const kind = current ? subKind(current.status) : null;
-  const statusColor =
-    kind === "active" || kind === "trial"
-      ? "#1e6e37"
-      : kind === "past_due" || kind === "incomplete"
-        ? "#c07000"
-        : "#c0392b";
+  const cycleKey = current?.billing_cycle ?? "monthly";
   const cycleLabel =
-    current?.billing_cycle === "yearly"
-      ? "Yearly — billed in full at the start of each year"
-      : "Monthly — invoiced each month";
+    cycleKey === "yearly"
+      ? "Yearly"
+      : "Monthly";
   const trialEndsLabel = when(current?.trial_ends_at ?? null);
   const periodEndsLabel = when(current?.period_ends_at ?? null);
+  const statusPill =
+    kind === "active" || kind === "trial"
+      ? "success"
+      : kind === "past_due" || kind === "incomplete"
+        ? "warn"
+        : "muted";
+  const priceMinor = currentPlan
+    ? cycleKey === "yearly"
+      ? currentPlan.yearly_minor
+      : currentPlan.monthly_minor
+    : null;
+  const priceLabel =
+    priceMinor === null
+      ? null
+      : cycleKey === "yearly"
+        ? `${fmt(priceMinor, currentPlan?.currency ?? "usd")} / year`
+        : `${fmt(priceMinor, currentPlan?.currency ?? "usd")} / month`;
+  let nextFactLabel = "Next date";
+  let nextFactValue: string | null = null;
+  if (kind === "trial") {
+    nextFactLabel = "Trial ends";
+    nextFactValue = trialEndsLabel;
+  } else if (kind === "active" && current?.cancel_at_period_end) {
+    nextFactLabel = "Ends";
+    nextFactValue = periodEndsLabel;
+  } else if (kind === "active") {
+    nextFactLabel = "Next invoice";
+    nextFactValue = periodEndsLabel;
+  } else if (kind === "cancelled" || kind === "past_due") {
+    nextFactLabel = "Access until";
+    nextFactValue = periodEndsLabel;
+  }
   const canManage = Boolean(
     billingReady && current?.stripe_subscription_id,
   );
+  const showSubscribe =
+    !current ||
+    kind === "trial" ||
+    kind === "cancelled" ||
+    kind === "unpaid" ||
+    kind === "incomplete";
+  const showChange = kind === "active" || kind === "past_due";
+
+  function openPlanPicker() {
+    setPlanPickerOpen(true);
+  }
+
+  function pickPlan(plan: Plan) {
+    setPlanPickerOpen(false);
+    setUpgradeTarget(plan);
+  }
 
   return (
     <div className={embedded ? "subscription-embedded" : "section-body"}>
@@ -942,113 +1018,103 @@ export function Subscription({
         />
       )}
 
-      <div className="subscription-current">
-        <div>
-          <div
-            style={{
-              fontSize: 11,
-              color: "var(--muted)",
-              textTransform: "uppercase",
-              letterSpacing: "0.6px",
-              marginBottom: 4,
-            }}
-          >
-            Current plan
+      <section className="subscription-current">
+        <header className="subscription-current-head">
+          <div>
+            <p className="subscription-current-kicker">Current plan</p>
+            <div className="subscription-current-title-row">
+              <h3>{currentPlan?.name ?? "No active plan"}</h3>
+              {kind ? (
+                <span className={"status-pill " + statusPill}>
+                  {statusLabel(kind)}
+                </span>
+              ) : null}
+            </div>
+            {currentPlan?.description ? (
+              <p className="subscription-current-desc">
+                {currentPlan.description}
+              </p>
+            ) : null}
           </div>
-          <div
-            style={{ fontSize: 18, fontWeight: 800, letterSpacing: "-0.3px" }}
-          >
-            {currentPlan?.name ?? "No active plan"}
+          <div className="subscription-current-actions">
+            {showSubscribe ? (
+              <button
+                type="button"
+                className="button"
+                onClick={openPlanPicker}
+              >
+                Subscribe
+              </button>
+            ) : null}
+            {showChange ? (
+              <button
+                type="button"
+                className="button"
+                onClick={openPlanPicker}
+              >
+                Change plan
+              </button>
+            ) : null}
+            {canManage ? (
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() => void openBillingPortal()}
+                disabled={portalLoading}
+              >
+                {portalLoading ? "Opening…" : "Manage billing"}
+              </button>
+            ) : null}
           </div>
-          {current && kind && (
-            <p>
-              <span style={{ fontWeight: 700, color: statusColor }}>
-                {statusLabel(kind)}
-              </span>
-              {" · "}
-              {cycleLabel}
-              {kind === "trial" && trialEndsLabel
-                ? ` · trial ends ${trialEndsLabel}`
-                : null}
-              {kind === "active" &&
-              !current.cancel_at_period_end &&
-              periodEndsLabel
-                ? ` · next invoice ${periodEndsLabel}`
-                : null}
-              {kind === "active" &&
-              current.cancel_at_period_end &&
-              periodEndsLabel
-                ? ` · ends ${periodEndsLabel}`
-                : null}
-              {(kind === "cancelled" || kind === "past_due") &&
-              periodEndsLabel
-                ? ` · access until ${periodEndsLabel}`
-                : null}
-            </p>
-          )}
-        </div>
-        <div>
-          {canManage ? (
-            <button
-              type="button"
-              className="button secondary"
-              onClick={() => void openBillingPortal()}
-              disabled={portalLoading}
-            >
-              {portalLoading ? "Opening…" : "Manage billing"}
-            </button>
-          ) : (
-            <span style={{ fontSize: 12, color: "var(--muted)" }}>
-              {billingReady
-                ? "No Stripe subscription yet — choose a plan to start billing."
-                : "Card billing is not connected for this environment."}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div className="subscription-plans-heading">
-        <div>
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>
-            Available plans
-          </h3>
-          <p style={{ margin: "3px 0 0", fontSize: 12, color: "var(--muted)" }}>
-            {cycle === "yearly"
-              ? "Yearly is billed in full up front. Switching later prorates unused time on the next invoice."
-              : "Monthly is invoiced each month. Yearly is billed in full at the start of the year."}{" "}
-            New checkouts include a 14-day trial with no charge until it ends.
-          </p>
-        </div>
-
-        {/* Billing toggle */}
-        <div className="billing-cycle">
-          {(["monthly", "yearly"] as const).map((c) => (
-            <button
-              key={c}
-              type="button"
-              className={cycle === c ? "selected" : undefined}
-              onClick={() => setCycle(c)}
-            >
-              {c === "monthly" ? "Monthly" : "Yearly · save up to 20%"}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Plan cards */}
-      <div className="subscription-plan-grid">
-        {plans.map((plan) => (
-          <PlanCard
-            key={plan.id}
-            plan={plan}
-            isCurrent={plan.id === current?.plan_id}
-            cycle={cycle}
-            billingReady={billingReady}
-            hasSub={!!current}
-            onSelect={() => setUpgradeTarget(plan)}
-          />
-        ))}
-      </div>
+        </header>
+        {currentPlan ? (
+          <>
+            <dl className="subscription-current-facts">
+              <div>
+                <dt>Billing</dt>
+                <dd>
+                  {cycleLabel}
+                  {cycleKey === "yearly"
+                    ? " · billed annually"
+                    : " · invoiced monthly"}
+                </dd>
+              </div>
+              <div>
+                <dt>Price</dt>
+                <dd>{priceLabel ?? "—"}</dd>
+              </div>
+              <div>
+                <dt>{nextFactLabel}</dt>
+                <dd>{nextFactValue ?? "—"}</dd>
+              </div>
+            </dl>
+            <div className="subscription-current-split">
+              <div>
+                <h4>Included</h4>
+                <ul className="subscription-current-features">
+                  {currentPlan.features.map((feature) => (
+                    <li key={feature}>
+                      <Check />
+                      <span>{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h4>Limits</h4>
+                <dl className="subscription-current-limits">
+                  {orderedLimitEntries(currentPlan.limits).map(([key, val]) => (
+                    <div key={key}>
+                      <dt>{key}</dt>
+                      <dd>{String(val)}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            </div>
+          </>
+        ) : null}
+      </section>
 
       <p className="subscription-note">
         Monthly invoices each month. Yearly is billed in full at the start of
@@ -1059,6 +1125,54 @@ export function Subscription({
         <a href="mailto:support@zettaz.com">support@zettaz.com</a> for volume or
         custom pricing.
       </p>
+      {planPickerOpen ? (
+        <FormDialog
+          open
+          className="subscription-plans-dialog"
+          title={showChange ? "Change plan" : "Subscribe"}
+          description={
+            cycle === "yearly"
+              ? "Yearly is billed in full up front. Switching later prorates unused time on the next invoice."
+              : "Monthly is invoiced each month. Yearly is billed in full at the start of the year. New checkouts include a 14-day trial with no charge until it ends."
+          }
+          cancelLabel="Close"
+          submitLabel="Close"
+          submitDisabled
+          onSubmit={() => setPlanPickerOpen(false)}
+          onClose={() => setPlanPickerOpen(false)}
+        >
+          <div className="subscription-plans-heading">
+            <p className="subscription-plans-heading-copy">
+              Pick a plan and billing cycle.
+            </p>
+            <div className="billing-cycle">
+              {(["monthly", "yearly"] as const).map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={cycle === c ? "selected" : undefined}
+                  onClick={() => setCycle(c)}
+                >
+                  {c === "monthly" ? "Monthly" : "Yearly · save up to 20%"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="subscription-plan-grid">
+            {plans.map((plan) => (
+              <PlanCard
+                key={plan.id}
+                plan={plan}
+                isCurrent={plan.id === current?.plan_id}
+                cycle={cycle}
+                billingReady={billingReady}
+                hasSub={!!current}
+                onSelect={() => pickPlan(plan)}
+              />
+            ))}
+          </div>
+        </FormDialog>
+      ) : null}
       {upgradeTarget && (
         <UpgradeModal
           plan={upgradeTarget}

@@ -707,25 +707,159 @@ textarea:focus-visible {
   }
 }
 .subscription-current {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 18px 22px;
+  display: grid;
+  gap: 20px;
+  padding: 22px 24px;
   max-width: none;
   width: 100%;
-  margin-bottom: 28px;
-  flex-wrap: wrap;
-  justify-content: space-between;
+  margin-bottom: 20px;
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
 }
-.subscription-current > div {
-  flex: 1;
+.subscription-current-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
 }
-.subscription-current p {
+.subscription-current-kicker {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
   color: var(--muted);
-  margin-top: 5px;
+}
+.subscription-current-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.subscription-current-title-row h3 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: -0.4px;
+}
+.subscription-current-desc {
+  margin: 8px 0 0;
+  max-width: 54ch;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.subscription-current-actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.subscription-current-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+.subscription-current-facts > div {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+.subscription-current-facts dt {
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--muted);
+}
+.subscription-current-facts dd {
+  margin: 4px 0 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+.subscription-current-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(16rem, 0.9fr);
+  gap: 22px 28px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.subscription-current-split h4 {
+  margin: 0 0 12px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.subscription-current-features {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.subscription-current-features li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.subscription-current-features svg {
+  flex: none;
+  color: var(--accent);
+}
+.subscription-current-limits {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+.subscription-current-limits > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+.subscription-current-limits dt {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: capitalize;
+}
+.subscription-current-limits dd {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  text-align: right;
+}
+@media (max-width: 900px) {
+  .subscription-current-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .subscription-current-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .subscription-current-head {
+    flex-direction: column;
+  }
+  .subscription-current-actions {
+    width: 100%;
+  }
+  .subscription-current-actions .button {
+    flex: 1;
+  }
+  .subscription-current-features {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .subscription-title {
   margin: 28px 0 14px;
@@ -2793,6 +2927,21 @@ td small {
 }
 .form-dialog-sheet.form-dialog-wide {
   width: min(640px, 100%);
+}
+.form-dialog-sheet.subscription-plans-dialog {
+  width: min(1120px, calc(100vw - 32px));
+  max-height: min(92vh, 900px);
+}
+.subscription-plans-dialog .confirm-dialog-actions .button:not(.secondary) {
+  display: none;
+}
+.subscription-plans-dialog .subscription-plans-heading {
+  margin-bottom: 4px;
+}
+.subscription-plans-dialog .subscription-plans-heading-copy {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
 }
 .form-dialog-sheet.bill-entry-dialog {
   width: min(820px, 100%);
@@ -10545,6 +10694,10 @@ a.briefing-tile:hover {
   }
 }
 @media (max-width: 1100px) {
+  .subscription-plans-heading {
+    flex-direction: column;
+    align-items: flex-start;
+  }
   .subscription-plans,
   .subscription-plan-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -5,13 +5,14 @@
  * { upgrade: true } when the tenant has reached or exceeded a limit.
  *
  * Limit keys in subscription_plans.limits (jsonb):
- *   "Staff users"   → integer | "Unlimited"
- *   "Locations"     → integer | "Unlimited"
- *   "Tour products" → integer | "Unlimited"  (stored as "1,000" for display)
+ *   "Staff users"        → integer | "Unlimited"
+ *   "Assets"             → integer | "Unlimited"  (operational_resources)
+ *   "Tour products"      → integer | "Unlimited"  (stored as "1,000" for display)
+ *   "Document storage"   → display string (quota is tenant document library)
  *
  * Usage:
  *   await checkLimit(db, actor, "staff");
- *   await checkLimit(db, actor, "locations");
+ *   await checkLimit(db, actor, "assets");
  *   await checkLimit(db, actor, "products");
  */
 
@@ -19,13 +20,13 @@ import { ForbiddenException, Injectable } from "@nestjs/common";
 import { Database } from "./database";
 import type { Actor } from "../../../packages/shared/src/contracts";
 
-export type LimitKind = "staff" | "locations" | "products";
+export type LimitKind = "staff" | "assets" | "products";
 
 const QUERY = `
   SELECT
     sp.limits,
     (SELECT count(*)::int FROM memberships WHERE tenant_id = $1 AND status = 'active') AS staff_count,
-    (SELECT count(*)::int FROM pickup_locations WHERE tenant_id = $1 AND active = true) AS location_count,
+    (SELECT count(*)::int FROM operational_resources WHERE tenant_id = $1 AND active = true) AS asset_count,
     (SELECT count(*)::int FROM products WHERE tenant_id = $1) AS product_count
   FROM tenant_subscriptions ts
   JOIN subscription_plans sp ON sp.id = ts.plan_id
@@ -54,7 +55,7 @@ export class LimitsService {
     const { rows } = await this.db.pool.query(QUERY, [actor.tenantId]);
     if (!rows[0]) return; // no active subscription — don't block
 
-    const { limits, staff_count, location_count, product_count } = rows[0];
+    const { limits, staff_count, asset_count, product_count } = rows[0];
 
     let cap: number | null;
     let current: number;
@@ -66,10 +67,10 @@ export class LimitsService {
         current = staff_count;
         label = "staff members";
         break;
-      case "locations":
-        cap = parseLimit(limits["Locations"]);
-        current = location_count;
-        label = "locations";
+      case "assets":
+        cap = parseLimit(limits["Assets"] ?? limits["Locations"]);
+        current = asset_count;
+        label = "assets";
         break;
       case "products":
         cap = parseLimit(limits["Tour products"]);

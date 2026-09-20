@@ -29,6 +29,7 @@ import {
   DocumentLibraryService,
   type UploadedLibraryFile,
 } from "./document-library";
+import { LimitsService } from "./limits";
 import { Access, CurrentActor, keySchema, parse } from "./http";
 
 const resourceSchema = z
@@ -806,7 +807,10 @@ export class ResourceService {
 }
 @Controller("ops/v1")
 export class ResourceController {
-  constructor(private readonly service: ResourceService) {}
+  constructor(
+    private readonly service: ResourceService,
+    private readonly limits: LimitsService,
+  ) {}
   @Get("resources") @Access("resources.write") resources(
     @CurrentActor() actor: Actor,
   ) {
@@ -830,11 +834,12 @@ export class ResourceController {
   documentFile(@CurrentActor() actor: Actor, @Param("id") id: string) {
     return this.service.downloadDocument(actor, z.string().uuid().parse(id));
   }
-  @Post("resources") @Access("resources.write") resource(
+  @Post("resources") @Access("resources.write") async resource(
     @CurrentActor() actor: Actor,
     @Headers("idempotency-key") key: string,
     @Body() body: unknown,
   ) {
+    await this.limits.enforce(actor, "assets");
     return this.service.createResource(actor, parse(keySchema, key), body);
   }
   @Patch("resources/:id") @Access("resources.write") resourceUpdate(

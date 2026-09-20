@@ -20,7 +20,6 @@ import {
   id,
   isFieldCrewRole,
 } from "../../../packages/shared/src/contracts";
-import { LimitsService } from "./limits";
 import { Database, record } from "./database";
 import { Access, CurrentActor, keySchema, parse } from "./http";
 import { InventoryService } from "./inventory";
@@ -827,10 +826,7 @@ export class DispatchService {
 }
 @Controller("ops/v1")
 export class DispatchController {
-  constructor(
-    private readonly service: DispatchService,
-    private readonly limits: LimitsService,
-  ) {}
+  constructor(private readonly service: DispatchService) {}
   @Get("board") @Access("manifest.read") board(
     @CurrentActor() a: Actor,
     @Query() q: unknown,
@@ -842,12 +838,11 @@ export class DispatchController {
   ) {
     return this.service.locations(a);
   }
-  @Post("pickup-locations") @Access("operations.write") async createLocation(
+  @Post("pickup-locations") @Access("operations.write") createLocation(
     @CurrentActor() a: Actor,
     @Headers("idempotency-key") k: string,
     @Body() b: unknown,
   ) {
-    await this.limits.enforce(a, "locations");
     return this.service.createLocation(a, parse(keySchema, k), b);
   }
   @Patch("pickup-locations/:id") @Access("operations.write") updateLocation(

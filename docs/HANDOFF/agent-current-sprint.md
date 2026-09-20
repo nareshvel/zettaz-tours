@@ -143,7 +143,7 @@ Work **outside** the Operations aside group. Suggested order (adjust with owner)
 
 ### 4. Profile (account shell)
 - **Profile polish follow-up implemented 17 Sep.** Evidence: [profile-polish-evidence.md](../TESTING/profile-polish-evidence.md). Owner visual still outstanding. MFA still deferred honestly.
-- Subscription tab: **messaging implemented 19 Sep**; billing-cycle control uses shared CSS 20 Sep; owner visual outstanding. **Zettaz Pay** onboarding + USD Checkout + `/webhooks/stripe-pay` 20 Sep; Settings Payment integrations layout + platform-not-activated waiting state. Event destinations: [zettaz-pay.md](../FEATURES/finance/zettaz-pay.md). Owner activates Pay Stripe platform later.
+- Subscription tab: **plan picker modal 20 Sep** (Subscribe on trial; Change plan when billed). Messaging 19 Sep; owner visual outstanding.
 
 For each surface: verify against [ui-waiver-launch-task-list.md](../STRATEGY/ui-waiver-launch-task-list.md), fix clear UX/functional gaps in one bounded pass, write/extend `docs/TESTING/*-evidence.md`, update row status.
 

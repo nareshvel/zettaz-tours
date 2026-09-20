@@ -436,11 +436,11 @@ export function Entry({
                   <dd>3</dd>
                 </div>
                 <div>
-                  <dt>Support</dt>
-                  <dd>Standard</dd>
+                  <dt>Assets</dt>
+                  <dd>5</dd>
                 </div>
                 <div>
-                  <dt>Storage</dt>
+                  <dt>Document storage</dt>
                   <dd>500 MB</dd>
                 </div>
               </dl>
@@ -475,11 +475,11 @@ export function Entry({
                   <dd>10</dd>
                 </div>
                 <div>
-                  <dt>Support</dt>
-                  <dd>Standard</dd>
+                  <dt>Assets</dt>
+                  <dd>15</dd>
                 </div>
                 <div>
-                  <dt>Storage</dt>
+                  <dt>Document storage</dt>
                   <dd>2 GB</dd>
                 </div>
               </dl>
@@ -513,11 +513,11 @@ export function Entry({
                   <dd>25</dd>
                 </div>
                 <div>
-                  <dt>Support</dt>
-                  <dd>Priority</dd>
+                  <dt>Assets</dt>
+                  <dd>40</dd>
                 </div>
                 <div>
-                  <dt>Storage</dt>
+                  <dt>Document storage</dt>
                   <dd>10 GB</dd>
                 </div>
               </dl>
@@ -551,11 +551,11 @@ export function Entry({
                   <dd>All</dd>
                 </div>
                 <div>
-                  <dt>Support</dt>
-                  <dd>SLA</dd>
+                  <dt>Assets</dt>
+                  <dd>All</dd>
                 </div>
                 <div>
-                  <dt>Storage</dt>
+                  <dt>Document storage</dt>
                   <dd>50 GB</dd>
                 </div>
               </dl>

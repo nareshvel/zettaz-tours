@@ -18,6 +18,7 @@
   - Checkout returns to `/profile/subscription`. Trial-reminder emails use the same path.
   - Billing portal failures use `Notice` instead of `alert()`.
 - **20 September 2026:** Monthly / Yearly control uses the shared `.billing-cycle` class instead of inline styles.
+- **20 September 2026 — picker:** Plan cards are not on the Subscription page. Trial / cancelled / unpaid / incomplete show **Subscribe**; active / past_due show **Change plan**. Either opens a modal with the existing plan grid. Manage billing stays when a Stripe subscription id exists. Current plan shows description, price/cycle facts, included features, and limits (Staff users, Assets, Tour products, Document storage). Environment “card billing not connected” copy was removed.
 - APIs unchanged. Grace length is the existing job (`past_due` for 3+ days → `canceled`), not a new policy.
 
 ## Owner acceptance still needed

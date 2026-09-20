@@ -35,9 +35,9 @@ const PLANS = [
     ],
     limits: {
       "Staff users": 3,
-      Locations: 1,
+      Assets: 5,
       "Tour products": 50,
-      Storage: "500 MB",
+      "Document storage": "500 MB",
     },
   },
   {
@@ -58,9 +58,9 @@ const PLANS = [
     ],
     limits: {
       "Staff users": 10,
-      Locations: 2,
+      Assets: 15,
       "Tour products": 200,
-      Storage: "2 GB",
+      "Document storage": "2 GB",
     },
   },
   {
@@ -81,9 +81,9 @@ const PLANS = [
     ],
     limits: {
       "Staff users": 25,
-      Locations: 5,
+      Assets: 40,
       "Tour products": "1,000",
-      Storage: "10 GB",
+      "Document storage": "10 GB",
     },
   },
   {
@@ -96,7 +96,7 @@ const PLANS = [
     yearly_minor: 599000,
     features: [
       "Everything in Growth",
-      "Unlimited staff & locations",
+      "Unlimited staff & assets",
       "Priority support & SLA",
       "Custom branding & white-label",
       "API access",
@@ -104,9 +104,9 @@ const PLANS = [
     ],
     limits: {
       "Staff users": "Unlimited",
-      Locations: "Unlimited",
+      Assets: "Unlimited",
       "Tour products": "Unlimited",
-      Storage: "50 GB",
+      "Document storage": "50 GB",
     },
   },
 ];

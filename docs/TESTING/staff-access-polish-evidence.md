@@ -19,6 +19,12 @@
 - Phone cards include Revoke / Restore (previously desktop-menu only).
 - Copy token confirms with “Copied”.
 
+## Follow-up 20 September 2026
+
+- Page and Roles headers have no teaching paragraph; Staff/Roles panel intros removed.
+- Staff row kebab replaced with icon Edit, Grant/resend, and Revoke/Restore. Documents open from the file-icon + count in the Docs column (including 0).
+- Phone cards use the same icons.
+
 ## Owner acceptance still needed
 
 - Invite a staff member, copy the activation token, activate at `/activate`.

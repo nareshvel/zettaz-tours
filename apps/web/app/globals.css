@@ -11226,7 +11226,8 @@ a.briefing-tile:hover {
   color: #8a6d1f;
 }
 .staff-actions-cell {
-  width: 48px;
+  width: 1%;
+  white-space: nowrap;
   text-align: right;
 }
 .staff-row-menu {

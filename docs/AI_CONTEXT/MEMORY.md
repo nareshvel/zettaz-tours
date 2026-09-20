@@ -7,7 +7,7 @@ Keep under 200 lines. Update after sessions that change standing decisions.
 ## Current focus (agents)
 
 - **Sprint board:** [../HANDOFF/agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) — prefer over chat history.
-- **Owner priority (20 Sep):** Finish Assets commit/push then **Staff & access**. After that **Subscription** (SaaS Billing) then **Zettaz Pay** (client-facing payment gateway brand; Stripe Connect underneath). GPS/Terminal/push still gated. **Hold** finance cashbook.
+- **Owner priority (20 Sep):** Assets on `origin/main` (`93a45a2`). **Staff & access** icon-row polish in progress then **Subscription** / **Zettaz Pay** (client-facing payment gateway; Stripe Connect underneath). GPS/Terminal/push still gated. **Hold** finance cashbook.
 - **In progress (15 Sep):** Tenant settings pass — printing, waivers, integrations, localization, sidebar. See the 15 September section below.
 - **Crew app (17–19 Sep):** Phases 1–4 on production. Phase 5.1 guest kiosk + Phase 3.5 server-PDF share 19 Sep. Rebuild EAS; 4.8 + kiosk PIN cycle are owner.
 - **Deploy:** VPS at tip `cad0ed8` via `./deploy.sh` (migrations through **089**, Pending: 0). `origin/main` `0acc028` not yet on VPS.

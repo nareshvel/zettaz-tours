@@ -26,7 +26,6 @@ import {
   Hotel,
   Lock,
   Handshake,
-  MoreHorizontal,
   UserRound,
   Phone,
   MapPin,
@@ -4391,7 +4390,6 @@ export function Team({ session }: { session: Session }) {
     [editor, setEditor] = useState<
       null | { mode: "create" } | { mode: "edit"; member: Member }
     >(null),
-    [menuFor, setMenuFor] = useState<string | null>(null),
     [invitationToken, setInvitationToken] = useState(""),
     [grantNotice, setGrantNotice] = useState(""),
     [pendingRevoke, setPendingRevoke] = useState<Member | null>(null),
@@ -4423,24 +4421,6 @@ export function Team({ session }: { session: Session }) {
   const roleName = (code: string) =>
     roleData.data?.roles.find((r) => r.code === code)?.name ?? label(code);
 
-  useEffect(() => {
-    if (!menuFor) return;
-    function onPointerDown(event: PointerEvent) {
-      const target = event.target as Element | null;
-      if (target?.closest?.(".staff-row-menu")) return;
-      setMenuFor(null);
-    }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setMenuFor(null);
-    }
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [menuFor]);
-
   function openCreate() {
     setForm({ ...emptyForm, role: roles[0]?.code ?? "reservations" });
     setEditor({ mode: "create" });
@@ -4460,7 +4440,6 @@ export function Team({ session }: { session: Session }) {
       role: m.role === "owner" ? m.role : m.role,
     });
     setEditor({ mode: "edit", member: m });
-    setMenuFor(null);
   }
 
   async function saveStaff() {
@@ -4508,7 +4487,6 @@ export function Team({ session }: { session: Session }) {
   }
 
   async function grantAccess(m: Member) {
-    setMenuFor(null);
     const result = await grant.run<{
       token: string;
       emailed: boolean;
@@ -4538,7 +4516,6 @@ export function Team({ session }: { session: Session }) {
   }
 
   async function restore(m: Member) {
-    setMenuFor(null);
     const result = await mutation.run(
       "admin/v1/members/" + m.id,
       { role: m.role, active: true },
@@ -4612,13 +4589,58 @@ export function Team({ session }: { session: Session }) {
     return m.access_status ?? (m.active ? "active" : "revoked");
   }
 
+  const staffActions = (m: Member) => (
+    <div className="row-actions" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        className="icon-button"
+        aria-label={`Edit ${m.name}`}
+        onClick={() => openEdit(m)}
+      >
+        <Pencil size={16} />
+      </button>
+      {m.role !== "owner" && (
+        <button
+          type="button"
+          className="icon-button"
+          aria-label={
+            m.access_status === "active"
+              ? `Resend access for ${m.name}`
+              : `Grant access to ${m.name}`
+          }
+          disabled={grant.busy}
+          onClick={() => void grantAccess(m)}
+        >
+          <MailPlus size={16} />
+        </button>
+      )}
+      {m.role !== "owner" &&
+        m.id !== session.actorId &&
+        (m.active ? (
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={`Revoke access for ${m.name}`}
+            onClick={() => setPendingRevoke(m)}
+          >
+            <Ban size={16} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={`Restore access for ${m.name}`}
+            onClick={() => void restore(m)}
+          >
+            <RotateCcw size={16} />
+          </button>
+        ))}
+    </div>
+  );
+
   return (
     <>
-      <Heading
-        eyebrow="ADMINISTRATION"
-        title="Staff & access"
-        description="People, workspace access, and personal compliance documents. External partners use a separate access model."
-      />
+      <Heading eyebrow="ADMINISTRATION" title="Staff & access" />
 
       <div className="resource-metrics staff-metrics">
         <div>
@@ -4746,15 +4768,6 @@ export function Team({ session }: { session: Session }) {
       )}
 
       <section className="panel" aria-label="Staff members">
-        <div className="panel-heading plain resource-tab-intro">
-          <div>
-            <h2>Staff members</h2>
-            <p className="muted">
-              Add people once. Grant access sends an activation email; revoke
-              blocks sign-in without deleting the person.
-            </p>
-          </div>
-        </div>
         {members.busy && !members.items.length ? (
           <Loading />
         ) : !members.items.length ? (
@@ -4813,86 +4826,21 @@ export function Team({ session }: { session: Session }) {
                         </small>
                       </td>
                       <td>
-                        <small>{m.document_count ?? 0}</small>
-                      </td>
-                      <td className="staff-actions-cell">
-                        <div className="staff-row-menu">
+                        {canManageDocs ? (
                           <button
                             type="button"
-                            className="icon-button"
-                            aria-label={`Actions for ${m.name}`}
-                            aria-expanded={menuFor === m.id}
-                            onClick={() =>
-                              setMenuFor((id) => (id === m.id ? null : m.id))
-                            }
+                            className="text-link asset-doc-count"
+                            aria-label={`Documents for ${m.name}`}
+                            onClick={() => setDocsFor(m)}
                           >
-                            <MoreHorizontal size={18} />
+                            <FileText size={15} aria-hidden="true" />
+                            {m.document_count ?? 0}
                           </button>
-                          {menuFor === m.id && (
-                            <div className="staff-action-menu" role="menu">
-                              <button
-                                type="button"
-                                role="menuitem"
-                                onClick={() => openEdit(m)}
-                              >
-                                <Pencil size={15} aria-hidden="true" />
-                                Edit
-                              </button>
-                              {m.role !== "owner" && (
-                                <button
-                                  type="button"
-                                  role="menuitem"
-                                  disabled={grant.busy}
-                                  onClick={() => void grantAccess(m)}
-                                >
-                                  <MailPlus size={15} aria-hidden="true" />
-                                  {m.access_status === "active"
-                                    ? "Resend access"
-                                    : "Grant access"}
-                                </button>
-                              )}
-                              {canManageDocs && (
-                                <button
-                                  type="button"
-                                  role="menuitem"
-                                  onClick={() => {
-                                    setDocsFor(m);
-                                    setMenuFor(null);
-                                  }}
-                                >
-                                  <FileText size={15} aria-hidden="true" />
-                                  Manage documents
-                                </button>
-                              )}
-                              {m.role !== "owner" &&
-                                m.id !== session.actorId &&
-                                (m.active ? (
-                                  <button
-                                    type="button"
-                                    role="menuitem"
-                                    className="danger-text"
-                                    onClick={() => {
-                                      setPendingRevoke(m);
-                                      setMenuFor(null);
-                                    }}
-                                  >
-                                    <Ban size={15} aria-hidden="true" />
-                                    Revoke access
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    role="menuitem"
-                                    onClick={() => void restore(m)}
-                                  >
-                                    <RotateCcw size={15} aria-hidden="true" />
-                                    Restore access
-                                  </button>
-                                ))}
-                            </div>
-                          )}
-                        </div>
+                        ) : (
+                          <small>{m.document_count ?? 0}</small>
+                        )}
                       </td>
+                      <td className="staff-actions-cell">{staffActions(m)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -4913,52 +4861,7 @@ export function Team({ session }: { session: Session }) {
                     {m.phone ? ` · ${m.phone}` : ""}
                   </small>
                   <p>{roleName(m.role)}</p>
-                  <div className="row-actions">
-                    <button
-                      type="button"
-                      className="text-link"
-                      onClick={() => openEdit(m)}
-                    >
-                      Edit
-                    </button>
-                    {m.role !== "owner" && (
-                      <button
-                        type="button"
-                        className="text-link"
-                        onClick={() => void grantAccess(m)}
-                      >
-                        Grant access
-                      </button>
-                    )}
-                    {canManageDocs && (
-                      <button
-                        type="button"
-                        className="text-link"
-                        onClick={() => setDocsFor(m)}
-                      >
-                        Documents
-                      </button>
-                    )}
-                    {m.role !== "owner" &&
-                      m.id !== session.actorId &&
-                      (m.active ? (
-                        <button
-                          type="button"
-                          className="text-link danger-text"
-                          onClick={() => setPendingRevoke(m)}
-                        >
-                          Revoke
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="text-link"
-                          onClick={() => void restore(m)}
-                        >
-                          Restore
-                        </button>
-                      ))}
-                  </div>
+                  <div className="row-actions">{staffActions(m)}</div>
                 </article>
               ))}
             </div>
@@ -5275,11 +5178,7 @@ export function RolesPermissions() {
 
   return (
     <>
-      <Heading
-        eyebrow="ADMINISTRATION"
-        title="Roles & permissions"
-        description="System roles are protected. Create tenant roles by selecting the capabilities staff require."
-      />
+      <Heading eyebrow="ADMINISTRATION" title="Roles & permissions" />
 
       <div className="resource-metrics staff-metrics">
         <div>
@@ -5331,14 +5230,6 @@ export function RolesPermissions() {
       </div>
 
       <section className="panel roles-table" aria-label="Roles">
-        <div className="panel-heading plain resource-tab-intro">
-          <div>
-            <h2>Roles</h2>
-            <p className="muted">
-              Assignable capabilities for staff invitations and member updates.
-            </p>
-          </div>
-        </div>
         {data.data.roles.length ? (
           <>
             <div className="table-scroll resource-table">

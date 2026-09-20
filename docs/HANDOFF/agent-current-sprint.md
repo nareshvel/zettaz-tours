@@ -15,7 +15,7 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 1. **Crew app.** Phases 1–4 on production. **Phase 5.1 guest kiosk** and **Phase 3.5 Share PDF** engineering 19 Sep. GPS, card-present, push, white-label stay gated. Owner still: TestFlight/Unlisted notes, **4.8 airplane-mode**, kiosk PIN + Share PDF on iPad, new EAS.
 2. **Operations menu group** remains functionally complete pending testing. Do not open new Ops web feature work unless testing finds a bug.
 3. **Assets (was Fleet)** engineering + agent visual 20 Sep: kinds, identity sheet, papers list, add/view document modals, document count on rows, Edit/Remove icons, coverage warn, status filter default Active, nav/header rename, page intro removed. **Owner still clicks through on their machine.** Commit/push requested; production needs owner `./deploy.sh` (migration **093**).
-4. **Next:** **Staff & access** remaining polish. Then **Subscription** (SaaS Billing) and **Zettaz Pay** (client-facing payment-gateway brand for traveler collections; Stripe Connect underneath — not SaaS fees). Do not start money-in-out Phases 2–4 or QBO OAuth until named here.
+4. **Next after Staff:** **Subscription** (SaaS Billing) and **Zettaz Pay** (client-facing payment-gateway brand for traveler collections; Stripe Connect underneath — not SaaS fees). Do not start money-in-out Phases 2–4 or QBO OAuth until named here.
 
 ---
 
@@ -136,7 +136,7 @@ Work **outside** the Operations aside group. Suggested order (adjust with owner)
 ### 3. Administration
 - Finance (overview, payments, partner statements — slim Track A) — leftover close-out 19 Sep (claims UI, expense payments, expense summary, Settings Partners). Owner visual outstanding. Evidence: [finance-polish-evidence.md](../TESTING/finance-polish-evidence.md). Accounting export: [accounting-export.md](../FEATURES/finance/accounting-export.md) (not built).
 - Fleet (assets / readiness) — kinds + one asset sheet 20 Sep: nav/header **Assets**; jet ski/kayak/van/etc., make/model/registration, papers list + add/view document modals, document count on rows, Edit/Remove icons, Active/Inactive/All filter (default Active). Evidence: [team-resources-polish-evidence.md](../TESTING/team-resources-polish-evidence.md). Agent visual 20 Sep; owner click-through still needed.
-- Staff & access — polish 11 Sep; search + Add staff row 19 Sep; owner visual outstanding
+- Staff & access — polish 11 Sep; search + Add staff 19 Sep; icon row actions + no intro copy 20 Sep. Evidence: [staff-access-polish-evidence.md](../TESTING/staff-access-polish-evidence.md). Owner click-through outstanding.
 - **Document library — polish implemented 17 Sep.** Evidence: [document-library-polish-evidence.md](../TESTING/document-library-polish-evidence.md)
 - Tenant settings — Localization currency roles + Booking integrations + Guest stays search/add row + hold minutes + support-grant tenant dates 19 Sep. Remaining: **owner visual**.
 - **Audit — polish implemented 17 Sep.** Evidence: [audit-polish-evidence.md](../TESTING/audit-polish-evidence.md)

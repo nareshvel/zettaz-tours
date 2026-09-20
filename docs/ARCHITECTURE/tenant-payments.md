@@ -75,7 +75,7 @@ Reuse the reported existing Stripe setup after inspection; do not create duplica
 
 Stripe Billing handles recurring invoices and subscription lifecycle events; Zettaz must define how that status affects software access. [Stripe subscription lifecycle](https://docs.stripe.com/billing/subscriptions/overview).
 
-Define before implementation: plan/price catalogue, billing contact and currency, monthly/annual terms, tax treatment, trial, proration, renewal failure/grace, cancellation timing, retention/export and entitlement changes. Propose explicit grace/restriction policy protecting access to existing operational records; no automatic tenant suspension or booking cancellation on one failed subscription invoice. Durations and final policy remain open. Platform fees on traveler payments are a separate commercial decision; no revenue share is assumed.
+Define before implementation: plan/price catalogue, billing contact and currency, monthly/annual terms, tax treatment, trial, proration, renewal failure/grace, cancellation timing, retention/export and entitlement changes. Propose explicit grace/restriction policy protecting access to existing operational records; no automatic tenant suspension or booking cancellation on one failed subscription invoice. Durations and final policy remain open. Platform application fee on Zettaz Pay traveler charges is **1%** at launch (`ZETTAZ_PAY_APPLICATION_FEE_BPS`), adjustable. It is not a SaaS subscription charge and must never post to Stripe Billing.
 
 ## Acceptance and release boundaries
 

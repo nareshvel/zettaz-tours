@@ -35,3 +35,15 @@
 - Approve or revoke a support grant with a reason when a request exists.
 - Save general profile and commercial settings without losing other tabs’ draft values unexpectedly.
 - Confirm an existing logo can be replaced by clicking the image (helper text under the dropzone).
+
+## Follow-up 20 September 2026 — Payment integrations
+
+- Settings → Payment integrations is a stacked layout: Zettaz Pay as the primary card (status pill, fee / Subscription / card-checkout facts), then two live method cards (manual/cash, partner).
+- Stripe Terminal is a footnote, not a banner above the methods.
+- While the Zettaz Pay Stripe **platform** account is not activated, the page shows **Waiting on Stripe** and does not offer **Set up Zettaz Pay** (API `platformReady`). Stripe Dashboard activation URLs are not shown as errors.
+- Collect-balance on a booking still stays hidden until `readyForCheckout`.
+
+## Follow-up 20 September 2026 — Partners in Operations
+
+- Settings nav **Partners** sits under **Operations** (after Waiver templates), not Platform.
+- The Partners tab renders outside the tenant-config `<form>` so Add/Edit `FormDialog` is not nested (same pattern as Stays / Pickups / Channels).

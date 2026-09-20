@@ -44,6 +44,13 @@ import {
   BillingPortalController,
   StripeBillingService,
 } from "./stripe-billing";
+import {
+  ZettazPayModule,
+  ZettazPayController,
+  ZettazPayCheckoutController,
+  ZettazPayWebhookController,
+  ZettazPayService,
+} from "./stripe-pay";
 import { startSubscriptionJobs } from "./subscription-jobs";
 import {
   PlatformSupportController,
@@ -109,6 +116,7 @@ class SystemController {
     OperationsModule,
     NotificationModule,
     StripeBillingModule,
+    ZettazPayModule,
   ],
   controllers: [
     SystemController,
@@ -131,6 +139,9 @@ class SystemController {
     ReportController,
     StripeWebhookController,
     BillingPortalController,
+    ZettazPayController,
+    ZettazPayCheckoutController,
+    ZettazPayWebhookController,
   ],
   providers: [
     DispatchService,
@@ -150,6 +161,7 @@ class SystemController {
     SupportService,
     ReportService,
     StripeBillingService,
+    ZettazPayService,
     { provide: APP_GUARD, useClass: AuthGuard },
   ],
 })
@@ -179,6 +191,7 @@ export async function createApp() {
   );
   // Stripe webhook endpoint needs the raw body for signature verification.
   app.use("/webhooks/stripe", raw({ type: "application/json", limit: "1mb" }));
+  app.use("/webhooks/stripe-pay", raw({ type: "application/json", limit: "1mb" }));
   app.use(json({ limit: "64kb" }));
   app.use(
     "/uploads",

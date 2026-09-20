@@ -264,7 +264,7 @@ export function PartnerSettings({ session }: { session: Session }) {
           <h2>Partners / Resellers</h2>
           <p>
             Channels that sell your departures, and how commission is settled
-            with each.
+            with each. Finance → Partners is the ledger against these records.
           </p>
         </div>
         <button

@@ -1021,29 +1021,13 @@ export function Subscription({
         </div>
 
         {/* Billing toggle */}
-        <div
-          style={{
-            display: "inline-flex",
-            borderRadius: 9,
-            border: "1px solid var(--border)",
-            background: "var(--card)",
-            overflow: "hidden",
-          }}
-        >
+        <div className="billing-cycle">
           {(["monthly", "yearly"] as const).map((c) => (
             <button
               key={c}
+              type="button"
+              className={cycle === c ? "selected" : undefined}
               onClick={() => setCycle(c)}
-              style={{
-                padding: "7px 20px",
-                border: "none",
-                cursor: "pointer",
-                fontSize: 13,
-                fontWeight: 600,
-                background: cycle === c ? "var(--accent)" : "transparent",
-                color: cycle === c ? "#fff" : "var(--muted)",
-                transition: "background 0.15s, color 0.15s",
-              }}
             >
               {c === "monthly" ? "Monthly" : "Yearly · save up to 20%"}
             </button>

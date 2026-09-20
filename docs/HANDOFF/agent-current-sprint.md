@@ -15,7 +15,7 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 1. **Crew app.** Phases 1–4 on production. **Phase 5.1 guest kiosk** and **Phase 3.5 Share PDF** engineering 19 Sep. GPS, card-present, push, white-label stay gated. Owner still: TestFlight/Unlisted notes, **4.8 airplane-mode**, kiosk PIN + Share PDF on iPad, new EAS.
 2. **Operations menu group** remains functionally complete pending testing. Do not open new Ops web feature work unless testing finds a bug.
 3. **Assets (was Fleet)** engineering + agent visual 20 Sep: kinds, identity sheet, papers list, add/view document modals, document count on rows, Edit/Remove icons, coverage warn, status filter default Active, nav/header rename, page intro removed. **Owner still clicks through on their machine.** Commit/push requested; production needs owner `./deploy.sh` (migration **093**).
-4. **Next after Staff:** **Subscription** (SaaS Billing) and **Zettaz Pay** (client-facing payment-gateway brand for traveler collections; Stripe Connect underneath — not SaaS fees). Do not start money-in-out Phases 2–4 or QBO OAuth until named here.
+4. **Now:** **Zettaz Pay** Settings layout + waiting-on-platform state 20 Sep. Owner will activate the **Zettaz Pay** Stripe platform account later — do not retry merchant create until then. **Subscription** cycle toggle uses shared `.billing-cycle`. Still never share Stripe clients. 1% fee (`ZETTAZ_PAY_APPLICATION_FEE_BPS`). Do not start money-in-out Phases 2–4, Terminal, or QBO OAuth until named here.
 
 ---
 
@@ -138,12 +138,12 @@ Work **outside** the Operations aside group. Suggested order (adjust with owner)
 - Fleet (assets / readiness) — kinds + one asset sheet 20 Sep: nav/header **Assets**; jet ski/kayak/van/etc., make/model/registration, papers list + add/view document modals, document count on rows, Edit/Remove icons, Active/Inactive/All filter (default Active). Evidence: [team-resources-polish-evidence.md](../TESTING/team-resources-polish-evidence.md). Agent visual 20 Sep; owner click-through still needed.
 - Staff & access — polish 11 Sep; search + Add staff 19 Sep; icon row actions + no intro copy 20 Sep. Evidence: [staff-access-polish-evidence.md](../TESTING/staff-access-polish-evidence.md). Owner click-through outstanding.
 - **Document library — polish implemented 17 Sep.** Evidence: [document-library-polish-evidence.md](../TESTING/document-library-polish-evidence.md)
-- Tenant settings — Localization currency roles + Booking integrations + Guest stays search/add row + hold minutes + support-grant tenant dates 19 Sep. Remaining: **owner visual**.
+- Tenant settings — Localization currency roles + Booking integrations + Guest stays search/add row + hold minutes + support-grant tenant dates 19 Sep. Payment integrations restack 20 Sep (hero + live methods; **Waiting on Stripe** until Pay platform activation). **Partners** moved Platform → Operations (outside the tenant-config form). Remaining: **owner visual**.
 - **Audit — polish implemented 17 Sep.** Evidence: [audit-polish-evidence.md](../TESTING/audit-polish-evidence.md)
 
 ### 4. Profile (account shell)
 - **Profile polish follow-up implemented 17 Sep.** Evidence: [profile-polish-evidence.md](../TESTING/profile-polish-evidence.md). Owner visual still outstanding. MFA still deferred honestly.
-- Subscription tab: **messaging implemented 19 Sep**; owner visual outstanding. Evidence: [subscription-polish-evidence.md](../TESTING/subscription-polish-evidence.md). **Zettaz Pay** is the client-facing payment gateway (Stripe Connect underneath), not this tab.
+- Subscription tab: **messaging implemented 19 Sep**; billing-cycle control uses shared CSS 20 Sep; owner visual outstanding. **Zettaz Pay** onboarding + USD Checkout + `/webhooks/stripe-pay` 20 Sep; Settings Payment integrations layout + platform-not-activated waiting state. Event destinations: [zettaz-pay.md](../FEATURES/finance/zettaz-pay.md). Owner activates Pay Stripe platform later.
 
 For each surface: verify against [ui-waiver-launch-task-list.md](../STRATEGY/ui-waiver-launch-task-list.md), fix clear UX/functional gaps in one bounded pass, write/extend `docs/TESTING/*-evidence.md`, update row status.
 

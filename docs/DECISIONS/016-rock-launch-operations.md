@@ -11,7 +11,8 @@ Rock Adventures is the launch tenant. The owner confirmed that its currently pub
 ### Tenant booking payments
 
 - Stripe Connect is the default adapter for Rock traveler payments, subject to successful connected-account onboarding and active merchant capabilities in Rock's jurisdiction.
-- Rock operates its own customer relationship. Use an Accounts v2 merchant configuration, full Stripe Dashboard access, and direct charges on Rock's connected account. Zettaz subscription billing remains a separate platform-billing connection and never changes a booking balance.
+- Rock operates its own customer relationship. Use an Accounts v2 merchant configuration, full Stripe Dashboard access, and direct charges on Rock's connected account. Zettaz subscription billing remains a separate platform-billing connection (**Zettaz SaaS**) and never changes a booking balance. Traveler collections use the **Zettaz Pay** Connect platform account only.
+- Zettaz takes a configurable application fee on Zettaz Pay charges. Launch default is **1%** (`ZETTAZ_PAY_APPLICATION_FEE_BPS`). Stripe’s processing fee remains on the tenant merchant unless Connect responsibility settings say otherwise.
 - Use Stripe-hosted Checkout Sessions for online payment and verified, deduplicated webhooks as payment truth. Do not infer payment success from a browser redirect.
 - Rock online catalogue prices, Checkout Sessions, and online booking balances use USD. Rock's reporting currency is USD for launch reconciliation.
 - XCD remains an allowed local/manual tender currency. Each XCD receipt records its actual currency and amount. Applying it to a USD balance requires a displayed, approved exchange rate with source, effective time, converted USD amount, and rounding snapshot. Until Rock approves that rate policy, XCD can be recorded but cross-currency settlement remains review-required.

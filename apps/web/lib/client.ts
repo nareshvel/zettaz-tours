@@ -399,6 +399,7 @@ export function friendlyDateTime(
  */
 export function paymentMethodLabel(method: string) {
   if (method === "reseller_payment") return "Guest payment via reseller";
+  if (method === "zettaz_pay") return "Zettaz Pay";
   return label(method);
 }
 

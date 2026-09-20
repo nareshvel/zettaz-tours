@@ -6,8 +6,10 @@
  *  - POST /staff/v1/workspace/billing-portal — create a Stripe Customer Portal session
  *
  * Environment variables required:
- *   STRIPE_SECRET_KEY        — sk_live_... (Zettaz SaaS account)
- *   STRIPE_WEBHOOK_SECRET    — whsec_...   (from Stripe dashboard → Webhooks)
+ *   STRIPE_SECRET_KEY        — sk_live_... (Zettaz SaaS Billing only)
+ *   STRIPE_WEBHOOK_SECRET    — whsec_...   (Billing webhooks only)
+ *
+ * Traveler collections use apps/api/src/stripe-pay.ts (STRIPE_PAY_*).
  */
 
 import {

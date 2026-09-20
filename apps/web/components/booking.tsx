@@ -3098,7 +3098,11 @@ export function BookingDetail({
     reviveHold = useMutation(),
     concessionMutation = useMutation(),
     savePassengers = useMutation(),
-    printJob = useMutation();
+    printJob = useMutation(),
+    zettazPay = useResource<{ readyForCheckout: boolean }>(
+      "admin/v1/zettaz-pay",
+    ),
+    zettazCheckout = useMutation();
   const [amount, setAmount] = useState(""),
     [method, setMethod] = useState(""),
     [reference, setReference] = useState(""),
@@ -3423,6 +3427,14 @@ export function BookingDetail({
     (partnerSettles ||
       alreadyFunded ||
       (Boolean(method) && session.permissions.includes("payment.write")));
+  async function collectZettazPay() {
+    const here = `${window.location.origin}/reservations/${bookingId}`;
+    const result = await zettazCheckout.run<{ url: string }>(
+      `staff/v1/bookings/${bookingId}/zettaz-pay-checkout`,
+      { successUrl: `${here}?pay=ok`, cancelUrl: `${here}?pay=cancel` },
+    );
+    if (result?.url) window.location.assign(result.url);
+  }
   // Mobile FAB opens the payment/confirm sheet — only when there is something
   // to do (hold flow, or confirmed guest balance still collectible here).
   const summaryActionable =
@@ -4156,6 +4168,28 @@ export function BookingDetail({
             </div>
           ) : null}
           {paymentForm}
+          {session.permissions.includes("payment.write") &&
+          zettazPay.data?.readyForCheckout &&
+          b.balanceMinor > 0 &&
+          !expired &&
+          b.quote.currency === "USD" &&
+          !partnerSettles ? (
+            <div>
+              <button
+                type="button"
+                className="button secondary full"
+                disabled={zettazCheckout.busy}
+                onClick={() => void collectZettazPay()}
+              >
+                {zettazCheckout.busy
+                  ? "Opening Zettaz Pay…"
+                  : "Collect balance with Zettaz Pay"}
+              </button>
+              {zettazCheckout.error && (
+                <Notice error>{zettazCheckout.error}</Notice>
+              )}
+            </div>
+          ) : null}
           {!expired && b.balanceMinor === 0 && b.state !== "cancelled" ? (
             <div className="settled-note">
               <Check size={20} />

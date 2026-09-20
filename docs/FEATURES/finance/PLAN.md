@@ -337,7 +337,7 @@ Relevant settings per partner:
 
 ## 9. Implementation Task List
 
-**Status 19 September 2026:** Phases 0–3 and 5 (aging + remaining stubs) are live. Phase 4 Settings → Partners is wired. Collection claim UI is on the partner account. Expense category manager is on Expenses. Expense Summary is a live report. Expense **payments** are [money-in-out Phase 1](../../STRATEGY/finance-money-in-out-later.md). Accounting export remains specified in [accounting-export.md](accounting-export.md) — CSV/QBO API not built.
+**Status 19 September 2026:** Phases 0–3 and 5 (aging + remaining stubs) are live. Phase 4 Settings → **Operations → Partners** is wired (moved out of the Platform group 20 Sep). Collection claim UI is on the partner account. Expense category manager is on Expenses. Expense Summary is a live report. Expense **payments** are [money-in-out Phase 1](../../STRATEGY/finance-money-in-out-later.md). Accounting export remains specified in [accounting-export.md](accounting-export.md) — CSV/QBO API not built.
 
 ### Phase 0 — Foundation (routing & navigation)
 - [x] Add Finance sub-navigation: Overview · Partners · Expenses

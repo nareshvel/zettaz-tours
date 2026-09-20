@@ -1,7 +1,7 @@
 # Subscription polish — implementation evidence
 
-**Date:** 11 September 2026 · **Updated:** 19 September 2026  
-**Status:** Messaging implemented 19 Sep; owner visual acceptance outstanding  
+**Date:** 11 September 2026 · **Updated:** 20 September 2026  
+**Status:** Messaging implemented 19 Sep; cycle toggle uses shared CSS 20 Sep; owner visual acceptance outstanding  
 **Surface:** My profile → Subscription (`apps/web/components/subscription.tsx`)
 
 ## Changes completed
@@ -17,6 +17,7 @@
   - Current-plan bar states monthly vs yearly billing; footer restates grace / suspension.
   - Checkout returns to `/profile/subscription`. Trial-reminder emails use the same path.
   - Billing portal failures use `Notice` instead of `alert()`.
+- **20 September 2026:** Monthly / Yearly control uses the shared `.billing-cycle` class instead of inline styles.
 - APIs unchanged. Grace length is the existing job (`past_due` for 3+ days → `canceled`), not a new policy.
 
 ## Owner acceptance still needed

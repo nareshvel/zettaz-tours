@@ -745,10 +745,13 @@ textarea:focus-visible {
 }
 .billing-cycle button {
   padding: 7px 11px;
+  border: 0;
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
   font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
 }
 .billing-cycle button.selected {
   background: var(--nav);
@@ -8499,6 +8502,121 @@ dd {
 }
 @media (max-width: 720px) {
   .locale-preview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.pay-integrations {
+  display: grid;
+  gap: 14px;
+}
+.pay-integrations-hero,
+.pay-integrations-split article {
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.pay-integrations-hero {
+  display: grid;
+  gap: 14px;
+}
+.pay-integrations-hero-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.pay-integrations-brand {
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+.pay-integrations-brand svg,
+.pay-integrations-split article > svg {
+  flex: none;
+  color: var(--accent);
+  margin-top: 2px;
+}
+.pay-integrations-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pay-integrations-brand h3,
+.pay-integrations-split h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.pay-integrations-brand p,
+.pay-integrations-copy,
+.pay-integrations-split p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.pay-integrations-copy {
+  margin: 0;
+}
+.pay-integrations-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+.pay-integrations-metrics > div {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+.pay-integrations-metrics dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+.pay-integrations-metrics dd {
+  margin: 4px 0 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+.pay-integrations-split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.pay-integrations-split article {
+  display: flex;
+  gap: 12px;
+  position: relative;
+  padding-right: 72px;
+  background: var(--surface-soft);
+}
+.pay-integrations-card-status {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
+.pay-integrations-note {
+  margin: 2px 2px 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.status-pill.warn {
+  background: color-mix(in srgb, #b45309 14%, transparent);
+  color: #9a3412;
+}
+@media (max-width: 720px) {
+  .pay-integrations-hero-top {
+    flex-direction: column;
+  }
+  .pay-integrations-hero-top .button {
+    width: 100%;
+  }
+  .pay-integrations-metrics,
+  .pay-integrations-split {
     grid-template-columns: minmax(0, 1fr);
   }
 }

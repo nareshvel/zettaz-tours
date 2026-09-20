@@ -38,6 +38,7 @@ import {
   Sparkles,
   Ticket,
   Zap,
+  Banknote,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type {
@@ -2845,6 +2846,120 @@ function monthGrid(monthKey: string) {
   }
   return days;
 }
+
+function ZettazPayPanel() {
+  const pay = useResource<{
+    brand: string;
+    platformConfigured: boolean;
+    platformReady: boolean;
+    applicationFeeBps: number;
+    accountId: string | null;
+    chargesEnabled: boolean;
+    readyForCheckout: boolean;
+  }>("admin/v1/zettaz-pay");
+  const onboard = useMutation();
+  async function startOnboard() {
+    const origin = window.location.origin;
+    const returnUrl = `${origin}/settings?tab=payments`;
+    const result = await onboard.run<{ url: string }>(
+      "admin/v1/zettaz-pay/onboard",
+      { returnUrl, refreshUrl: returnUrl },
+    );
+    if (result?.url) window.location.assign(result.url);
+  }
+  const fee = pay.data
+    ? (pay.data.applicationFeeBps / 100).toFixed(
+        pay.data.applicationFeeBps % 100 === 0 ? 0 : 2,
+      )
+    : "1";
+  const waitingOnPlatform =
+    Boolean(pay.data?.platformConfigured) && !pay.data?.platformReady;
+  const canOnboard =
+    Boolean(pay.data?.platformConfigured) && Boolean(pay.data?.platformReady);
+  const statusLabel = pay.data?.readyForCheckout
+    ? "Ready"
+    : waitingOnPlatform
+      ? "Waiting on Stripe"
+      : pay.data?.accountId
+        ? "Finish onboarding"
+        : pay.data?.platformConfigured
+          ? "Not connected"
+          : "Not on this server";
+  const statusKind = pay.data?.readyForCheckout
+    ? "success"
+    : waitingOnPlatform || pay.data?.accountId
+      ? "warn"
+      : "muted";
+  const summary = pay.data?.readyForCheckout
+    ? "Guests can pay the remaining booking balance by card at checkout."
+    : waitingOnPlatform
+      ? "The Zettaz Pay Stripe account is not activated yet. Cash, manual, and partner collection keep working. Guest card checkout stays off until that Stripe step is done."
+      : pay.data?.accountId
+        ? "Onboarding started. Finish Stripe’s form, then return here."
+        : pay.data?.platformConfigured
+          ? "Connect this tenant as a merchant when you are ready. Software subscription fees stay on My profile → Subscription."
+          : "Zettaz Pay is not connected on this server yet. Cash, manual, and partner collection still work.";
+  return (
+    <article className="pay-integrations-hero">
+      <div className="pay-integrations-hero-top">
+        <div className="pay-integrations-brand">
+          <CreditCard size={22} />
+          <div>
+            <div className="pay-integrations-title-row">
+              <h3>Zettaz Pay</h3>
+              <span className={"status-pill " + statusKind}>{statusLabel}</span>
+            </div>
+            <p>
+              Guest checkout brand. Stripe Connect runs underneath — guests
+              never see that name.
+            </p>
+          </div>
+        </div>
+        {canOnboard ? (
+          <button
+            type="button"
+            className="button"
+            disabled={onboard.busy || pay.busy}
+            onClick={() => void startOnboard()}
+          >
+            {onboard.busy
+              ? "Opening Stripe…"
+              : pay.data?.accountId
+                ? "Continue setup"
+                : "Set up Zettaz Pay"}
+          </button>
+        ) : null}
+      </div>
+      {pay.error && !pay.data ? (
+        <Notice error>{pay.error}</Notice>
+      ) : !pay.data ? (
+        <p className="pay-integrations-copy">Checking gateway…</p>
+      ) : (
+        <>
+          <p className="pay-integrations-copy">{summary}</p>
+          <dl className="pay-integrations-metrics">
+            <div>
+              <dt>Platform fee</dt>
+              <dd>{fee}%</dd>
+            </div>
+            <div>
+              <dt>Software fees</dt>
+              <dd>
+                <Link href="/profile/subscription">Subscription</Link>
+              </dd>
+            </div>
+            <div>
+              <dt>Card checkout</dt>
+              <dd>{pay.data?.readyForCheckout ? "On" : "Off"}</dd>
+            </div>
+          </dl>
+          {onboard.error ? <Notice error>{onboard.error}</Notice> : null}
+        </>
+      )}
+    </article>
+  );
+}
+
 export function Settings({
   session,
   refresh,
@@ -3068,17 +3183,6 @@ export function Settings({
               <span className="settings-nav-label">Waiver templates</span>
               <span className="settings-nav-label-short">Waivers</span>
             </button>
-
-            <p>PLATFORM</p>
-            <button
-              className={tab === "payments" ? "active" : ""}
-              type="button"
-              onClick={() => selectTab("payments")}
-            >
-              <CreditCard size={16} />
-              <span className="settings-nav-label">Payment integrations</span>
-              <span className="settings-nav-label-short">Payments</span>
-            </button>
             {session.permissions.includes("partner.manage") && (
               <button
                 className={tab === "partners" ? "active" : ""}
@@ -3090,6 +3194,17 @@ export function Settings({
                 <span className="settings-nav-label-short">Partners</span>
               </button>
             )}
+
+            <p>PLATFORM</p>
+            <button
+              className={tab === "payments" ? "active" : ""}
+              type="button"
+              onClick={() => selectTab("payments")}
+            >
+              <CreditCard size={16} />
+              <span className="settings-nav-label">Payment integrations</span>
+              <span className="settings-nav-label-short">Payments</span>
+            </button>
             {session.permissions.includes("integration.manage") && (
               <button
                 className={tab === "integrations" ? "active" : ""}
@@ -3123,6 +3238,10 @@ export function Settings({
         ) : tab === "stays" ? (
           <div className="panel form-panel settings-tab-content">
             <StaysSettings session={session} />
+          </div>
+        ) : tab === "partners" ? (
+          <div className="panel form-panel settings-tab-content">
+            <PartnerSettings session={session} />
           </div>
         ) : (
           <form className="panel form-panel" onSubmit={submit}>
@@ -3810,10 +3929,6 @@ export function Settings({
                 </section>
               </>
             )}
-            {tab === "partners" &&
-              session.permissions.includes("partner.manage") && (
-                <PartnerSettings session={session} />
-              )}
             {tab === "payments" && (
               <section>
                 <div className="settings-card-head">
@@ -3821,46 +3936,59 @@ export function Settings({
                   <div>
                     <h2>Payment integrations</h2>
                     <p>
-                      Online card checkout waits on Stripe Connect eligibility.
-                      Cash, manual methods, and partner settlement already
-                      work on reservations, the manifest, and Crew.
+                      How money is collected for this tenant. Cards go through
+                      Zettaz Pay. Software billing stays on{" "}
+                      <Link href="/profile/subscription">
+                        My profile → Subscription
+                      </Link>
+                      .
                     </p>
                   </div>
                 </div>
-                <Notice>
-                  Card-present / Stripe Terminal is not in Track A. Do not
-                  capture card numbers in this workspace or in Crew.
-                </Notice>
-                <dl className="locale-preview">
-                  <div>
-                    <dt>Manual and cash</dt>
-                    <dd>
-                      Staff record an allowed collection method on the
-                      reservation or at boarding. Crew Pay uses the same
-                      boarding rules as the web manifest.
-                    </dd>
+                <div className="pay-integrations">
+                  <ZettazPayPanel />
+                  <div className="pay-integrations-split">
+                    <article>
+                      <span className="status-pill success pay-integrations-card-status">
+                        Live
+                      </span>
+                      <Banknote size={18} />
+                      <div>
+                        <h3>Manual and cash</h3>
+                        <p>
+                          Staff record an allowed collection method on the
+                          reservation or at boarding. Crew Pay uses the same
+                          boarding rules as the web manifest.
+                        </p>
+                      </div>
+                    </article>
+                    <article>
+                      <span className="status-pill success pay-integrations-card-status">
+                        Live
+                      </span>
+                      <Handshake size={18} />
+                      <div>
+                        <h3>Partner invoice</h3>
+                        <p>
+                          Those bookings confirm without a guest card payment.
+                          Claims live under{" "}
+                          <Link href="/finance/partners">
+                            Finance → Partners
+                          </Link>
+                          . Commission terms live under{" "}
+                          <Link href="/settings?tab=partners">
+                            Settings → Partners
+                          </Link>
+                          .
+                        </p>
+                      </div>
+                    </article>
                   </div>
-                  <div>
-                    <dt>Partner invoice / collect</dt>
-                    <dd>
-                      Those bookings confirm without a guest payment. Claims
-                      live under{" "}
-                      <Link href="/finance/partners">Finance → Partners</Link>
-                      . Commission terms live under{" "}
-                      <Link href="/settings?tab=partners">
-                        Settings → Partners
-                      </Link>
-                      .
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Stripe Connect Checkout</dt>
-                    <dd>
-                      Not connected. Needs merchant eligibility, USD settlement,
-                      and live webhooks — not a toggle on this page.
-                    </dd>
-                  </div>
-                </dl>
+                  <p className="pay-integrations-note">
+                    Card-present / Stripe Terminal is not in this launch.
+                    Do not capture card numbers in this workspace or in Crew.
+                  </p>
+                </div>
               </section>
             )}
             {tab === "waivers" && <WaiverSettings session={session} />}

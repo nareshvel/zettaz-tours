@@ -9,7 +9,6 @@ import { Heading, TenantDateInput } from "./common";
 import { FinancePartners } from "./finance-partners";
 import { FinanceOverview } from "./finance-overview";
 import { FinanceExpenses } from "./finance-expenses";
-import { FinanceReports } from "./finance-reports";
 
 export type PeriodKey =
   | "this_week"
@@ -87,7 +86,7 @@ export function periodDates(
   return { from: `${year - 1}-01-01`, to: `${year - 1}-12-31` };
 }
 
-export type FinanceSection = "overview" | "partners" | "expenses" | "reports";
+export type FinanceSection = "overview" | "partners" | "expenses";
 
 function FinanceNav({
   section,
@@ -100,7 +99,6 @@ function FinanceNav({
     { href: "/finance/overview", label: "Overview", key: "overview" },
     { href: "/finance/partners", label: "Partners", key: "partners" },
     { href: "/finance/expenses", label: "Expenses", key: "expenses" },
-    { href: "/finance/reports", label: "Reports", key: "reports" },
   ];
   return (
     <div className="view-action-bar">
@@ -144,11 +142,6 @@ const SECTION_HEADINGS: Record<
     title: "Expenses",
     description:
       "Operating costs. Foreign-currency lines use the bank rate recorded on that expense — they are not converted later.",
-  },
-  reports: {
-    title: "Finance reports",
-    description:
-      "Partner aging in recorded currencies. Exports and P&L remain Track B.",
   },
 };
 
@@ -302,7 +295,6 @@ export function Finance({
         <FinancePartners session={session} initialPartnerId={partnerId} />
       )}
       {section === "expenses" && <FinanceExpenses session={session} />}
-      {section === "reports" && <FinanceReports session={session} />}
     </>
   );
 }

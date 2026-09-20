@@ -87,13 +87,12 @@ This single field drives the entire accounting treatment.
 /finance/partners           → Partner account center (list)
 /finance/partners/:id       → Individual partner account ledger
 /finance/expenses           → Operating expense ledger
-/finance/reports            → Aging, expense summary, P&L (phased)
 ```
 
 **Sidebar nav label:** Finance  
-**Sub-items:** Overview · Partners · Expenses · Reports
+**Sub-items:** Overview · Partners · Expenses
 
-This structure must be wired at launch — even if Expenses and Reports are minimal stubs. Changing nav after tenants are onboard costs significant re-training and support effort.
+Aging and expense summary live under **Insights → Reports**. `/finance/reports` redirects to `/reports`.
 
 ---
 
@@ -201,18 +200,9 @@ Insurance · Professional Services · Salaries & Wages *(stub — PayTime integr
 
 ---
 
-### 4.4 Reports (`/finance/reports`)
+### 4.4 Reports (Insights → `/reports`)
 
-**At launch — one genuinely useful report:**
-
-*Partner Aging Report*  
-Table: Partner name · Current · 1–30 days · 31–60 days · 61–90 days · 90+ days · Total.  
-Immediately valuable for cash flow management.
-
-**Stubs with clear descriptions (no fake data):**
-- Expense Summary — total by category for selected period
-- P&L Overview — income minus expenses (requires booking revenue feed)
-- Partner Statement — full ledger export per partner (PDF/CSV)
+Partner aging and expense summary are catalog entries on the Reports hub, not a Finance tab. Overview links to those reports. P&L, partner PDF, and commission summary remain later.
 
 ---
 
@@ -347,47 +337,34 @@ Relevant settings per partner:
 
 ## 9. Implementation Task List
 
-### Phase 0 — Foundation (routing & navigation) ← do first
-- [ ] Add Finance sub-navigation: Overview · Partners · Expenses · Reports
-- [ ] Wire routes in `workspace.tsx`: `/finance/overview`, `/finance/partners`, `/finance/expenses`, `/finance/reports`
-- [ ] Redirect bare `/finance` to `/finance/overview`
-- [ ] Create page shell components for each section (can be empty/loading initially)
+**Status 19 September 2026:** Phases 0–3 and 5 (aging + remaining stubs) are live. Phase 4 Settings → Partners is wired. Collection claim UI is on the partner account. Expense category manager is on Expenses. Expense Summary is a live report. Expense **payments** are [money-in-out Phase 1](../../STRATEGY/finance-money-in-out-later.md). Accounting export remains specified in [accounting-export.md](accounting-export.md) — CSV/QBO API not built.
+
+### Phase 0 — Foundation (routing & navigation)
+- [x] Add Finance sub-navigation: Overview · Partners · Expenses
+- [x] Wire routes in `workspace.tsx`
+- [x] Redirect bare `/finance` to overview (unknown segment defaults to overview)
+- [x] Page shells for each section
 
 ### Phase 1 — Finance Overview page
-- [ ] API: `GET /staff/v1/finance/overview` — work queue items, net position, recent activity
-- [ ] UI: Work queue cards with priority sorting (overdue → due → pending)
-- [ ] UI: Net position strip (receivable / payable / overdue)
-- [ ] UI: Recent activity feed (last 10 events, all partners)
-- [ ] Empty state: "All caught up"
+- [x] API work queue, net position, recent activity
+- [x] UI work queue, net position, activity, empty state
 
-### Phase 2 — Partner Accounts (redesign existing)
-- [ ] API: `GET /staff/v1/partners/:id` — include commission config and account summary
-- [ ] API: `GET /staff/v1/partners/:id/ledger` — paginated chronological register
-- [ ] UI: Partner list with balance, status, model badge
-- [ ] UI: Per-partner account view — summary strip + contextual action panel + transaction register
-- [ ] UI: Settlement cards with stepper (draft → invoiced → sent → paid) + contextual action buttons
-- [ ] UI: Collection claim review within partner account (not a separate page)
-- [ ] Remove old two-tab layout entirely
+### Phase 2 — Partner Accounts
+- [x] Partner list, ledger, settlements
+- [x] Collection claim record / accept / reject on the partner account
 
-### Phase 3 — Expenses (new foundation)
-- [ ] Migration: `expense_categories` table + default seed data (10 default categories)
-- [ ] Migration: `expenses` table
-- [ ] API: Expense categories CRUD (`/staff/v1/finance/expense-categories`)
-- [ ] API: Expenses CRUD (`/staff/v1/finance/expenses`)
-- [ ] UI: Expense list page with category/date filters and category totals
-- [ ] UI: Add/edit expense form
-- [ ] Settings UI: Expense category management
+### Phase 3 — Expenses
+- [x] Categories + expenses + vendors
+- [x] Category manager UI (config.write)
+- [x] Expense payments (vendor cash-out)
 
-### Phase 4 — Settings → Partners (restructure)
-- [ ] Move Partner management out of Finance tab into Settings → Partners
-- [ ] Partner list in Settings: name, type, commission summary, active toggle
-- [ ] Partner form: all commission + settlement configuration fields
-- [ ] Ensure `/finance/partners` links to the right Settings page for "Edit partner"
+### Phase 4 — Settings → Partners
+- [x] Settings tab Partners (commission terms); Finance remains the ledger
 
-### Phase 5 — Reports (aging now, rest stub)
-- [ ] API: `GET /staff/v1/finance/aging` — per-partner aging buckets
-- [ ] UI: Partner Aging Report table
-- [ ] UI: Stub pages for Expense Summary, P&L, Partner Statement — with descriptions of what each will show
+### Phase 5 — Reports
+- [x] Partner aging and expense summary on Insights → Reports (`/reports/:slug`)
+- [ ] P&L, partner statement PDF/CSV, commission summary — Track B / [accounting-export.md](accounting-export.md)
+
 
 ---
 
@@ -432,7 +409,7 @@ Everything in Phase 0 through Phase 5 above.
 | `apps/web/components/finance-overview.tsx` | Finance Overview page (new) |
 | `apps/web/components/finance-partners.tsx` | Partner account center (redesign) |
 | `apps/web/components/finance-expenses.tsx` | Expenses ledger (new) |
-| `apps/web/components/finance-reports.tsx` | Reports (new, mostly stub) |
+| `apps/web/components/finance-reports.tsx` | Aging + expense summary bodies used by Insights → Reports |
 | `apps/web/components/finance.tsx` | Page shell — nav + section routing |
 | `apps/web/app/globals.css` | All finance CSS (existing + new sections) |
 | `apps/web/components/workspace.tsx` | Route wiring — all /finance/* paths |

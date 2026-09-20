@@ -1,6 +1,6 @@
 # Finance money in / money out — later-stage task list
 
-**Status:** Held — do not start until the owner reopens this document  
+**Status:** Phase 1 (expense payments) implemented 19 September 2026. Phases 2–4 remain held until named on the sprint board.  
 **Recorded:** 19 September 2026  
 **Audience:** any IDE agent  
 **Authority on conflict:** [launch-contract.md](launch-contract.md) · [tenant-payments.md](../ARCHITECTURE/tenant-payments.md) · [finance-and-offline.md](../ARCHITECTURE/finance-and-offline.md) · ADR [004](../DECISIONS/004-money.md) · ADR [016](../DECISIONS/016-rock-launch-operations.md)
@@ -47,18 +47,16 @@ Stripe Connect Checkout, card-present, and FX conversion remain **blocked** on m
 | --- | --- | --- |
 | F0.1 | Period control | Button menu: This week / month / Last month / This year / Last year / Custom. Default **This year**. Tenant timezone. |
 | F0.2 | Recorded expenses | Period sum of non-voided expenses in reporting currency (bank rate frozen on the expense). |
-| F0.3 | Unpaid expenses | **Equals recorded** until F1. Copy must stay honest. |
+| F0.3 | Unpaid expenses | **F1:** outstanding = recorded − paid |
 | F0.4 | Partner AR / AP / overdue | Snapshot of open partner money (not the expense period filter). |
 
 ---
 
-## Phase 1 — Expense payments (first reopen)
+## Phase 1 — Expense payments (done 19 Sep)
 
-**Goal:** A recorded expense is a bill. A payment is a separate append-only fact. Overview Unpaid becomes recorded − paid for the selected period.
+**Goal:** A recorded expense is a bill. A payment is a separate append-only fact. Overview Unpaid is recorded − paid for the selected period.
 
-**Out of this phase:** bank accounts, guest strip, Stripe, payroll, accounting export.
-
-### Plan
+Shipped: `expense_payments` (migration `092`), `GET/POST finance/v1/expenses/:id/payments`, void via `POST .../payments/:id/void`, Expenses Pay dialog, Overview Unpaid + Paid to vendors tiles.
 
 1. **Model**
    - New table (name TBD in migration): `expense_payments` (or `vendor_payments`) with tenant_id, expense_id, amount_minor, currency, paid_at (tenant-local date + timestamptz), method (`cash` / `bank_transfer` / `card` / `other`), reference, recorded_by, optional notes, voided_at + void_reason.

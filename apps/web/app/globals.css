@@ -10768,13 +10768,13 @@ a.briefing-tile:hover {
   line-height: 1.4;
 }
 .report-filter-menu {
-  display: none;
+  display: block;
   flex: none;
   position: relative;
 }
 .report-filter-menu .filter-popover {
-  left: 0;
-  right: auto;
+  left: auto;
+  right: 0;
   width: min(16rem, calc(100vw - 32px));
   padding: 8px;
   gap: 6px;
@@ -11097,7 +11097,10 @@ a.briefing-tile:hover {
   .page-footer,
   .no-print,
   .back-link,
-  .skip-link {
+  .skip-link,
+  .reports-catalog,
+  .reports-back,
+  .report-shell-toolbar {
     display: none !important;
   }
   .workspace-main {
@@ -13554,19 +13557,46 @@ a.briefing-tile:hover {
   padding: 20px 0;
 }
 
-.finance-section-heading {
-  font-size: 13px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+.finance-section-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.partner-claims-panel {
+  margin-top: 8px;
+}
+.partner-claim-list {
+  display: grid;
+  gap: 8px;
+}
+.partner-claim-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.partner-claim-row > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+.partner-claim-row span {
+  font-size: 12px;
   color: var(--muted);
-  margin: 0 0 12px;
+}
+.partner-claim-history {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
 }
 
 /* ── Net position strip ─────────────────────────────────────────────────── */
 .finance-net-position {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px;
 }
 .finance-net-tile {
@@ -13810,6 +13840,143 @@ a.briefing-tile:hover {
   margin-top: 16px;
 }
 
+.form-dialog-sheet.expense-pay-dialog {
+  width: min(640px, 100%);
+}
+.expense-pay-dialog .form-grid {
+  margin-bottom: 0;
+  gap: 14px;
+}
+.expense-pay-dialog .field,
+.expense-pay-dialog .tenant-date-control {
+  margin-bottom: 0;
+}
+.expense-pay-span {
+  grid-column: 1 / -1;
+}
+.expense-pay-summary {
+  display: grid;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.expense-pay-bill {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.expense-pay-bill strong {
+  font-size: 14px;
+  font-weight: 650;
+}
+.expense-pay-bill span {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.expense-pay-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.expense-pay-metrics div {
+  display: grid;
+  gap: 2px;
+}
+.expense-pay-metrics span {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.expense-pay-metrics strong {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.expense-pay-amount {
+  width: 100%;
+  padding-left: 48px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.expense-pay-dialog .amount-field-wrapper {
+  width: 100%;
+}
+.expense-pay-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.expense-pay-hint.is-error {
+  color: var(--danger);
+}
+.expense-pay-hint .text-button {
+  font-size: inherit;
+  font-weight: 650;
+}
+.expense-pay-methods {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.expense-pay-methods .filter-range-option {
+  min-height: 38px;
+  text-align: center;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+.expense-outstanding-hint {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+}
+button.expense-pay-status {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+}
+button.expense-pay-status:hover {
+  filter: brightness(0.97);
+}
+.ledger-badge.unpaid {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+.expense-pay-history {
+  display: grid;
+  gap: 8px;
+}
+.expense-pay-history-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.expense-pay-history-row.is-voided {
+  opacity: 0.55;
+}
+.expense-pay-history-row > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.expense-pay-history-row strong {
+  font-size: 13px;
+}
+.expense-pay-history-row span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
 /* Expense table */
 .expense-table {
   width: 100%;
@@ -13861,6 +14028,243 @@ a.briefing-tile:hover {
   margin: -6px 0 4px;
 }
 
+.reports-hub {
+  display: grid;
+  grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+.reports-catalog-head {
+  margin-bottom: 8px;
+}
+.reports-catalog-head h1 {
+  font-size: 1.35rem;
+  margin: 0 0 6px;
+}
+.reports-catalog-group {
+  margin-top: 18px;
+}
+.reports-catalog-group h2 {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+.reports-catalog-group ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.reports-catalog-item {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  text-align: left;
+  text-decoration: none;
+  color: inherit;
+}
+a.reports-catalog-item:hover {
+  border-color: var(--teal);
+}
+.reports-catalog-item.selected {
+  border-color: var(--teal);
+  background: var(--soft);
+}
+.reports-catalog-item strong {
+  font-size: 13px;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.reports-catalog-item span {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+.reports-catalog-item em {
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.reports-catalog-item.later {
+  opacity: 0.72;
+}
+.reports-viewer {
+  min-width: 0;
+}
+.reports-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.report-shell-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.report-shell-filters {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+.report-filter-bar {
+  display: flex;
+  align-items: center;
+}
+.report-filters-trigger {
+  display: none;
+}
+.report-filters-panel {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+.report-shell-filters .report-custom-dates {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.report-shell-filters .tenant-date-control,
+.report-shell-filters .compact-control {
+  margin-bottom: 0;
+  width: 9.75rem;
+  flex: none;
+}
+.report-shell-filters .compact-control > span:first-child {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+.report-shell-filters .compact-control {
+  position: relative;
+}
+.report-shell-filters .compact-control .tenant-date-input input,
+.report-shell-filters .compact-control input {
+  min-height: 44px;
+  height: 44px;
+  border-radius: 7px;
+}
+.report-shell-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  align-items: center;
+}
+.report-shell-actions .button.icon-only {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+}
+.report-shell .page-heading {
+  margin-bottom: 8px;
+}
+.report-shell .report-range-bar {
+  margin: 0;
+}
+.finance-report-links {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+@media (max-width: 850px) {
+  .reports-hub {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .reports-hub.has-slug .reports-catalog {
+    display: none;
+  }
+  .reports-catalog-head h1 {
+    font-size: 1.2rem;
+  }
+  .reports-catalog-group {
+    margin-top: 12px;
+  }
+  .report-shell .page-heading {
+    margin-bottom: 4px;
+  }
+  .report-shell .page-heading h1 {
+    font-size: 1.35rem;
+  }
+  .report-shell-toolbar {
+    width: 100%;
+    margin-bottom: 10px;
+    gap: 6px;
+  }
+  .report-filters-trigger {
+    display: inline-flex;
+  }
+  .report-filter-bar {
+    position: relative;
+  }
+  .report-filter-bar:not(.is-open) .report-filters-panel {
+    display: none;
+  }
+  .report-filter-bar.is-open .report-filters-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 30;
+    min-width: min(18rem, calc(100vw - 32px));
+    padding: 12px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: 0 16px 40px rgba(20, 47, 54, 0.14);
+  }
+  .report-filter-bar.is-open .report-filters-panel .tenant-date-control,
+  .report-filter-bar.is-open .report-filters-panel .compact-control,
+  .report-filter-bar.is-open .report-filters-panel .filter-menu,
+  .report-filter-bar.is-open .report-filters-panel .catalog-add-btn {
+    width: 100%;
+  }
+  .report-filter-bar.is-open .compact-control > span:first-child {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: unset;
+    margin-bottom: 4px;
+  }
+  .report-range-note {
+    font-size: 12px;
+  }
+  .report-exception-grid,
+  .report-daily-cards {
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
 /* Aging table */
 .aging-table {
   width: 100%;
@@ -13910,11 +14314,7 @@ a.briefing-tile:hover {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: 12px;
-  padding: 12px 14px;
-  background: var(--soft);
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  gap: 8px;
 }
 .aging-filter-group {
   display: flex;
@@ -14144,6 +14544,9 @@ a.briefing-tile:hover {
   }
   .expense-form-grid {
     grid-template-columns: 1fr;
+  }
+  .expense-pay-methods {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .expense-table th:nth-child(3),
   .expense-table td:nth-child(3),

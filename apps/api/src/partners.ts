@@ -596,6 +596,27 @@ export class PartnerService {
     );
   }
 
+  claimableBookings(actor: Actor, partnerId: string) {
+    return this.db.transaction(actor, async (tx) => {
+      const { rows } = await tx.query(
+        `SELECT DISTINCT ON (b.id)
+           b.id, b.lead_name, d.starts_at, s.total_minor::bigint AS total_minor, s.currency
+         FROM booking_partner_snapshots s
+         JOIN bookings b ON b.tenant_id=s.tenant_id AND b.id=s.booking_id
+         JOIN departures d ON d.tenant_id=b.tenant_id AND d.id=b.departure_id
+         WHERE s.tenant_id=$1 AND s.partner_id=$2
+           AND s.collection_mode='partner_collects_for_tenant'
+           AND b.state='confirmed'
+         ORDER BY b.id, s.booking_version DESC`,
+        [actor.tenantId, partnerId],
+      );
+      return rows.map((row: { total_minor: string | number }) => ({
+        ...row,
+        total_minor: Number(row.total_minor),
+      }));
+    });
+  }
+
   // ── Commission & Settlement methods (new) ────────────────────────────────
 
   configureCommission(
@@ -1241,7 +1262,7 @@ export class PartnerService {
           action: `${item.claim_count} collection claim${item.claim_count !== 1 ? "s" : ""} awaiting review`,
           amount_minor: Number(item.amount_minor),
           currency,
-          link: `/finance/partners/${item.partner_id}`,
+          link: `/finance/partners/${item.partner_id}#claims`,
         });
       }
       for (const item of readyItems) {
@@ -1719,7 +1740,7 @@ export class PartnerController {
   // ── Partner management ───────────────────────────────────────────────────
 
   @Get("partners")
-  @Access("partner.manage")
+  @Access("partner.statement.read")
   list(@CurrentActor() actor: Actor) {
     return this.service.list(actor);
   }
@@ -1806,8 +1827,8 @@ export class PartnerController {
   unsettledSummary(
     @CurrentActor() actor: Actor,
     @Param("id") id: string,
-    @Query("from") from: string,
-    @Query("to") to: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
   ) {
     return this.service.unsettledSummary(
       actor,
@@ -1815,6 +1836,12 @@ export class PartnerController {
       from ?? "",
       to ?? "",
     );
+  }
+
+  @Get("partners/:id/claimable-bookings")
+  @Access("partner.collection.record")
+  claimableBookings(@CurrentActor() actor: Actor, @Param("id") id: string) {
+    return this.service.claimableBookings(actor, parse(z.string().uuid(), id));
   }
 
   @Post("partners/:id/bookings")
@@ -1994,6 +2021,17 @@ export class PartnerController {
   @Get("finance-aging")
   @Access("partner.statement.read")
   financeAging(
+    @CurrentActor() actor: Actor,
+    @Query("asOf") asOf?: string,
+    @Query("direction") direction?: string,
+    @Query("partnerId") partnerId?: string,
+  ) {
+    return this.service.financeAging(actor, { asOf, direction, partnerId });
+  }
+
+  @Get("partner-aging")
+  @Access("partner.statement.read")
+  partnerAgingAlias(
     @CurrentActor() actor: Actor,
     @Query("asOf") asOf?: string,
     @Query("direction") direction?: string,

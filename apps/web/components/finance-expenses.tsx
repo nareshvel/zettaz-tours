@@ -44,6 +44,9 @@ type Expense = {
   description?: string | null;
   reference?: string | null;
   voided_at?: string | null;
+  paid_minor?: number;
+  outstanding_minor?: number;
+  payment_status?: "voided" | "paid" | "partial" | "unpaid";
   recorded_by_name?: string;
   created_at: string;
 };
@@ -58,6 +61,10 @@ type ExpenseListResponse = {
   category_totals: CategoryTotal[];
   currency: string;
 };
+
+function dayKey(value: string) {
+  return value.slice(0, 10);
+}
 
 // ─── Vendor Manager Dialog ────────────────────────────────────────────────────
 
@@ -338,6 +345,517 @@ function VendorManagerDialog({
         </div>
       </div>
     </div>
+  );
+}
+
+function CategoryManagerDialog({
+  open,
+  categories,
+  onClose,
+  onChanged,
+}: {
+  open: boolean;
+  categories: ExpenseCategory[];
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [newName, setNewName] = useState("");
+  const addMut = useMutation();
+  const archiveMut = useMutation();
+  const renameMut = useMutation();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+
+  if (!open) return null;
+  const active = categories.filter((c) => c.is_active);
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 1200,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <div
+        style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)" }}
+        onClick={onClose}
+      />
+      <div
+        className="panel"
+        style={{
+          position: "relative",
+          zIndex: 1,
+          width: "min(440px, calc(100vw - 32px))",
+          borderRadius: 12,
+          padding: 24,
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
+          maxHeight: "70vh",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 600 }}>
+            Expense categories
+          </h3>
+          <button type="button" className="icon-button" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            placeholder="Category name…"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+          />
+          <button
+            type="button"
+            className="button small"
+            disabled={addMut.busy || !newName.trim()}
+            onClick={async () => {
+              await addMut.run("finance/v1/expense-categories", {
+                name: newName.trim(),
+              });
+              if (!addMut.error) {
+                setNewName("");
+                addMut.clear();
+                onChanged();
+              }
+            }}
+          >
+            Add
+          </button>
+        </div>
+        {addMut.error && <Notice error>{addMut.error}</Notice>}
+        <div style={{ overflow: "auto", display: "grid", gap: 8 }}>
+          {active.map((c) => (
+            <div
+              key={c.id}
+              style={{
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              {editingId === c.id ? (
+                <>
+                  <input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="button small"
+                    onClick={async () => {
+                      await renameMut.run(
+                        `finance/v1/expense-categories/${c.id}`,
+                        { name: editName.trim() },
+                        "PATCH",
+                      );
+                      if (!renameMut.error) {
+                        setEditingId(null);
+                        onChanged();
+                      }
+                    }}
+                  >
+                    Save
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span>{c.name}</span>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      onClick={() => {
+                        setEditingId(c.id);
+                        setEditName(c.name);
+                      }}
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      onClick={async () => {
+                        await archiveMut.run(
+                          `finance/v1/expense-categories/${c.id}`,
+                          {},
+                          "DELETE",
+                        );
+                        if (!archiveMut.error) onChanged();
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const PAY_METHODS = [
+  ["bank_transfer", "Bank transfer"],
+  ["cash", "Cash"],
+  ["card", "Card"],
+  ["other", "Other"],
+] as const;
+
+function methodLabel(method: string) {
+  return PAY_METHODS.find(([value]) => value === method)?.[1] ?? method;
+}
+
+type ExpensePayment = {
+  id: string;
+  amount_minor: number;
+  currency: string;
+  paid_on: string;
+  method: string;
+  reference?: string | null;
+  notes?: string | null;
+  voided_at?: string | null;
+  void_reason?: string | null;
+};
+
+function PayExpenseDialog({
+  expense,
+  open,
+  onClose,
+  onPaid,
+  dateFormat,
+  locale,
+}: {
+  expense: Expense | null;
+  open: boolean;
+  onClose: () => void;
+  onPaid: () => void;
+  dateFormat: "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD";
+  locale: string;
+}) {
+  const mut = useMutation();
+  const outstanding = expense?.outstanding_minor ?? expense?.amount_minor ?? 0;
+  const billed = expense?.amount_minor ?? 0;
+  const alreadyPaid = expense?.paid_minor ?? Math.max(0, billed - outstanding);
+  const [amount, setAmount] = useState("");
+  const [paidOn, setPaidOn] = useState("");
+  const [method, setMethod] = useState<(typeof PAY_METHODS)[number][0]>(
+    "bank_transfer",
+  );
+  const [reference, setReference] = useState("");
+  const [notes, setNotes] = useState("");
+
+  useEffect(() => {
+    if (!open || !expense) return;
+    setAmount((outstanding / 100).toFixed(2));
+    setPaidOn(dayKey(expense.expense_date));
+    setMethod("bank_transfer");
+    setReference("");
+    setNotes("");
+    mut.clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, expense?.id]);
+
+  const parsedAmount = Number(amount);
+  const amountMinor = Math.round(parsedAmount * 100);
+  const amountOk = Number.isFinite(parsedAmount) && amountMinor > 0;
+  const leftover = amountOk ? outstanding - amountMinor : outstanding;
+  const overpay = amountOk && leftover < 0;
+  const formattedOutstanding = expense
+    ? money(outstanding, expense.currency)
+    : "";
+
+  return (
+    <FormDialog
+      open={open && !!expense}
+      title="Record vendor payment"
+      className="expense-pay-dialog"
+      busy={mut.busy}
+      error={mut.error}
+      onClose={onClose}
+      submitLabel={
+        expense && amountOk
+          ? `Record ${money(amountMinor, expense.currency)}`
+          : "Record payment"
+      }
+      submitDisabled={!expense || !paidOn || overpay || !amountOk}
+      onSubmit={async () => {
+        if (!expense || overpay || !amountOk || !paidOn) return;
+        const saved = await mut.run(
+          `finance/v1/expenses/${expense.id}/payments`,
+          {
+            amount_minor: amountMinor,
+            paid_on: dayKey(paidOn),
+            method,
+            reference: reference.trim() || null,
+            notes: notes.trim() || null,
+          },
+        );
+        if (saved) onPaid();
+      }}
+    >
+      {expense && (
+        <div className="expense-pay-summary">
+          <div className="expense-pay-bill">
+            <strong>{expense.vendor || "No vendor"}</strong>
+            <span>
+              {expense.category_name}
+              {expense.description ? ` · ${expense.description}` : ""}
+              {expense.reference ? ` · ${expense.reference}` : ""}
+            </span>
+          </div>
+          <div className="expense-pay-metrics">
+            <div>
+              <span>Bill</span>
+              <strong>{money(billed, expense.currency)}</strong>
+            </div>
+            <div>
+              <span>Already paid</span>
+              <strong>{money(alreadyPaid, expense.currency)}</strong>
+            </div>
+            <div>
+              <span>Outstanding</span>
+              <strong>{formattedOutstanding}</strong>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="form-grid">
+        <Field label={`Amount · ${expense?.currency ?? ""}`} required>
+          <div className="amount-field-wrapper">
+            <span className="amount-prefix">{expense?.currency}</span>
+            <input
+              className="amount-input expense-pay-amount"
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              required
+              aria-invalid={overpay || undefined}
+            />
+          </div>
+          {overpay ? (
+            <small className="expense-pay-hint is-error">
+              Cannot exceed {formattedOutstanding} outstanding.
+            </small>
+          ) : amountOk && leftover === 0 ? (
+            <small className="expense-pay-hint">Pays the bill in full.</small>
+          ) : amountOk ? (
+            <small className="expense-pay-hint">
+              Remaining after this payment{" "}
+              {expense ? money(leftover, expense.currency) : ""}.{" "}
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setAmount((outstanding / 100).toFixed(2))}
+              >
+                Pay remaining
+              </button>
+            </small>
+          ) : null}
+        </Field>
+        <TenantDateInput
+          label="Paid on"
+          value={paidOn}
+          onChange={(v) => v && setPaidOn(v)}
+          max={new Date().toISOString().slice(0, 10)}
+          dateFormat={dateFormat}
+          locale={locale}
+        />
+        <div className="expense-pay-span">
+          <Field label="Method" required>
+            <div
+              className="expense-pay-methods"
+              role="radiogroup"
+              aria-label="Payment method"
+            >
+              {PAY_METHODS.map(([value, caption]) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={method === value}
+                  className={
+                    "filter-range-option" +
+                    (method === value ? " selected" : "")
+                  }
+                  onClick={() => setMethod(value)}
+                >
+                  {caption}
+                </button>
+              ))}
+            </div>
+          </Field>
+        </div>
+        <Field label="Reference">
+          <input
+            value={reference}
+            onChange={(e) => setReference(e.target.value)}
+            maxLength={120}
+            placeholder="Bank ref, cheque, or receipt #"
+          />
+        </Field>
+        <Field label="Note">
+          <input
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            maxLength={2000}
+            placeholder="Optional"
+          />
+        </Field>
+      </div>
+    </FormDialog>
+  );
+}
+
+function ExpensePaymentsDialog({
+  expense,
+  open,
+  onClose,
+  onChanged,
+  dateFormat,
+  canCorrect,
+}: {
+  expense: Expense | null;
+  open: boolean;
+  onClose: () => void;
+  onChanged: () => void;
+  dateFormat: "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD";
+  canCorrect: boolean;
+}) {
+  const mut = useMutation();
+  const [rev, setRev] = useState(0);
+  const [voidId, setVoidId] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
+  const { data, error } = useResource<{ payments: ExpensePayment[] }>(
+    open && expense ? `finance/v1/expenses/${expense.id}/payments?_r=${rev}` : null,
+  );
+  const payments = data?.payments ?? [];
+
+  useEffect(() => {
+    if (!open) {
+      setVoidId(null);
+      setReason("");
+      mut.clear();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  function handleClose() {
+    if (voidId) {
+      setVoidId(null);
+      setReason("");
+      mut.clear();
+      return;
+    }
+    onClose();
+  }
+
+  return (
+    <FormDialog
+      open={open && !!expense}
+      title="Vendor payments"
+      busy={mut.busy}
+      error={mut.error}
+      onClose={handleClose}
+      submitLabel={voidId ? "Void payment" : "Close"}
+      cancelLabel={voidId ? "Back" : "Close"}
+      submitDisabled={!!voidId && !reason.trim()}
+      onSubmit={async () => {
+        if (!voidId) {
+          onClose();
+          return;
+        }
+        if (!expense || !reason.trim()) return;
+        const saved = await mut.run(
+          `finance/v1/expenses/${expense.id}/payments/${voidId}/void`,
+          { void_reason: reason.trim() },
+        );
+        if (saved) {
+          setVoidId(null);
+          setReason("");
+          setRev((n) => n + 1);
+          onChanged();
+        }
+      }}
+    >
+      {expense && (
+        <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+          {expense.vendor || "No vendor"} · bill{" "}
+          {money(expense.amount_minor, expense.currency)}
+        </p>
+      )}
+      {error && <Notice error>{error}</Notice>}
+      {open && expense && !data && !error && <Loading />}
+      {voidId ? (
+        <Field label="Reason" required>
+          <input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            required
+            autoFocus
+            placeholder="Why this payment is voided"
+          />
+        </Field>
+      ) : (
+        <div className="expense-pay-history">
+          {payments.length === 0 && (
+            <Empty title="No payments recorded">
+              <p>Use Pay on the bill to record vendor cash-out.</p>
+            </Empty>
+          )}
+          {payments.map((row) => (
+            <div
+              key={row.id}
+              className={
+                "expense-pay-history-row" + (row.voided_at ? " is-voided" : "")
+              }
+            >
+              <div>
+                <strong>{money(row.amount_minor, row.currency)}</strong>
+                <span>
+                  {dateOnly(dayKey(String(row.paid_on)), dateFormat)} ·{" "}
+                  {methodLabel(row.method)}
+                  {row.reference ? ` · ${row.reference}` : ""}
+                </span>
+                {row.voided_at && (
+                  <span>Voided{row.void_reason ? ` · ${row.void_reason}` : ""}</span>
+                )}
+              </div>
+              {canCorrect && !row.voided_at && (
+                <button
+                  type="button"
+                  className="button small secondary"
+                  onClick={() => {
+                    setVoidId(row.id);
+                    setReason("");
+                    mut.clear();
+                  }}
+                >
+                  Void
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </FormDialog>
   );
 }
 
@@ -1070,12 +1588,12 @@ function VoidExpenseDialog({
 
   async function submit() {
     if (!expense || !reason.trim()) return;
-    await mut.run(
+    const saved = await mut.run(
       `finance/v1/expenses/${expense.id}`,
       { void_reason: reason },
       "DELETE",
     );
-    if (!mut.error) {
+    if (saved) {
       mut.clear();
       onVoided();
     }
@@ -1123,12 +1641,36 @@ function ExpenseRow({
   dateFormat,
   onEdit,
   onVoid,
+  onPay,
+  onPayments,
 }: {
   expense: Expense;
   dateFormat: string;
   onEdit: () => void;
   onVoid: () => void;
+  onPay: () => void;
+  onPayments: () => void;
 }) {
+  const outstanding = expense.outstanding_minor ?? expense.amount_minor;
+  const paid = expense.paid_minor ?? 0;
+  const status = expense.payment_status ?? (paid > 0 ? "partial" : "unpaid");
+  const statusClass =
+    status === "paid"
+      ? "paid"
+      : status === "partial"
+        ? "pending"
+        : status === "voided"
+          ? "voided"
+          : "unpaid";
+  const statusLabel =
+    status === "paid"
+      ? "Paid"
+      : status === "partial"
+        ? "Partial"
+        : status === "voided"
+          ? "Voided"
+          : "Unpaid";
+
   return (
     <tr className={expense.voided_at ? "voided" : ""}>
       <td>{dateOnly(expense.expense_date, dateFormat as any)}</td>
@@ -1149,12 +1691,43 @@ function ExpenseRow({
         </span>
       </td>
       <td>{expense.reference ?? <span className="muted">—</span>}</td>
-      <td className="num">{money(expense.amount_minor, expense.currency)}</td>
+      <td className="num">
+        {money(expense.amount_minor, expense.currency)}
+        {status === "partial" && outstanding > 0 && (
+          <div className="expense-outstanding-hint">
+            {money(outstanding, expense.currency)} due
+          </div>
+        )}
+      </td>
       <td>
         {expense.voided_at ? (
           <span className="ledger-badge voided">Voided</span>
+        ) : paid > 0 ? (
+          <button
+            type="button"
+            className={`ledger-badge ${statusClass} expense-pay-status`}
+            onClick={onPayments}
+            title="View payments"
+          >
+            {statusLabel}
+          </button>
         ) : (
+          <span className={`ledger-badge ${statusClass}`}>{statusLabel}</span>
+        )}
+      </td>
+      <td>
+        {expense.voided_at ? null : (
           <div style={{ display: "flex", gap: 4 }}>
+            {outstanding > 0 && status !== "paid" && (
+              <button
+                className="button small secondary"
+                style={{ padding: "3px 7px" }}
+                onClick={onPay}
+                title="Pay"
+              >
+                Pay
+              </button>
+            )}
             <button
               className="button small secondary"
               style={{ padding: "3px 7px" }}
@@ -1236,10 +1809,14 @@ export function FinanceExpenses({ session }: { session: Session }) {
   const [addOpen, setAddOpen] = useState(false);
   const [editExpense, setEditExpense] = useState<Expense | null>(null);
   const [voidExpense, setVoidExpense] = useState<Expense | null>(null);
+  const [payExpense, setPayExpense] = useState<Expense | null>(null);
+  const [paymentsExpense, setPaymentsExpense] = useState<Expense | null>(null);
+  const [catOpen, setCatOpen] = useState(false);
+  const [catRefresh, setCatRefresh] = useState(0);
   const [search, setSearch] = useState("");
 
   const { data: catData } = useResource<{ categories: ExpenseCategory[] }>(
-    "finance/v1/expense-categories",
+    `finance/v1/expense-categories?_r=${catRefresh}`,
   );
   const { data: vendorData } = useResource<{ vendors: Vendor[] }>(
     `finance/v1/vendors?_r=${vendorRefresh}`,
@@ -1287,6 +1864,16 @@ export function FinanceExpenses({ session }: { session: Session }) {
           <span style={{ fontWeight: 600, fontSize: "0.82rem", flex: 1 }}>
             Categories
           </span>
+          {session.permissions.includes("config.write") && (
+            <button
+              type="button"
+              className="button small secondary"
+              onClick={() => setCatOpen(true)}
+              title="Manage categories"
+            >
+              <Settings size={13} />
+            </button>
+          )}
           <button
             className="button small primary"
             onClick={() => setAddOpen(true)}
@@ -1379,6 +1966,7 @@ export function FinanceExpenses({ session }: { session: Session }) {
                     <th>Description / Category</th>
                     <th>Reference</th>
                     <th className="num">Amount</th>
+                    <th>Status</th>
                     <th />
                   </tr>
                 </thead>
@@ -1390,6 +1978,8 @@ export function FinanceExpenses({ session }: { session: Session }) {
                       dateFormat={session.tenant.config.dateFormat}
                       onEdit={() => setEditExpense(e)}
                       onVoid={() => setVoidExpense(e)}
+                      onPay={() => setPayExpense(e)}
+                      onPayments={() => setPaymentsExpense(e)}
                     />
                   ))}
                 </tbody>
@@ -1448,6 +2038,37 @@ export function FinanceExpenses({ session }: { session: Session }) {
           setVoidExpense(null);
           setRefresh((r) => r + 1);
         }}
+      />
+      <PayExpenseDialog
+        expense={payExpense}
+        open={!!payExpense}
+        onClose={() => setPayExpense(null)}
+        onPaid={() => {
+          setPayExpense(null);
+          setRefresh((r) => r + 1);
+        }}
+        dateFormat={
+          session.tenant.config.dateFormat as
+            "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD"
+        }
+        locale={session.tenant.config.locale}
+      />
+      <ExpensePaymentsDialog
+        expense={paymentsExpense}
+        open={!!paymentsExpense}
+        onClose={() => setPaymentsExpense(null)}
+        onChanged={() => setRefresh((r) => r + 1)}
+        dateFormat={
+          session.tenant.config.dateFormat as
+            "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD"
+        }
+        canCorrect={session.permissions.includes("payment.correct")}
+      />
+      <CategoryManagerDialog
+        open={catOpen}
+        categories={categories}
+        onClose={() => setCatOpen(false)}
+        onChanged={() => setCatRefresh((n) => n + 1)}
       />
     </div>
   );

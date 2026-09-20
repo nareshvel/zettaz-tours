@@ -14,8 +14,8 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 
 1. **Crew app.** Phases 1–4 on production. **Phase 5.1 guest kiosk** and **Phase 3.5 Share PDF** engineering 19 Sep. GPS, card-present, push, white-label stay gated. Owner still: TestFlight/Unlisted notes, **4.8 airplane-mode**, kiosk PIN + Share PDF on iPad, new EAS.
 2. **Operations menu group** remains functionally complete pending testing. Do not open new Ops web feature work unless testing finds a bug.
-3. **Non-Ops:** Tenant settings Localization / Booking integrations / Guest stays toolbar / hold-minutes / support-grant timestamps committed locally. **Next:** owner visual. Push and VPS pull only when the owner asks. **Do not start** finance money-in-out later.
-4. **Subscription messaging reopened 19 Sep** — billing-cycle / failed-payment / grace / post-suspension copy in `apps/web/components/subscription.tsx`. Finance money-in-out later stays held.
+3. **Non-Ops:** Finance leftover (aging gateway, claims UI, finance role list, categories, Settings Partners, expense summary, expense payments) implemented 19 Sep. Accounting export remains specified only — [accounting-export.md](../FEATURES/finance/accounting-export.md). **Do not start** money-in-out Phases 2–4 or QBO OAuth until named here.
+4. **Subscription messaging reopened 19 Sep** — billing-cycle / failed-payment / grace / post-suspension copy in `apps/web/components/subscription.tsx`.
 
 ---
 
@@ -113,7 +113,7 @@ Remaining in this group: owner visual on General & branding, Taxes & commercial,
 
 ## Held — do not start unless owner reopens
 
-- **Finance money in/out later** — expense payments, guest/partner cash on Overview, bank registers: [finance-money-in-out-later.md](../STRATEGY/finance-money-in-out-later.md). Do not start until the owner names a phase.
+- **Finance money in/out later** — Phase 1 expense payments shipped 19 Sep. Guest strip, partner remittance tile, bank registers still held: [finance-money-in-out-later.md](../STRATEGY/finance-money-in-out-later.md).
 - **Crew GPS later** — Connecteam-informed stamps / fences / trails: [crew-gps-later.md](../STRATEGY/crew-gps-later.md). Do not start until the owner reopens that file.
 - Dependency-blocked Track A: Stripe eligibility, XCD→USD rate, Rock printers, Rock waiver legal text, WP payload / import ID reconciliation
 - Track B: public checkout, reseller portal, GPS/ETAs, OTA cert, rich analytics — [launch-contract.md](../STRATEGY/launch-contract.md). GPS possible expansion (held): [crew-gps-later.md](../STRATEGY/crew-gps-later.md).
@@ -132,7 +132,7 @@ Work **outside** the Operations aside group. Suggested order (adjust with owner)
 - **Customers — polish implemented 17 Sep; owner visual still outstanding.** Evidence: [customers-polish-evidence.md](../TESTING/customers-polish-evidence.md). Next Insights item after owner pass is none; continue Administration remaining tabs.
 
 ### 3. Administration
-- Finance (overview, payments, partner statements — slim Track A) — polish 11 Sep; period chips + expense search 19 Sep; owner visual outstanding. Evidence: [finance-polish-evidence.md](../TESTING/finance-polish-evidence.md).
+- Finance (overview, payments, partner statements — slim Track A) — leftover close-out 19 Sep (claims UI, expense payments, expense summary, Settings Partners). Owner visual outstanding. Evidence: [finance-polish-evidence.md](../TESTING/finance-polish-evidence.md). Accounting export: [accounting-export.md](../FEATURES/finance/accounting-export.md) (not built).
 - Fleet (assets / readiness) — polish 11 Sep; search + Add asset row 19 Sep; owner visual outstanding
 - Staff & access — polish 11 Sep; search + Add staff row 19 Sep; owner visual outstanding
 - **Document library — polish implemented 17 Sep.** Evidence: [document-library-polish-evidence.md](../TESTING/document-library-polish-evidence.md)

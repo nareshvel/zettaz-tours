@@ -4138,6 +4138,19 @@ test("partner organizations are tenant-scoped and require partner management per
     t.tenantId,
   );
   assert.equal((await get("/finance/v1/partners", dispatcher)).status, 403);
+  const financeMember = await post("/admin/v1/members", t.token, {
+    name: "Mock Finance Lister",
+    email: `finance-list-${randomUUID()}@example.invalid`,
+    role: "finance",
+  });
+  const finance = await issueSession(
+    admin,
+    financeMember.body.actorId,
+    t.tenantId,
+  );
+  const financeList = await get("/finance/v1/partners", finance);
+  assert.equal(financeList.status, 200, JSON.stringify(financeList.body));
+  assert.equal(financeList.body.length, 1);
 });
 
 test("partner collection claims remain separate from guest payments until finance accepts them", async () => {
@@ -5200,4 +5213,83 @@ test("repeated failed sign-ins temporarily block the identity without revealing 
     .send({ email, password: "ValidPassword!2026" });
   assert.equal(blocked.status, 401);
   assert.equal(blocked.body.detail.message, "Email or password is incorrect.");
+});
+
+test("expense payments are append-only and cannot exceed the bill", async () => {
+  const t = await setupTenant(`exp-pay-${randomUUID().slice(0, 8)}`);
+  const createdCat = await post("/finance/v1/expense-categories", t.token, {
+    name: "Fuel",
+    code: "FUEL",
+  });
+  assert.equal(createdCat.status, 201, JSON.stringify(createdCat.body));
+  const categoryId = createdCat.body.id;
+  const bill = await post("/finance/v1/expenses", t.token, {
+    expense_date: "2026-09-01",
+    category_id: categoryId,
+    amount_minor: 10000,
+    vendor: "Fuel dock",
+  });
+  assert.equal(bill.status, 201, JSON.stringify(bill.body));
+  const pay = await post(`/finance/v1/expenses/${bill.body.id}/payments`, t.token, {
+    amount_minor: 4000,
+    paid_on: "2026-09-02",
+    method: "cash",
+    reference: "CASH-1",
+  });
+  assert.equal(pay.status, 201, JSON.stringify(pay.body));
+  const isoPay = await post(`/finance/v1/expenses/${bill.body.id}/payments`, t.token, {
+    amount_minor: 1000,
+    paid_on: "2026-09-02T15:04:00.000Z",
+    method: "bank_transfer",
+  });
+  assert.equal(isoPay.status, 201, JSON.stringify(isoPay.body));
+  const listed = await get("/finance/v1/expenses?dateFrom=2026-09-01&dateTo=2026-09-30", t.token);
+  assert.equal(listed.status, 200, JSON.stringify(listed.body));
+  const row = listed.body.expenses.find((e: { id: string }) => e.id === bill.body.id);
+  assert.equal(row.paid_minor, 5000);
+  assert.equal(row.outstanding_minor, 5000);
+  assert.equal(row.payment_status, "partial");
+  const over = await post(`/finance/v1/expenses/${bill.body.id}/payments`, t.token, {
+    amount_minor: 6000,
+    paid_on: "2026-09-03",
+    method: "cash",
+  });
+  assert.equal(over.status, 409);
+  const history = await get(`/finance/v1/expenses/${bill.body.id}/payments`, t.token);
+  assert.equal(history.status, 200, JSON.stringify(history.body));
+  const livePay = history.body.payments.find(
+    (p: { id: string; voided_at: string | null }) => p.id === pay.body.id,
+  );
+  assert.ok(livePay);
+  const voidPay = await request(app.getHttpServer())
+    .post(`/finance/v1/expenses/${bill.body.id}/payments/${pay.body.id}/void`)
+    .auth(t.token, { type: "bearer" })
+    .set("Idempotency-Key", key())
+    .send({ void_reason: "wrong amount" });
+  assert.equal(voidPay.status, 201, JSON.stringify(voidPay.body));
+  const afterPayVoid = await get("/finance/v1/expenses?dateFrom=2026-09-01&dateTo=2026-09-30", t.token);
+  const restored = afterPayVoid.body.expenses.find((e: { id: string }) => e.id === bill.body.id);
+  assert.equal(restored.paid_minor, 1000);
+  assert.equal(restored.outstanding_minor, 9000);
+  const outsider = await setupTenant(`exp-pay-other-${randomUUID().slice(0, 8)}`);
+  assert.equal(
+    (await get(`/finance/v1/expenses/${bill.body.id}/payments`, outsider.token)).status,
+    404,
+  );
+  const voidedBill = await request(app.getHttpServer())
+    .delete(`/finance/v1/expenses/${bill.body.id}`)
+    .auth(t.token, { type: "bearer" })
+    .set("Idempotency-Key", key())
+    .send({ void_reason: "entered twice" });
+  assert.equal(voidedBill.status, 200, JSON.stringify(voidedBill.body));
+  const afterVoid = await post(
+    `/finance/v1/expenses/${bill.body.id}/payments`,
+    t.token,
+    {
+      amount_minor: 1000,
+      paid_on: "2026-09-04",
+      method: "cash",
+    },
+  );
+  assert.equal(afterVoid.status, 409);
 });

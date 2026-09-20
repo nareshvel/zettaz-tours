@@ -15,7 +15,9 @@ import {
   money,
   useResource,
 } from "@/lib/client";
-import { Empty, Heading, Loading, Notice, TenantDateInput } from "./common";
+import { downloadCsv } from "@/lib/reports-csv";
+import { Empty, Loading, Notice, TenantDateInput } from "./common";
+import { ReportShell } from "./reports-shell";
 
 type Report = {
   range: { from: string; to: string };
@@ -112,7 +114,7 @@ function rangeBounds(
   return [customFrom, customTo];
 }
 
-export function Reports({ session }: { session: Session }) {
+export function PeriodOverviewReport({ session }: { session: Session }) {
   const today = tenantDay(session.tenant.timezone);
   const weekStart = mondayOf(today);
   const weekEnd = sundayOf(today);
@@ -131,11 +133,12 @@ export function Reports({ session }: { session: Session }) {
 
   function selectPreset(next: ReportRange) {
     setPreset(next);
-    setRangeOpen(false);
     if (next === "custom") {
       setCustomFrom(from);
       setCustomTo(to);
+      return;
     }
+    setRangeOpen(false);
   }
 
   useEffect(() => {
@@ -161,6 +164,7 @@ export function Reports({ session }: { session: Session }) {
   }, [rangeOpen]);
 
   const rangeHint = formatMediumDateRange(from, to, locale);
+  const data = report.data;
 
   const presets: { value: ReportRange; caption: string }[] = [
     { value: "today", caption: "Today" },
@@ -174,98 +178,113 @@ export function Reports({ session }: { session: Session }) {
   const presetLabel =
     presets.find((item) => item.value === preset)?.caption ?? "This week";
 
-  return (
-    <>
-      <Heading
-        eyebrow="REPORTING"
-        title="Reports"
-        description={`Departure-date facts in ${session.tenant.timezone}. Commercial totals use the tenant reporting currency only — no FX conversion.`}
-      />
-      <div className="report-range-bar">
-        <div
-          className="report-preset-chips"
-          role="radiogroup"
-          aria-label="Report date range"
-        >
-          {presets.map((item) => (
-            <button
-              key={item.value}
-              type="button"
-              role="radio"
-              aria-checked={preset === item.value}
-              className={
-                "filter-range-option" +
-                (preset === item.value ? " selected" : "")
-              }
-              onClick={() => selectPreset(item.value)}
-            >
-              {item.caption}
-            </button>
-          ))}
-        </div>
-        <div className="filter-menu report-filter-menu" ref={rangeRef}>
-          <button
-            type="button"
-            className={
-              "button secondary catalog-add-btn" +
-              (rangeOpen ? " active-filter" : "")
-            }
-            aria-label="Report date range"
-            aria-expanded={rangeOpen}
-            aria-haspopup="listbox"
-            onClick={() => setRangeOpen((open) => !open)}
-          >
-            <span className="button-label">{presetLabel}</span>
-            <ChevronDown size={16} aria-hidden="true" />
-          </button>
-          {rangeOpen && (
-            <div
-              className="filter-popover"
-              role="listbox"
-              aria-label="Report date range"
-            >
-              {presets.map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  role="option"
-                  aria-selected={preset === item.value}
-                  className={
-                    "filter-range-option" +
-                    (preset === item.value ? " selected" : "")
-                  }
-                  onClick={() => selectPreset(item.value)}
-                >
-                  {item.caption}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-      {preset === "custom" && (
-        <div className="report-custom-dates">
-          <TenantDateInput
-            label="From"
-            value={customFrom}
-            max={customTo || undefined}
-            onChange={setCustomFrom}
-            locale={locale}
-            dateFormat={dateFormat}
-            compact
-          />
-          <TenantDateInput
-            label="To"
-            value={customTo}
-            min={customFrom || undefined}
-            onChange={setCustomTo}
-            locale={locale}
-            dateFormat={dateFormat}
-            compact
-          />
-        </div>
-      )}
+  function exportCsv() {
+    if (!data) return;
+    const c = data.currency;
+    downloadCsv(`period-overview-${from}-${to}.csv`, [
+      ["Basis", "Departure dates (tenant timezone)"],
+      ["From", from],
+      ["To", to],
+      ["Timezone", session.tenant.timezone],
+      ["Currency", c],
+      [],
+      ["Metric", "Value"],
+      ["Confirmed bookings", data.commercial.confirmed],
+      ["Bookings", data.commercial.bookings],
+      ["Cancelled", data.commercial.cancelled],
+      ["Booked value minor", data.commercial.bookedMinor],
+      ["Settled guest receipts minor", data.commercial.receivedMinor],
+      ["Guest balance minor", data.commercial.guestBalanceMinor],
+      ["Partner obligations minor", data.commercial.partnerDueMinor],
+      ["Departures", data.operations.departures],
+      ["Weather holds", data.operations.weatherHolds],
+      ["Closed", data.operations.closed],
+      ["Unassigned", data.operations.unassigned],
+      ["Unresolved pickups", data.operations.unresolvedPickups],
+      [],
+      ["Date", "Departures", "Confirmed bookings", "Guests"],
+      ...data.days.map((row) => [
+        row.date,
+        row.departures,
+        row.confirmed_bookings,
+        row.guests,
+      ]),
+    ]);
+  }
 
+  const filters = (
+    <>
+      <div className="filter-menu report-filter-menu" ref={rangeRef}>
+        <button
+          type="button"
+          className={
+            "button secondary catalog-add-btn" +
+            (rangeOpen ? " active-filter" : "")
+          }
+          aria-label="Report date range"
+          aria-expanded={rangeOpen}
+          aria-haspopup="listbox"
+          onClick={() => setRangeOpen((open) => !open)}
+        >
+          <span className="button-label">{presetLabel}</span>
+          <ChevronDown size={16} aria-hidden="true" />
+        </button>
+        {rangeOpen && (
+          <div
+            className="filter-popover"
+            role="listbox"
+            aria-label="Report date range"
+          >
+            {presets.map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                role="option"
+                aria-selected={preset === item.value}
+                className={
+                  "filter-range-option" +
+                  (preset === item.value ? " selected" : "")
+                }
+                onClick={() => selectPreset(item.value)}
+              >
+                {item.caption}
+              </button>
+            ))}
+            {preset === "custom" && (
+              <div className="report-custom-dates">
+                <TenantDateInput
+                  label="From"
+                  value={customFrom}
+                  max={customTo || undefined}
+                  onChange={setCustomFrom}
+                  locale={locale}
+                  dateFormat={dateFormat}
+                  compact
+                />
+                <TenantDateInput
+                  label="To"
+                  value={customTo}
+                  min={customFrom || undefined}
+                  onChange={setCustomTo}
+                  locale={locale}
+                  dateFormat={dateFormat}
+                  compact
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </>
+  );
+
+  return (
+    <ReportShell
+      title="Period overview"
+      filters={filters}
+      onExport={exportCsv}
+      exportDisabled={!data}
+    >
       {report.error ? (
         <Notice error>{report.error}</Notice>
       ) : !report.data ? (
@@ -274,8 +293,7 @@ export function Reports({ session }: { session: Session }) {
         <>
           <p className="muted report-range-note">
             Showing <strong>{rangeHint}</strong>
-            {report.data ? ` · ${report.data.currency}` : ""}. Totals are for
-            departures that start on those local dates.
+            {report.data ? ` · ${report.data.currency}` : ""}
           </p>
           <section className="metric-grid report-metrics">
             <div className="metric-card">
@@ -434,10 +452,10 @@ export function Reports({ session }: { session: Session }) {
             Amounts use <strong>{report.data.currency}</strong>, the tenant
             reporting currency. Guest balances are after accepted partner
             credit. Cross-currency conversion stays disabled until an approved
-            FX policy exists. Exports remain Track B.
+            FX policy exists.
           </Notice>
         </>
       )}
-    </>
+    </ReportShell>
   );
 }

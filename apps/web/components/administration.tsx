@@ -101,6 +101,7 @@ import {
 } from "./catalog-assignments";
 import { defaultOccupancyClass, occupancyCaption, occupancyFillCopy } from "@/lib/types";
 import { PickupLocationsSettings } from "./pickup-locations";
+import { PartnerSettings } from "./partner-settings";
 import { PrintersSettings } from "./printers-settings";
 import { WaiverSettings } from "./waiver-settings";
 import { StaysSettings } from "./stays-settings";
@@ -132,6 +133,7 @@ const SETTINGS_TABS = new Set([
   "stays",
   "pickups",
   "payments",
+  "partners",
   "waivers",
   "integrations",
   "security",
@@ -2911,6 +2913,11 @@ export function Settings({
       !session.permissions.includes("integration.manage")
     )
       return;
+    if (
+      next === "partners" &&
+      !session.permissions.includes("partner.manage")
+    )
+      return;
     settingsTab(router, searchParams, next);
   }
   async function submit(e: React.FormEvent) {
@@ -3073,6 +3080,17 @@ export function Settings({
               <span className="settings-nav-label">Payment integrations</span>
               <span className="settings-nav-label-short">Payments</span>
             </button>
+            {session.permissions.includes("partner.manage") && (
+              <button
+                className={tab === "partners" ? "active" : ""}
+                type="button"
+                onClick={() => selectTab("partners")}
+              >
+                <Handshake size={16} />
+                <span className="settings-nav-label">Partners</span>
+                <span className="settings-nav-label-short">Partners</span>
+              </button>
+            )}
             {session.permissions.includes("integration.manage") && (
               <button
                 className={tab === "integrations" ? "active" : ""}
@@ -3650,7 +3668,7 @@ export function Settings({
                 <div className="form-grid three">
                   <Field
                     label="Reporting currency"
-                    hint="Finance Overview and Reports."
+                    hint="Finance Overview. Aging and expense summary live under Insights → Reports."
                   >
                     <CurrencySelect
                       value={config.reportingCurrency}
@@ -3793,6 +3811,10 @@ export function Settings({
                 </section>
               </>
             )}
+            {tab === "partners" &&
+              session.permissions.includes("partner.manage") && (
+                <PartnerSettings session={session} />
+              )}
             {tab === "payments" && (
               <section>
                 <div className="settings-card-head">
@@ -3824,7 +3846,12 @@ export function Settings({
                     <dd>
                       Those bookings confirm without a guest payment. Claims
                       live under{" "}
-                      <Link href="/finance/partners">Finance → Partners</Link>.
+                      <Link href="/finance/partners">Finance → Partners</Link>
+                      . Commission terms live under{" "}
+                      <Link href="/settings?tab=partners">
+                        Settings → Partners
+                      </Link>
+                      .
                     </dd>
                   </div>
                   <div>

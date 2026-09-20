@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useMemo } from "react";
+import Link from "next/link";
 import {
   CheckCircle,
   ChevronRight,
@@ -23,6 +24,7 @@ import {
   SearchBox,
   Toggle,
 } from "./common";
+import { PartnerClaimsPanel } from "./finance-partner-claims";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1000,12 +1002,10 @@ function LedgerEntryRow({
 function PartnerDetailPanel({
   partner,
   session,
-  onEdit,
   onRefresh,
 }: {
   partner: Partner;
   session: Session;
-  onEdit: () => void;
   onRefresh: () => void;
 }) {
   const [page, setPage] = useState(1);
@@ -1325,6 +1325,11 @@ function PartnerDetailPanel({
           >
             <FileText size={13} /> Generate
           </button>
+          {session.permissions.includes("partner.manage") && (
+            <Link className="button small secondary" href="/settings?tab=partners">
+              Terms
+            </Link>
+          )}
         </div>
       </div>
 
@@ -1515,6 +1520,13 @@ function PartnerDetailPanel({
             </div>
           )}
 
+        <PartnerClaimsPanel
+          partnerId={partner.id}
+          partnerName={partner.name}
+          session={session}
+          onChanged={refresh}
+        />
+
         {/* Transaction register */}
         <h3 className="finance-section-heading" style={{ marginTop: 18 }}>
           Transaction Register
@@ -1679,6 +1691,7 @@ export function FinancePartners({
   session: Session;
   initialPartnerId?: string;
 }) {
+  const canManage = session.permissions.includes("partner.manage");
   const [selectedId, setSelectedId] = useState<string | null>(
     initialPartnerId ?? null,
   );
@@ -1734,6 +1747,7 @@ export function FinancePartners({
             onChange={setSearch}
             placeholder="Search partners"
           />
+          {canManage && (
           <button
             type="button"
             className="button small primary catalog-add-btn"
@@ -1743,6 +1757,7 @@ export function FinancePartners({
             <Plus size={14} />
             <span className="button-label">Add</span>
           </button>
+          )}
         </div>
         <div className="finance-list-filter">
           <select
@@ -1790,6 +1805,7 @@ export function FinancePartners({
                       {label(p.partner_type)}
                     </span>
                   )}
+                  {canManage && (
                   <button
                     type="button"
                     className="button small secondary icon-only partner-list-edit-btn"
@@ -1802,6 +1818,7 @@ export function FinancePartners({
                   >
                     <Pencil size={12} />
                   </button>
+                  )}
                 </div>
               </div>
               <span className="finance-list-item-meta">
@@ -1826,9 +1843,11 @@ export function FinancePartners({
               >
                 Select a partner to view their account
               </div>
+              {canManage && (
               <button className="button small primary" onClick={openCreate}>
                 <Plus size={14} /> Add Partner
               </button>
+              )}
             </div>
             <div className="finance-detail-empty">
               <Landmark size={48} />
@@ -1843,7 +1862,6 @@ export function FinancePartners({
             key={selectedPartner.id}
             partner={selectedPartner}
             session={session}
-            onEdit={() => openEdit(selectedPartner)}
             onRefresh={() => setListRev((r) => r + 1)}
           />
         )}

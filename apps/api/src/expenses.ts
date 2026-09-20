@@ -3,17 +3,20 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   Injectable,
   NotFoundException,
+  ConflictException,
   Param,
   Post,
   Patch,
   Query,
 } from "@nestjs/common";
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import type { Actor } from "../../../packages/shared/src/contracts";
 import { Database, record } from "./database";
-import { Access, CurrentActor, parse } from "./http";
+import { Access, CurrentActor, parse, keySchema } from "./http";
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -67,6 +70,31 @@ const voidSchema = z
     void_reason: z.string().trim().min(1).max(500),
   })
   .strict();
+
+const expensePaymentSchema = z
+  .object({
+    amount_minor: z.number().int().min(1).max(1_000_000_000_000),
+    paid_on: z
+      .string()
+      .min(10)
+      .transform((value) => value.slice(0, 10))
+      .refine((value) => /^\d{4}-\d{2}-\d{2}$/.test(value), "Invalid paid_on"),
+    method: z.enum(["cash", "bank_transfer", "card", "other"]),
+    reference: z.string().trim().max(120).optional().nullable(),
+    notes: z.string().trim().max(2000).optional().nullable(),
+  })
+  .strict();
+
+function paymentStatus(
+  voided: boolean,
+  paid: number,
+  amount: number,
+): "voided" | "paid" | "partial" | "unpaid" {
+  if (voided) return "voided";
+  if (paid <= 0) return "unpaid";
+  if (paid >= amount) return "paid";
+  return "partial";
+}
 
 // ─── Service ─────────────────────────────────────────────────────────────────
 
@@ -233,7 +261,11 @@ export class ExpenseService {
                 e.fx_rate, e.amount_reporting_minor::bigint,
                 e.vendor, e.description, e.reference,
                 e.voided_at, e.created_at,
-                COALESCE(su.name, su.email, 'Unknown') AS recorded_by_name
+                COALESCE(su.name, su.email, 'Unknown') AS recorded_by_name,
+                COALESCE((
+                  SELECT SUM(ep.amount_minor) FROM expense_payments ep
+                  WHERE ep.tenant_id=e.tenant_id AND ep.expense_id=e.id AND ep.voided_at IS NULL
+                ),0)::bigint AS paid_minor
          FROM expenses e
          JOIN expense_categories ec ON ec.id=e.category_id
          LEFT JOIN staff_users su ON su.id=e.recorded_by
@@ -275,11 +307,56 @@ export class ExpenseService {
           ])
         ).rows[0]?.base_currency ?? "XCD";
 
+      const {
+        rows: [period],
+      } = await tx.query(
+        `SELECT
+           COALESCE(SUM(e.amount_reporting_minor) FILTER (WHERE e.voided_at IS NULL),0)::bigint AS recorded_reporting_minor,
+           COALESCE(SUM(
+             GREATEST(e.amount_minor - COALESCE((
+               SELECT SUM(ep.amount_minor) FROM expense_payments ep
+               WHERE ep.tenant_id=e.tenant_id AND ep.expense_id=e.id AND ep.voided_at IS NULL
+             ),0), 0)
+             * CASE WHEN e.amount_minor > 0 AND e.amount_reporting_minor IS NOT NULL
+               THEN e.amount_reporting_minor::numeric / e.amount_minor ELSE 0 END
+           ) FILTER (WHERE e.voided_at IS NULL),0)::bigint AS outstanding_reporting_minor
+         FROM expenses e
+         WHERE e.tenant_id=$1
+           AND ($2::date IS NULL OR e.expense_date >= $2::date)
+           AND ($3::date IS NULL OR e.expense_date <= $3::date)`,
+        [actor.tenantId, opts.dateFrom ?? null, opts.dateTo ?? null],
+      );
+      const {
+        rows: [paidPeriod],
+      } = await tx.query(
+        `SELECT COALESCE(SUM(
+           ep.amount_minor * CASE WHEN e.amount_minor > 0 AND e.amount_reporting_minor IS NOT NULL
+             THEN e.amount_reporting_minor::numeric / e.amount_minor ELSE 0 END
+         ),0)::bigint AS paid_reporting_minor
+         FROM expense_payments ep
+         JOIN expenses e ON e.tenant_id=ep.tenant_id AND e.id=ep.expense_id
+         WHERE ep.tenant_id=$1 AND ep.voided_at IS NULL AND e.voided_at IS NULL
+           AND ($2::date IS NULL OR ep.paid_on >= $2::date)
+           AND ($3::date IS NULL OR ep.paid_on <= $3::date)`,
+        [actor.tenantId, opts.dateFrom ?? null, opts.dateTo ?? null],
+      );
+
       return {
-        expenses: expenses.map((e: any) => ({
-          ...e,
-          amount_minor: Number(e.amount_minor),
-        })),
+        expenses: expenses.map((e: any) => {
+          const amount = Number(e.amount_minor);
+          const paid = Number(e.paid_minor);
+          return {
+            ...e,
+            amount_minor: amount,
+            paid_minor: paid,
+            outstanding_minor: Math.max(0, amount - paid),
+            payment_status: paymentStatus(!!e.voided_at, paid, amount),
+            expense_date:
+              e.expense_date instanceof Date
+                ? e.expense_date.toISOString().slice(0, 10)
+                : String(e.expense_date).slice(0, 10),
+          };
+        }),
         category_totals: totals.map((t: any) => ({
           category_name: t.category_name,
           total_minor: Number(t.total_minor),
@@ -289,6 +366,13 @@ export class ExpenseService {
               : null,
           currency: t.currency ?? currency,
         })),
+        period: {
+          recorded_reporting_minor: Number(period?.recorded_reporting_minor ?? 0),
+          outstanding_reporting_minor: Number(
+            period?.outstanding_reporting_minor ?? 0,
+          ),
+          paid_reporting_minor: Number(paidPeriod?.paid_reporting_minor ?? 0),
+        },
         currency,
         page,
         has_more: expenses.length === limit,
@@ -531,6 +615,126 @@ export class ExpenseService {
       return expense;
     });
   }
+
+  listPayments(actor: Actor, expenseId: string) {
+    return this.db.transaction(actor, async (tx) => {
+      const {
+        rows: [bill],
+      } = await tx.query(
+        "SELECT id FROM expenses WHERE tenant_id=$1 AND id=$2",
+        [actor.tenantId, expenseId],
+      );
+      if (!bill) throw new NotFoundException("Expense not found");
+      const { rows } = await tx.query(
+        `SELECT ep.id, ep.amount_minor::bigint, ep.currency, ep.paid_on, ep.paid_at,
+                ep.method, ep.reference, ep.notes, ep.voided_at, ep.void_reason, ep.created_at
+         FROM expense_payments ep
+         WHERE ep.tenant_id=$1 AND ep.expense_id=$2
+         ORDER BY ep.paid_on DESC, ep.created_at DESC`,
+        [actor.tenantId, expenseId],
+      );
+      return {
+        payments: rows.map((row: { amount_minor: string | number }) => ({
+          ...row,
+          amount_minor: Number(row.amount_minor),
+        })),
+      };
+    });
+  }
+
+  createPayment(actor: Actor, expenseId: string, key: string, raw: unknown) {
+    const input = parse(expensePaymentSchema, raw);
+    return this.db.command(
+      actor,
+      `expense.payment:${expenseId}`,
+      key,
+      input,
+      async (tx) => {
+        const {
+          rows: [bill],
+        } = await tx.query(
+          `SELECT id, amount_minor::bigint, currency, voided_at
+           FROM expenses WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
+          [actor.tenantId, expenseId],
+        );
+        if (!bill) throw new NotFoundException("Expense not found");
+        if (bill.voided_at)
+          throw new ConflictException("Voided expenses cannot accept payment");
+        const {
+          rows: [paid],
+        } = await tx.query(
+          `SELECT COALESCE(SUM(amount_minor),0)::bigint AS paid_minor
+           FROM expense_payments
+           WHERE tenant_id=$1 AND expense_id=$2 AND voided_at IS NULL`,
+          [actor.tenantId, expenseId],
+        );
+        const billAmount = Number(bill.amount_minor);
+        const already = Number(paid.paid_minor);
+        if (already + input.amount_minor > billAmount)
+          throw new ConflictException("Payment exceeds outstanding amount");
+        const id = randomUUID();
+        const {
+          rows: [row],
+        } = await tx.query(
+          `INSERT INTO expense_payments(
+             tenant_id,id,expense_id,amount_minor,currency,paid_on,method,reference,notes,recorded_by)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           RETURNING id, amount_minor::bigint, currency, paid_on, paid_at, method, reference, notes, created_at`,
+          [
+            actor.tenantId,
+            id,
+            expenseId,
+            input.amount_minor,
+            bill.currency,
+            input.paid_on,
+            input.method,
+            input.reference ?? null,
+            input.notes ?? null,
+            actor.actorId,
+          ],
+        );
+        await record(tx, actor, "expense.payment.created", id, null, row);
+        return { ...row, amount_minor: Number(row.amount_minor) };
+      },
+    );
+  }
+
+  voidPayment(
+    actor: Actor,
+    expenseId: string,
+    paymentId: string,
+    key: string,
+    raw: unknown,
+  ) {
+    const input = parse(voidSchema, raw);
+    return this.db.command(
+      actor,
+      `expense.payment.void:${paymentId}`,
+      key,
+      input,
+      async (tx) => {
+        const {
+          rows: [before],
+        } = await tx.query(
+          `SELECT * FROM expense_payments
+           WHERE tenant_id=$1 AND expense_id=$2 AND id=$3 AND voided_at IS NULL FOR UPDATE`,
+          [actor.tenantId, expenseId, paymentId],
+        );
+        if (!before)
+          throw new NotFoundException("Payment not found or already voided");
+        const {
+          rows: [row],
+        } = await tx.query(
+          `UPDATE expense_payments SET voided_at=now(), void_reason=$4
+           WHERE tenant_id=$1 AND expense_id=$2 AND id=$3
+           RETURNING id, voided_at, void_reason`,
+          [actor.tenantId, expenseId, paymentId, input.void_reason],
+        );
+        await record(tx, actor, "expense.payment.voided", paymentId, before, row);
+        return row;
+      },
+    );
+  }
 }
 
 // ─── Controller ───────────────────────────────────────────────────────────────
@@ -662,5 +866,45 @@ export class ExpenseController {
     @Body() body: unknown,
   ) {
     return this.service.voidExpense(actor, parse(z.string().uuid(), id), body);
+  }
+
+  @Get("expenses/:id/payments")
+  @Access("partner.statement.read")
+  listPayments(@CurrentActor() actor: Actor, @Param("id") id: string) {
+    return this.service.listPayments(actor, parse(z.string().uuid(), id));
+  }
+
+  @Post("expenses/:id/payments")
+  @Access("payment.write")
+  createPayment(
+    @CurrentActor() actor: Actor,
+    @Param("id") id: string,
+    @Headers("idempotency-key") key: string,
+    @Body() body: unknown,
+  ) {
+    return this.service.createPayment(
+      actor,
+      parse(z.string().uuid(), id),
+      parse(keySchema, key),
+      body,
+    );
+  }
+
+  @Post("expenses/:id/payments/:pid/void")
+  @Access("payment.correct")
+  voidPayment(
+    @CurrentActor() actor: Actor,
+    @Param("id") id: string,
+    @Param("pid") pid: string,
+    @Headers("idempotency-key") key: string,
+    @Body() body: unknown,
+  ) {
+    return this.service.voidPayment(
+      actor,
+      parse(z.string().uuid(), id),
+      parse(z.string().uuid(), pid),
+      parse(keySchema, key),
+      body,
+    );
   }
 }

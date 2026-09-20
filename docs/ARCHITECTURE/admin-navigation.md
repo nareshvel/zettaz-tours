@@ -32,13 +32,13 @@ The tenant web aside uses four task-oriented groups: **Workspace** for the overv
 | Customers / search, detail | Reservations; scoped roles | Contact and history (Insights); protected sensitive data. Create/edit remains later. | Track A |
 | Operations pickup/plan/list/rebook (under Day Board) | Dispatcher | Plan pickups (sequence only), Print pickup list, recovery after closure; weather hold/close/reopen via in-app reason dialog. Location library: **Tenant settings → Pickup locations** (Esri map preview, address defaults from tenant city/country) | Track A |
 | Partners / organizations, contacts, contracts, booking history | Owner/admin; scoped reservations/finance | External hotels/resellers, attribution, collector terms; finance-only money views | Track A staff-managed |
-| Finance / overview, booking payments, refunds, partner statements, remittances | Finance/owner | Guest dues, partner dues, evidence review, receipt matching, unallocated amounts, corrections | Track A slim |
+| Finance / overview, partner ledger, expenses | Finance/owner | Guest dues, partner dues, expense bills and vendor payments. Aging and expense summary under Insights → Reports | Track A slim |
 | Fleet / assets | Admin, dispatcher, resource manager | Asset readiness and compliance docs; people under Staff; assignments live under Catalog | Track A minimum |
 | Staff / people, roles, personal docs | Owner/admin | Add staff, grant access, roles; crew profile auto-created | Track A |
 | Document library / compliance files & storage | Owner/admin; `documents.expiry.manage` | Tenant-scoped file library, usage meter, hard quota; staff and fleet evidence uploads | Track A |
 | Documents / waiver versions and evidence | Authorized owner/staff | Publish approved version, scoped signature review, guardian context; immutable signed version (separate from Document library) | Track A |
 | Integrations / connections, mappings, inbox, reconciliation | Authorized admin/staff | WP, imports, retries/quarantine and mapping fixes; payment secrets restricted | Track A |
-| Reports / operations, collections, partner dues | Scoped owner/finance/auditor | Explicit date basis, population, currency and permitted export | Track A basic |
+| Reports / catalog, period overview, partner aging, expense summary | Scoped owner/finance/auditor | Explicit date basis, population, currency; CSV export and browser print | Track A basic |
 | Settings / business, currencies/policies, members/roles, notifications, payment providers, audit | Owner/admin by permission | Setup and change audit; finance/provider actions not implied by general settings access | Track A |
 | Settings / Zettaz subscription | Tenant owner only (under My profile) | Software plan, invoices, renewal, payment method, cancellation policy | Track A read + Stripe portal when ready |
 

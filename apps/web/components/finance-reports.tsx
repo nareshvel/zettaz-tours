@@ -1,12 +1,249 @@
 "use client";
 
-import { BarChart2, FileText, TrendingUp, Users } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import type { Session } from "@/lib/types";
-import { money, useResource } from "@/lib/client";
-import { Empty, Notice, TenantDateInput } from "./common";
+import { money, formatMediumDate, useResource } from "@/lib/client";
+import { downloadCsv } from "@/lib/reports-csv";
+import { Empty, Loading, Notice, TenantDateInput } from "./common";
+import { PERIOD_LABELS, periodDates, type PeriodKey } from "./finance";
+import { ReportFilterBar, ReportShell } from "./reports-shell";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+type ExpenseSummaryResponse = {
+  category_totals: {
+    category_name: string;
+    total_minor: number;
+    total_reporting_minor: number | null;
+    currency: string;
+  }[];
+  period?: {
+    recorded_reporting_minor: number;
+    outstanding_reporting_minor: number;
+    paid_reporting_minor: number;
+  };
+  currency: string;
+};
+
+function tenantDay(timezone: string) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+export function ExpenseSummary({ session }: { session: Session }) {
+  const timezone = session.tenant.timezone;
+  const today = tenantDay(timezone);
+  const [period, setPeriod] = useState<PeriodKey>("this_year");
+  const [customFrom, setCustomFrom] = useState(today);
+  const [customTo, setCustomTo] = useState(today);
+  const [periodOpen, setPeriodOpen] = useState(false);
+  const periodRef = useRef<HTMLDivElement>(null);
+  const { from, to } = useMemo(
+    () => periodDates(period, customFrom, customTo, timezone),
+    [period, customFrom, customTo, timezone],
+  );
+  const { data, error } = useResource<ExpenseSummaryResponse>(
+    `finance/v1/expenses?dateFrom=${from}&dateTo=${to}`,
+  );
+  const reporting =
+    session.tenant.config.reportingCurrency ?? data?.currency ?? "USD";
+  const totals = data?.category_totals ?? [];
+  const grand = useMemo(
+    () => totals.reduce((sum, row) => sum + (row.total_reporting_minor ?? 0), 0),
+    [totals],
+  );
+
+  function exportCsv() {
+    downloadCsv(`expense-summary-${from}-${to}.csv`, [
+      ["From", from],
+      ["To", to],
+      ["Reporting currency", reporting],
+      [],
+      ["Recorded reporting minor", data?.period?.recorded_reporting_minor ?? ""],
+      ["Paid reporting minor", data?.period?.paid_reporting_minor ?? ""],
+      ["Outstanding reporting minor", data?.period?.outstanding_reporting_minor ?? ""],
+      [],
+      ["Category", "Currency", "Recorded minor", "Reporting minor"],
+      ...totals.map((row) => [
+        row.category_name,
+        row.currency,
+        row.total_minor,
+        row.total_reporting_minor ?? "",
+      ]),
+    ]);
+  }
+
+  const presets: { value: PeriodKey; caption: string }[] = [
+    { value: "this_week", caption: "This week" },
+    { value: "this_month", caption: "This month" },
+    { value: "last_month", caption: "Last month" },
+    { value: "this_year", caption: "This year" },
+    { value: "last_year", caption: "Last year" },
+    { value: "custom", caption: "Custom" },
+  ];
+
+  function selectPeriod(next: PeriodKey) {
+    setPeriod(next);
+    if (next === "custom") {
+      setCustomFrom(from);
+      setCustomTo(to);
+      return;
+    }
+    setPeriodOpen(false);
+  }
+
+  useEffect(() => {
+    if (!periodOpen) return;
+    const close = (event: MouseEvent) => {
+      if (
+        periodRef.current?.contains(event.target as Node) ||
+        document.getElementById("tdp-popup")?.contains(event.target as Node)
+      ) {
+        return;
+      }
+      setPeriodOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [periodOpen]);
+
+  const dateFormat = session.tenant.config.dateFormat as
+    | "DD/MM/YYYY"
+    | "MM/DD/YYYY"
+    | "YYYY-MM-DD";
+  const locale = session.tenant.config.locale;
+
+  return (
+    <ReportShell
+      title="Expense summary"
+      filters={
+        <>
+          <div className="filter-menu report-filter-menu" ref={periodRef}>
+            <button
+              type="button"
+              className={
+                "button secondary catalog-add-btn" +
+                (periodOpen ? " active-filter" : "")
+              }
+              aria-label="Report date range"
+              aria-expanded={periodOpen}
+              aria-haspopup="listbox"
+              onClick={() => setPeriodOpen((open) => !open)}
+            >
+              <span className="button-label">{PERIOD_LABELS[period]}</span>
+              <ChevronDown size={16} aria-hidden="true" />
+            </button>
+            {periodOpen && (
+              <div
+                className="filter-popover"
+                role="listbox"
+                aria-label="Report date range"
+              >
+                {presets.map((item) => (
+                  <button
+                    key={item.value}
+                    type="button"
+                    role="option"
+                    aria-selected={period === item.value}
+                    className={
+                      "filter-range-option" +
+                      (period === item.value ? " selected" : "")
+                    }
+                    onClick={() => selectPeriod(item.value)}
+                  >
+                    {item.caption}
+                  </button>
+                ))}
+                {period === "custom" && (
+                  <div className="report-custom-dates">
+                    <TenantDateInput
+                      label="From"
+                      value={customFrom}
+                      max={customTo || undefined}
+                      onChange={(v) => v && setCustomFrom(v)}
+                      compact
+                      dateFormat={dateFormat}
+                      locale={locale}
+                    />
+                    <TenantDateInput
+                      label="To"
+                      value={customTo}
+                      min={customFrom || undefined}
+                      onChange={(v) => v && setCustomTo(v)}
+                      compact
+                      dateFormat={dateFormat}
+                      locale={locale}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </>
+      }
+      onExport={exportCsv}
+      exportDisabled={!data}
+    >
+      {error && <Notice error>{error}</Notice>}
+      {!data && !error && <Loading />}
+      {data && data.period && (
+        <p className="muted report-range-note">
+          Recorded {money(data.period.recorded_reporting_minor, reporting)}
+          {" · "}
+          Paid {money(data.period.paid_reporting_minor, reporting)}
+          {" · "}
+          Outstanding {money(data.period.outstanding_reporting_minor, reporting)}
+        </p>
+      )}
+      {data && totals.length === 0 && (
+        <Empty title="No expenses in this period">
+          <p>Record operating costs under Finance → Expenses.</p>
+        </Empty>
+      )}
+      {data && totals.length > 0 && (
+        <div className="table-scroll">
+          <table className="aging-table">
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th className="num-col">Currency</th>
+                <th className="num-col">Recorded</th>
+                <th className="num-col">Reporting</th>
+              </tr>
+            </thead>
+            <tbody>
+              {totals.map((row) => (
+                <tr key={`${row.category_name}-${row.currency}`}>
+                  <td>{row.category_name}</td>
+                  <td className="num-col">{row.currency}</td>
+                  <td className="num-col">
+                    {money(row.total_minor, row.currency)}
+                  </td>
+                  <td className="num-col">
+                    {row.total_reporting_minor == null
+                      ? "—"
+                      : money(row.total_reporting_minor, reporting)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={3}>Total (reporting)</td>
+                <td className="num-col">{money(grand, reporting)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </ReportShell>
+  );
+}
 
 type AgingBucket = {
   currency: string;
@@ -59,7 +296,7 @@ function BucketAmt({ minor, currency }: { minor: number; currency: string }) {
 
 // ─── Aging report ─────────────────────────────────────────────────────────────
 
-function AgingReport({ session }: { session: Session }) {
+export function AgingReport({ session }: { session: Session }) {
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: session.tenant.timezone,
     year: "numeric",
@@ -72,6 +309,10 @@ function AgingReport({ session }: { session: Session }) {
     "both",
   );
   const [partnerId, setPartnerId] = useState("");
+  const [directionOpen, setDirectionOpen] = useState(false);
+  const [partnerOpen, setPartnerOpen] = useState(false);
+  const directionRef = useRef<HTMLDivElement>(null);
+  const partnerRef = useRef<HTMLDivElement>(null);
 
   // Build query string — only append filters that differ from defaults
   const qs = new URLSearchParams();
@@ -92,33 +333,121 @@ function AgingReport({ session }: { session: Session }) {
 
   const partnerList = data?.partner_list ?? [];
 
-  return (
-    <div className="aging-report-wrap">
-      {/* Filter bar */}
-      <div className="aging-filters">
-        <TenantDateInput
-          label="As of"
-          value={asOf}
-          onChange={(v) => setAsOf(v || today)}
-          max={today}
-          dateFormat={
-            session.tenant.config.dateFormat as
-              "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD"
-          }
-          locale={session.tenant.config.locale}
-          compact
-        />
+  useEffect(() => {
+    if (!directionOpen && !partnerOpen) return;
+    const close = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (
+        directionRef.current?.contains(target) ||
+        partnerRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setDirectionOpen(false);
+      setPartnerOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [directionOpen, partnerOpen]);
 
-        <div className="aging-filter-group">
-          <span className="aging-filter-label">Direction</span>
+  const locale = session.tenant.config.locale;
+  const directionLabel =
+    direction === "payable"
+      ? "We owe"
+      : direction === "receivable"
+        ? "Owed to us"
+        : "All directions";
+  const partnerLabel =
+    partnerList.find((partner) => partner.id === partnerId)?.name ??
+    "All partners";
+  const filterSummary = [
+    formatMediumDate(asOf, locale),
+    directionLabel,
+    partnerId ? partnerLabel : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  function exportCsv() {
+    if (!data) return;
+    const rows: (string | number)[][] = [
+      ["As of", data.as_of],
+      ["Direction", data.direction],
+      [],
+      [
+        "Partner",
+        "Type",
+        "Currency",
+        "Current minor",
+        "1-30 minor",
+        "31-60 minor",
+        "61-90 minor",
+        "90+ minor",
+        "Total minor",
+      ],
+    ];
+    for (const r of data.rows) {
+      for (const b of r.buckets) {
+        rows.push([
+          r.partner_name,
+          r.direction,
+          b.currency,
+          b.current_minor,
+          b.days_1_30_minor,
+          b.days_31_60_minor,
+          b.days_61_90_minor,
+          b.days_90_plus_minor,
+          b.total_minor,
+        ]);
+      }
+    }
+    downloadCsv(`partner-aging-${data.as_of}.csv`, rows);
+  }
+
+  const filters = (
+    <ReportFilterBar summary={filterSummary}>
+      <TenantDateInput
+        label="As of"
+        value={asOf}
+        onChange={(v) => setAsOf(v || today)}
+        max={today}
+        dateFormat={
+          session.tenant.config.dateFormat as
+            | "DD/MM/YYYY"
+            | "MM/DD/YYYY"
+            | "YYYY-MM-DD"
+        }
+        locale={session.tenant.config.locale}
+        compact
+      />
+
+      <div className="filter-menu report-filter-menu" ref={directionRef}>
+        <button
+          type="button"
+          className={
+            "button secondary catalog-add-btn" +
+            (directionOpen ? " active-filter" : "")
+          }
+          aria-label="Aging direction"
+          aria-expanded={directionOpen}
+          aria-haspopup="listbox"
+          onClick={() => {
+            setPartnerOpen(false);
+            setDirectionOpen((open) => !open);
+          }}
+        >
+          <span className="button-label">{directionLabel}</span>
+          <ChevronDown size={16} aria-hidden="true" />
+        </button>
+        {directionOpen && (
           <div
-            className="report-preset-chips"
-            role="radiogroup"
+            className="filter-popover"
+            role="listbox"
             aria-label="Aging direction"
           >
             {(
               [
-                ["both", "All"],
+                ["both", "All directions"],
                 ["payable", "We owe"],
                 ["receivable", "Owed to us"],
               ] as const
@@ -126,44 +455,101 @@ function AgingReport({ session }: { session: Session }) {
               <button
                 key={value}
                 type="button"
-                role="radio"
-                aria-checked={direction === value}
+                role="option"
+                aria-selected={direction === value}
                 className={
                   "filter-range-option" +
                   (direction === value ? " selected" : "")
                 }
-                onClick={() => setDirection(value)}
+                onClick={() => {
+                  setDirection(value);
+                  setDirectionOpen(false);
+                }}
               >
                 {caption}
               </button>
             ))}
           </div>
-        </div>
-
-        {partnerList.length > 0 && (
-          <label className="aging-filter-group">
-            <span className="aging-filter-label">Partner</span>
-            <select
-              className="select-sm"
-              value={partnerId}
-              onChange={(e) => setPartnerId(e.target.value)}
-            >
-              <option value="">All partners</option>
-              {partnerList.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-
-        {(asOf !== today || direction !== "both" || partnerId) && (
-          <button className="btn-ghost btn-sm" onClick={resetFilters}>
-            Reset
-          </button>
         )}
       </div>
+
+      {partnerList.length > 0 && (
+        <div className="filter-menu report-filter-menu" ref={partnerRef}>
+          <button
+            type="button"
+            className={
+              "button secondary catalog-add-btn" +
+              (partnerOpen ? " active-filter" : "")
+            }
+            aria-label="Partner"
+            aria-expanded={partnerOpen}
+            aria-haspopup="listbox"
+            onClick={() => {
+              setDirectionOpen(false);
+              setPartnerOpen((open) => !open);
+            }}
+          >
+            <span className="button-label">{partnerLabel}</span>
+            <ChevronDown size={16} aria-hidden="true" />
+          </button>
+          {partnerOpen && (
+            <div className="filter-popover" role="listbox" aria-label="Partner">
+              <button
+                type="button"
+                role="option"
+                aria-selected={!partnerId}
+                className={
+                  "filter-range-option" + (!partnerId ? " selected" : "")
+                }
+                onClick={() => {
+                  setPartnerId("");
+                  setPartnerOpen(false);
+                }}
+              >
+                All partners
+              </button>
+              {partnerList.map((partner) => (
+                <button
+                  key={partner.id}
+                  type="button"
+                  role="option"
+                  aria-selected={partnerId === partner.id}
+                  className={
+                    "filter-range-option" +
+                    (partnerId === partner.id ? " selected" : "")
+                  }
+                  onClick={() => {
+                    setPartnerId(partner.id);
+                    setPartnerOpen(false);
+                  }}
+                >
+                  {partner.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {(asOf !== today || direction !== "both" || partnerId) && (
+        <button
+          type="button"
+          className="button secondary catalog-add-btn"
+          onClick={resetFilters}
+        >
+          Reset
+        </button>
+      )}
+    </ReportFilterBar>
+  );
+
+  return (
+    <ReportShell
+      title="Partner aging"
+      filters={filters}
+      onExport={exportCsv}
+      exportDisabled={!data || data.rows.length === 0}
+    >
 
       {/* Report body */}
       {error && <Notice error>{error}</Notice>}
@@ -344,72 +730,7 @@ function AgingReport({ session }: { session: Session }) {
           overdue
         </span>
       </div>
-    </div>
+    </ReportShell>
   );
 }
 
-// ─── Stub card ────────────────────────────────────────────────────────────────
-
-function StubCard({
-  icon,
-  title,
-  description,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="report-stub-card">
-      <div className="report-stub-icon">{icon}</div>
-      <div className="report-stub-body">
-        <h4 className="report-stub-title">{title}</h4>
-        <p className="report-stub-desc">{description}</p>
-        <span className="report-stub-badge">Not in this launch</span>
-      </div>
-    </div>
-  );
-}
-
-// ─── Finance Reports page ─────────────────────────────────────────────────────
-
-export function FinanceReports({ session }: { session: Session }) {
-  return (
-    <div className="finance-reports-shell">
-      <section className="report-section">
-        <h3 className="finance-section-heading">Partner Aging Report</h3>
-        <p className="report-section-desc">
-          Outstanding balances by partner, grouped by how long they've been
-          open. Click a partner's name to open their full ledger.
-        </p>
-        <AgingReport session={session} />
-      </section>
-
-      <section className="report-section">
-        <h3 className="finance-section-heading">Later reports</h3>
-        <div className="report-stub-list">
-          <StubCard
-            icon={<BarChart2 size={22} />}
-            title="Expense Summary"
-            description="Total operating costs by category for any selected period. Useful for budget reviews and year-end summaries."
-          />
-          <StubCard
-            icon={<TrendingUp size={22} />}
-            title="P&L Overview"
-            description="Income from bookings minus operating expenses. Requires full booking revenue feed — available after launch stabilisation."
-          />
-          <StubCard
-            icon={<Users size={22} />}
-            title="Partner Statement"
-            description="Full transaction ledger export per partner — PDF or CSV. Useful for partner reconciliation and audit."
-          />
-          <StubCard
-            icon={<FileText size={22} />}
-            title="Commission Summary"
-            description="Commission accruals and payouts by partner and period. Includes commission-direction breakdown (receivable vs payable)."
-          />
-        </div>
-      </section>
-    </div>
-  );
-}

@@ -46,7 +46,7 @@ Catalog and Departures are promoted ahead of further reservation-detail work bec
 | 10 | **Customers list/detail — polish implemented 17 September 2026; needs owner visual pass** | Insights metrics + search bar, repeat-guest cue (email reuse only), purchaser/emergency kept on reservation, responsive timeline cards |
 | 11 | **Manifest boarding — gate toolbar 14 September 2026; needs owner visual pass** | Search + Scan + Crew replace setup cards; Board guests primary; Pay/Waiver/Board contracts unchanged; camera QR when BarcodeDetector available |
 | 11a | **Operations (dispatch / pickup) — functionally complete pending further testing (14 Sep 2026)** | Day board weather/close/reopen; Plan pickups Phase 1; Print list; Settings locations + Esri map; VPS tip `a18e083`. Reopen only for found bugs/gaps — no new Ops features |
-| 12 | **Finance — polish 11 Sep; period/search follow-up 19 Sep; needs owner visual pass** | Tenant-timezone period chips, expense search, honest FX/Track B copy, aging chips |
+| 12 | **Finance — leftover close-out 19 Sep; needs owner visual pass** | Claims UI, expense payments, expense summary, Settings Partners, aging gateway |
 | 13 | **Reports — polish 11 Sep; chip-range follow-up 19 Sep; needs owner visual pass** | Visible date chips (incl. Last 7 / This week / Custom dates), tenant date formatting, exception + guest-balance attention, mobile daily cards |
 | 14 | **Team & resources — polish implemented 11 September 2026; needs owner visual pass** | Tabbed Crew/Resources/Documents/Assignments, FormDialog CRUD, ConfirmDialog remove |
 | 15 | **Staff & access / roles — polish implemented 11 September 2026; needs owner visual pass** | Metrics, Staff↔Roles tabs, invite/create modals, revoke ConfirmDialog, mobile cards |
@@ -114,4 +114,4 @@ The connected API and Expo sub-increment is implemented and integration-verified
 
 ## Recommended starting point
 
-**Next polish implementation:** agent settings + subscription messaging done pending **owner visual**. Finance cashbook **held.** Authority: [agent-current-sprint.md](../HANDOFF/agent-current-sprint.md).
+**Next polish implementation:** agent settings + subscription messaging done pending **owner visual**. Finance leftover close-out 19 Sep (expense payments live; cashbook F2–F4 and QBO export still later). Authority: [agent-current-sprint.md](../HANDOFF/agent-current-sprint.md).

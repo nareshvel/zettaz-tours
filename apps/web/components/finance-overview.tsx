@@ -56,6 +56,11 @@ type CategoryTotal = {
 type ExpenseListResponse = {
   expenses: unknown[];
   category_totals: CategoryTotal[];
+  period?: {
+    recorded_reporting_minor: number;
+    outstanding_reporting_minor: number;
+    paid_reporting_minor: number;
+  };
   currency: string;
 };
 
@@ -109,12 +114,16 @@ function WorkQueueCard({
 function NetPositionStrip({
   pos,
   expenseReportingTotal,
+  unpaidReportingTotal,
+  paidReportingTotal,
   expenseHasUnconverted,
   expenseReportingCurrency,
   periodLabel,
 }: {
   pos: NetPosition;
   expenseReportingTotal: number;
+  unpaidReportingTotal: number;
+  paidReportingTotal: number;
   expenseHasUnconverted: boolean;
   expenseReportingCurrency: string;
   periodLabel: string;
@@ -123,6 +132,14 @@ function NetPositionStrip({
     expenseReportingTotal === 0 && !expenseHasUnconverted
       ? "—"
       : money(expenseReportingTotal, expenseReportingCurrency);
+  const unpaidDisplay =
+    unpaidReportingTotal === 0 && !expenseHasUnconverted
+      ? "—"
+      : money(unpaidReportingTotal, expenseReportingCurrency);
+  const paidDisplay =
+    paidReportingTotal === 0
+      ? "—"
+      : money(paidReportingTotal, expenseReportingCurrency);
   return (
     <div className="finance-net-position">
       <div className="finance-net-tile receivable">
@@ -167,15 +184,20 @@ function NetPositionStrip({
       <Link
         className={
           "finance-net-tile unpaid" +
-          (expenseReportingTotal > 0 ? " attention" : "")
+          (unpaidReportingTotal > 0 ? " attention" : "")
         }
         href="/finance/expenses"
       >
         <span className="finance-net-label">Unpaid expenses · {periodLabel}</span>
-        <span className="finance-net-amount">{expenseDisplay}</span>
+        <span className="finance-net-amount">{unpaidDisplay}</span>
         <span className="finance-net-sub">
-          Vendor payment is not recorded yet, so unpaid equals recorded
+          Recorded bills minus vendor payments
         </span>
+      </Link>
+      <Link className="finance-net-tile expenses" href="/finance/expenses">
+        <span className="finance-net-label">Paid to vendors · {periodLabel}</span>
+        <span className="finance-net-amount">{paidDisplay}</span>
+        <span className="finance-net-sub">Payments dated in this period</span>
       </Link>
     </div>
   );
@@ -271,10 +293,15 @@ export function FinanceOverview({
 
   // Sum amount_reporting_minor — all converted to reporting currency at time of entry
   const expenseReportingTotal =
+    expenseData?.period?.recorded_reporting_minor ??
     expenseData?.category_totals.reduce(
       (sum, ct) => sum + (ct.total_reporting_minor ?? 0),
       0,
-    ) ?? 0;
+    ) ??
+    0;
+  const unpaidReportingTotal =
+    expenseData?.period?.outstanding_reporting_minor ?? expenseReportingTotal;
+  const paidReportingTotal = expenseData?.period?.paid_reporting_minor ?? 0;
   // Flag any foreign-currency expense that was entered without a bank rate
   const expenseHasUnconverted =
     expenseData?.category_totals.some(
@@ -301,6 +328,8 @@ export function FinanceOverview({
       <NetPositionStrip
         pos={net_position}
         expenseReportingTotal={expenseReportingTotal}
+        unpaidReportingTotal={unpaidReportingTotal}
+        paidReportingTotal={paidReportingTotal}
         expenseHasUnconverted={expenseHasUnconverted}
         expenseReportingCurrency={reportingCurrency}
         periodLabel={periodLabel}
@@ -328,6 +357,12 @@ export function FinanceOverview({
         dateFormat={session.tenant.config.dateFormat}
         locale={session.tenant.config.locale}
       />
+      <p className="finance-report-links">
+        Reports:{" "}
+        <Link href="/reports/partner-aging">Partner aging</Link>
+        {" · "}
+        <Link href="/reports/expense-summary">Expense summary</Link>
+      </p>
     </div>
   );
 }

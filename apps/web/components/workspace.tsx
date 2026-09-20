@@ -69,7 +69,7 @@ import { Resources } from "./resources";
 import { DocumentLibrary } from "./document-library";
 import { Finance, type FinanceSection } from "./finance";
 import { Integrations } from "./integrations";
-import { Reports } from "./reports";
+import { ReportsHub } from "./reports-hub";
 import { CustomerDetailPage, Customers } from "./customers";
 import { CrewWorkspace } from "./crew";
 
@@ -187,6 +187,18 @@ const navigation = [
     permission: "audit.read",
   },
 ];
+function ReportsRedirect() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/reports");
+  }, [router]);
+  return (
+    <main className="workspace-boot" aria-busy="true">
+      <Loading />
+    </main>
+  );
+}
+
 export function Workspace({
   initialSession = null,
   initialTenants = [],
@@ -419,6 +431,11 @@ export function Workspace({
         "partner.statement.read",
         "partner.collection.verify",
       ],
+      "/reports": [
+        "bookings.read",
+        "partner.statement.read",
+        "audit.read",
+      ],
       "/resources": ["resources.write"],
     };
     return (alternatives[href] ?? [permission]).some(can);
@@ -589,7 +606,6 @@ export function Workspace({
       />
     );
   } else if (area === "finance") {
-    // Finance sub-sections: overview | partners | expenses | reports
     permission =
       [
         "payment.write",
@@ -597,30 +613,34 @@ export function Workspace({
         "partner.statement.read",
         "partner.collection.verify",
       ].find(can) ?? "partner.collection.verify";
-    const financeSection = (
-      segments[1] === "overview" ||
-      segments[1] === "partners" ||
-      segments[1] === "expenses" ||
-      segments[1] === "reports"
-        ? segments[1]
-        : "overview"
-    ) as FinanceSection;
-    // /finance/partners/:id → pass partnerId to Finance
-    const financePartnerId =
-      segments[1] === "partners" && segments[2] ? segments[2] : undefined;
-    content = (
-      <Finance
-        session={session}
-        section={financeSection}
-        partnerId={financePartnerId}
-      />
-    );
+    if (segments[1] === "reports") {
+      content = <ReportsRedirect />;
+    } else {
+      const financeSection = (
+        segments[1] === "overview" ||
+        segments[1] === "partners" ||
+        segments[1] === "expenses"
+          ? segments[1]
+          : "overview"
+      ) as FinanceSection;
+      const financePartnerId =
+        segments[1] === "partners" && segments[2] ? segments[2] : undefined;
+      content = (
+        <Finance
+          session={session}
+          section={financeSection}
+          partnerId={financePartnerId}
+        />
+      );
+    }
   } else if (area === "integrations") {
     permission = "integration.manage";
     content = <Integrations />;
   } else if (area === "reports") {
-    permission = "bookings.read";
-    content = <Reports session={session} />;
+    permission =
+      ["bookings.read", "partner.statement.read", "audit.read"].find(can) ??
+      "bookings.read";
+    content = <ReportsHub session={session} slug={segments[1]} />;
   } else if (area === "team") {
     permission = "members.write";
     content = <Team session={session} />;

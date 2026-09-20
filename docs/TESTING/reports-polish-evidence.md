@@ -20,6 +20,12 @@
 - Guest-balance metric uses the same attention treatment as exception tiles when the balance is greater than zero.
 - FX / exports notice unchanged (Track A: no conversion; Track B: exports).
 
+## Follow-up 19 September 2026 (reports hub)
+
+- Insights → Reports is a grouped catalog (Operations, Money, Partners, Later). `/reports` loads Period overview by default. Live reports use a period menu plus icon-only Export and Print.
+- Period overview, partner aging, and expense summary are registered. `/finance/reports` redirects to `/reports`. Finance Overview links to aging and expense summary.
+- Later items (P&L, commission summary, partner PDF, accounting export) stay labelled, not clickable.
+
 ## Automated evidence
 
 - `npm run typecheck --workspace=@zettaz/web` after this follow-up (passed).

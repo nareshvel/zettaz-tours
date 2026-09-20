@@ -2919,7 +2919,7 @@ function ZettazPayPanel() {
           <button
             type="button"
             className="button"
-            disabled={onboard.busy || pay.busy}
+            disabled={onboard.busy}
             onClick={() => void startOnboard()}
           >
             {onboard.busy

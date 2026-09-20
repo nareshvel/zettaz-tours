@@ -130,7 +130,7 @@ export class StripeBillingService {
       amountDue: invObj.amount_due ?? 0,
       currency: (invObj.currency ?? "usd").toUpperCase(),
       attemptNumber: invObj.attempt_count ?? 1,
-      manageUrl: `${process.env.FRONTEND_URL ?? "https://app.zettaz.com"}/profile?tab=subscription`,
+      manageUrl: `${process.env.FRONTEND_URL ?? "https://tours.zettaz.com"}/profile?tab=subscription`,
     });
   }
 
@@ -454,7 +454,7 @@ export class StripeBillingService {
             oldPlanName: owner.oldPlanName ?? "Previous plan",
             newPlanName: plan.name,
             billingCycle: cycle,
-            manageUrl: `${process.env.FRONTEND_URL ?? "https://app.zettaz.com"}/profile?tab=subscription`,
+            manageUrl: `${process.env.FRONTEND_URL ?? "https://tours.zettaz.com"}/profile?tab=subscription`,
           });
         }
       } catch (e) {

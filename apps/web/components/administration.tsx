@@ -1037,6 +1037,7 @@ function PricingEditor({
                     type="button"
                     className="icon-link"
                     aria-label={`Edit ${category.label || "category"}`}
+                    title={`Edit ${category.label || "category"}`}
                     onClick={() => openEditCategory(index)}
                   >
                     <Pencil size={16} />
@@ -1046,6 +1047,7 @@ function PricingEditor({
                       type="button"
                       className="icon-link danger"
                       aria-label={`Remove ${category.label || "category"}`}
+                      title={`Remove ${category.label || "category"}`}
                       onClick={() => removeCategory(index)}
                     >
                       <Trash2 size={16} />
@@ -1117,6 +1119,7 @@ function PricingEditor({
                     type="button"
                     className="icon-link"
                     aria-label={`Edit rate period ${index + 1}`}
+                    title={`Edit rate period ${index + 1}`}
                     onClick={() => openEditPeriod(index)}
                   >
                     <Pencil size={16} />
@@ -1126,6 +1129,7 @@ function PricingEditor({
                       type="button"
                       className="icon-link danger"
                       aria-label={`Remove rate period ${index + 1}`}
+                      title={`Remove rate period ${index + 1}`}
                       onClick={() => {
                         setDeleteError("");
                         setDeletePeriod(period);
@@ -2169,6 +2173,7 @@ export function ProductDetail({
                                   className="icon-link"
                                   href={`/catalog/availability/${rule.id}`}
                                   aria-label={`Open ${rule.name || "schedule"}`}
+                                  title={`Open ${rule.name || "schedule"}`}
                                 >
                                   <ArrowRight size={16} />
                                 </Link>
@@ -4220,6 +4225,7 @@ function CodeListEditor({
                 <button
                   type="button"
                   aria-label={`Remove ${code}`}
+                  title={`Remove ${code}`}
                   onClick={() => onChange(values.filter((v) => v !== code))}
                 >
                   <X size={12} />
@@ -4723,6 +4729,7 @@ export function Team({ session }: { session: Session }) {
         type="button"
         className="icon-button"
         aria-label={`Edit ${m.name}`}
+        title={`Edit ${m.name}`}
         onClick={() => openEdit(m)}
       >
         <Pencil size={16} />
@@ -4749,6 +4756,7 @@ export function Team({ session }: { session: Session }) {
             type="button"
             className="icon-button"
             aria-label={`Revoke access for ${m.name}`}
+            title={`Revoke access for ${m.name}`}
             onClick={() => setPendingRevoke(m)}
           >
             <Ban size={16} />
@@ -4758,6 +4766,7 @@ export function Team({ session }: { session: Session }) {
             type="button"
             className="icon-button"
             aria-label={`Restore access for ${m.name}`}
+            title={`Restore access for ${m.name}`}
             onClick={() => void restore(m)}
           >
             <RotateCcw size={16} />
@@ -4959,6 +4968,7 @@ export function Team({ session }: { session: Session }) {
                             type="button"
                             className="text-link asset-doc-count"
                             aria-label={`Documents for ${m.name}`}
+                            title={`Documents for ${m.name}`}
                             onClick={() => setDocsFor(m)}
                           >
                             <FileText size={15} aria-hidden="true" />

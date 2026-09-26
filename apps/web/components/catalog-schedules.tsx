@@ -517,6 +517,7 @@ export function CatalogSchedulesPanel({
                           type="button"
                           className="icon-link"
                           aria-label={`Edit ${rule.name || "schedule"}`}
+                          title={`Edit ${rule.name || "schedule"}`}
                           onClick={() => setEditing(rule)}
                         >
                           <Pencil size={16} />
@@ -527,6 +528,7 @@ export function CatalogSchedulesPanel({
                           type="button"
                           className="icon-link"
                           aria-label={`Pause ${rule.name || "schedule"}`}
+                          title={`Pause ${rule.name || "schedule"}`}
                           disabled={busyId === rule.id || mutation.busy}
                           onClick={() => void setRuleStatus(rule, "paused")}
                         >
@@ -538,6 +540,7 @@ export function CatalogSchedulesPanel({
                           type="button"
                           className="icon-link"
                           aria-label={`Resume ${rule.name || "schedule"}`}
+                          title={`Resume ${rule.name || "schedule"}`}
                           disabled={busyId === rule.id || mutation.busy}
                           onClick={() => void setRuleStatus(rule, "active")}
                         >
@@ -548,6 +551,7 @@ export function CatalogSchedulesPanel({
                         className="icon-link"
                         href={`/catalog/availability/${rule.id}`}
                         aria-label={`Open ${rule.name || "schedule"}`}
+                        title={`Open ${rule.name || "schedule"}`}
                       >
                         <ArrowRight size={16} />
                       </Link>

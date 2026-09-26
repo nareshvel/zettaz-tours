@@ -636,6 +636,7 @@ function Meter({ share, label: caption }: { share: number; label: string }) {
       className={"briefing-meter is-" + pressure}
       role="img"
       aria-label={`${caption}: ${share}%`}
+      title={`${caption}: ${share}%`}
     >
       <i style={{ width: `${Math.min(100, Math.max(0, share))}%` }} />
     </span>
@@ -798,6 +799,7 @@ function Timeline({
                   <Link
                     className="icon-link"
                     aria-label={`Open ${item.product_name}`}
+                    title={`Open ${item.product_name}`}
                     href={
                       session.permissions.includes("manifest.read")
                         ? `/departures/${item.id}/manifest`
@@ -871,6 +873,7 @@ function MoneyBar({ data }: { data: Briefing }) {
             className="money-bar"
             role="img"
             aria-label={`${share}% of this month's booked value has been received`}
+            title={`${share}% of this month's booked value has been received`}
           >
             <i className="received" style={{ width: `${share}%` }} />
             <i className="outstanding" style={{ width: `${100 - share}%` }} />
@@ -1010,7 +1013,7 @@ function ReservationTable({
     </Empty>
   ) : (
     <div className="table-scroll">
-      <table>
+      <table className="data-table editor-data-table">
         <thead>
           <tr>
             {header("lead_name", "Guest / reference")}
@@ -1074,6 +1077,7 @@ function ReservationTable({
                   className="icon-link"
                   href={"/reservations/" + r.id}
                   aria-label={`View ${r.lead_name}`}
+                  title={`View ${r.lead_name}`}
                 >
                   <ChevronRight size={17} />
                 </Link>

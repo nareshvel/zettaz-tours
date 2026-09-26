@@ -75,6 +75,38 @@ export const configSchema = z
           .default(1073741824),
       })
       .default({ quotaBytes: 1073741824 }),
+    emailTemplates: z
+      .object({
+        booking_confirmation: z
+          .object({
+            subjectPrefix: z.string().trim().max(120).optional(),
+            headline: z.string().trim().max(200).optional(),
+            intro: z.string().trim().max(1500).optional(),
+          })
+          .default({}),
+        payment_request: z
+          .object({
+            subjectPrefix: z.string().trim().max(120).optional(),
+            headline: z.string().trim().max(200).optional(),
+            intro: z.string().trim().max(1500).optional(),
+          })
+          .default({}),
+        waiver_request: z
+          .object({
+            subjectPrefix: z.string().trim().max(120).optional(),
+            headline: z.string().trim().max(200).optional(),
+            intro: z.string().trim().max(1500).optional(),
+          })
+          .default({}),
+        cancellation: z
+          .object({
+            subjectPrefix: z.string().trim().max(120).optional(),
+            headline: z.string().trim().max(200).optional(),
+            intro: z.string().trim().max(1500).optional(),
+          })
+          .default({}),
+      })
+      .default({}),
   })
   .strict(); // Multi-currency supported: bookingCurrency, collectionCurrency, and reportingCurrency
 // may each differ. FX conversion is deferred; expense records store their own currency.

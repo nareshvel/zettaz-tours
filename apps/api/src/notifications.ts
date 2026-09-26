@@ -154,6 +154,7 @@ export class NotificationService {
         propertyName?: string;
         address?: string;
       },
+      emailTemplates: (booking.config?.emailTemplates ?? {}) as import("./customer-booking-email.js").EmailTemplatesConfig,
     });
     const configured = smtpConfigured();
     const status = configured ? "queued" : "held_provider";

@@ -7,6 +7,19 @@ export type CustomerNotificationKind =
   | "waiver_request"
   | "cancellation";
 
+export type EmailTemplateOverrides = {
+  subjectPrefix?: string;
+  headline?: string;
+  intro?: string;
+};
+
+export type EmailTemplatesConfig = {
+  booking_confirmation?: EmailTemplateOverrides;
+  payment_request?: EmailTemplateOverrides;
+  waiver_request?: EmailTemplateOverrides;
+  cancellation?: EmailTemplateOverrides;
+};
+
 export type BookingEmailContext = {
   kind: CustomerNotificationKind;
   tenantName: string;
@@ -36,6 +49,7 @@ export type BookingEmailContext = {
     propertyName?: string;
     address?: string;
   };
+  emailTemplates?: EmailTemplatesConfig;
 };
 
 export type RenderedCustomerEmail = {
@@ -45,6 +59,18 @@ export type RenderedCustomerEmail = {
   text: string;
   html: string;
 };
+
+/** Replace {leadName}, {tenantName}, {productName}, {bookingRef} in a tenant-provided intro string. */
+function applyIntroTemplate(
+  template: string,
+  ctx: BookingEmailContext,
+): string {
+  return template
+    .replace(/\{leadName\}/g, ctx.leadName)
+    .replace(/\{tenantName\}/g, ctx.tenantName)
+    .replace(/\{productName\}/g, ctx.productName)
+    .replace(/\{bookingRef\}/g, shortBookingRef(ctx.bookingId));
+}
 
 const KIND_META: Record<
   CustomerNotificationKind,
@@ -313,7 +339,15 @@ function buildHtml(
 export async function renderCustomerBookingEmail(
   ctx: BookingEmailContext,
 ): Promise<RenderedCustomerEmail> {
-  const meta = KIND_META[ctx.kind];
+  const baseMeta = KIND_META[ctx.kind];
+  const overrides = ctx.emailTemplates?.[ctx.kind] ?? {};
+  const meta = {
+    subjectPrefix: overrides.subjectPrefix?.trim() || baseMeta.subjectPrefix,
+    headline: overrides.headline?.trim() || baseMeta.headline,
+    intro: overrides.intro?.trim()
+      ? (_ctx: BookingEmailContext) => applyIntroTemplate(overrides.intro!, _ctx)
+      : baseMeta.intro,
+  };
   const ref = shortBookingRef(ctx.bookingId);
   const qrDataUrl = await QRCode.toDataURL(ctx.bookingId, {
     errorCorrectionLevel: "M",

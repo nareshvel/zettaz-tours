@@ -658,7 +658,7 @@ export function ScheduleFormDialog({
               type="button"
               className="icon-link danger"
               aria-label={`Remove start time ${index + 2}`}
-              title={`Remove start time ${index + 2}`}
+              data-tooltip={`Remove start time ${index + 2}`}
               onClick={() =>
                 setTimes((current) => current.filter((_, i) => i !== index + 1))
               }

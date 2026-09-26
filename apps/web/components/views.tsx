@@ -636,7 +636,7 @@ function Meter({ share, label: caption }: { share: number; label: string }) {
       className={"briefing-meter is-" + pressure}
       role="img"
       aria-label={`${caption}: ${share}%`}
-      title={`${caption}: ${share}%`}
+      data-tooltip={`${caption}: ${share}%`}
     >
       <i style={{ width: `${Math.min(100, Math.max(0, share))}%` }} />
     </span>
@@ -799,7 +799,7 @@ function Timeline({
                   <Link
                     className="icon-link"
                     aria-label={`Open ${item.product_name}`}
-                    title={`Open ${item.product_name}`}
+                    data-tooltip={`Open ${item.product_name}`}
                     href={
                       session.permissions.includes("manifest.read")
                         ? `/departures/${item.id}/manifest`
@@ -873,7 +873,7 @@ function MoneyBar({ data }: { data: Briefing }) {
             className="money-bar"
             role="img"
             aria-label={`${share}% of this month's booked value has been received`}
-            title={`${share}% of this month's booked value has been received`}
+            data-tooltip={`${share}% of this month's booked value has been received`}
           >
             <i className="received" style={{ width: `${share}%` }} />
             <i className="outstanding" style={{ width: `${100 - share}%` }} />
@@ -1077,7 +1077,7 @@ function ReservationTable({
                   className="icon-link"
                   href={"/reservations/" + r.id}
                   aria-label={`View ${r.lead_name}`}
-                  title={`View ${r.lead_name}`}
+                  data-tooltip={`View ${r.lead_name}`}
                 >
                   <ChevronRight size={17} />
                 </Link>
@@ -2681,7 +2681,7 @@ export function ManifestView({
                 type="button"
                 className="button secondary icon-only-action"
                 aria-label="Print manifest"
-                title="Print"
+                data-tooltip="Print"
                 onClick={() => void printManifest()}
                 disabled={!data || printJob.busy}
               >

@@ -20,6 +20,8 @@ Customer communication boundary: [customer-notifications.md](customer-notificati
 
 Customer identity, booking snapshots and history: [reservations/customer-records.md](reservations/customer-records.md). Insights list/detail polish: [../TESTING/customers-polish-evidence.md](../TESTING/customers-polish-evidence.md). Audit trail polish: [../TESTING/audit-polish-evidence.md](../TESTING/audit-polish-evidence.md). Document library polish: [../TESTING/document-library-polish-evidence.md](../TESTING/document-library-polish-evidence.md). Profile polish: [../TESTING/profile-polish-evidence.md](../TESTING/profile-polish-evidence.md).
 
+Platform console (Zettaz-operated; Track A paused 22 Sep): [platform-console.md](platform-console.md).
+
 Mode-aware New reservation discovery: [reservations/mode-aware-discovery.md](reservations/mode-aware-discovery.md).
 
 Track A operational and commercial read model: [reporting-minimum.md](reporting-minimum.md). Finance Track A: [finance/PLAN.md](finance/PLAN.md). Accounting export (CSV first, not built): [finance/accounting-export.md](finance/accounting-export.md). Cashbook Phases 2–4 (held): [../STRATEGY/finance-money-in-out-later.md](../STRATEGY/finance-money-in-out-later.md).

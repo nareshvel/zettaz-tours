@@ -11,7 +11,7 @@ import { WaiverService } from "../src/waivers";
 import { BookingChangeService } from "../src/booking-changes";
 import { PartnerService } from "../src/partners";
 import { PassengerService } from "../src/passengers";
-import { hashPassword } from "./sessions";
+import { hashPassword, upsertPlatformAdmin } from "./sessions";
 import {
   grants,
   type Actor,
@@ -304,9 +304,11 @@ async function main() {
       "DELETE FROM subscription_plans p WHERE p.id = ANY($1) AND NOT EXISTS (SELECT 1 FROM tenant_subscriptions s WHERE s.plan_id=p.id)",
       [["starter", "operations", "growth"]],
     );
-    await admin.query(
-      "INSERT INTO platform_users(id,name) VALUES($1,$2) ON CONFLICT (id) DO NOTHING",
-      [platformActorId, "Local sample data administrator"],
+    await upsertPlatformAdmin(
+      admin,
+      process.env.PLATFORM_ADMIN_PASSWORD ??
+        process.env.LOCAL_DEFAULT_PASSWORD ??
+        "ZettazLocal!2026",
     );
     const platform: Actor = {
       actorId: platformActorId,

@@ -22,9 +22,7 @@
 
 ## Still owner / device work
 
-- Expo login + project `@zettazglobal/zettaz-crew` (`06c5ee72-752e-4e24-8519-a148f57b84d3`) — written into `app.config.ts`
-- Apple Developer + Google Play Console accounts
-- Deploy web so `/api/mobile` is live, then preview build on a physical iPhone and Android
+- **App Store 5.1.2(i) (21 Sep):** update App Privacy so Tracking is No; Resolution Center reply. Do not add ATT. [crew-app-store-5.1.2-tracking.md](../ISSUES_FIXES/crew-app-store-5.1.2-tracking.md)
 - App Review demo staff account with a same-day assignment
 - Store screenshots from those devices
 - Unlisted / internal distribution choice in the consoles

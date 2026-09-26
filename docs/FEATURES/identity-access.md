@@ -27,3 +27,11 @@ Platform support identities remain separate from tenant staff and have no standi
 Using an approved grant issues a separate opaque support session bounded by the grant expiry. The workspace session includes the grant purpose and expiry for a persistent support-access banner. Revoking the grant immediately revokes every derived support session. Request, approval, use and revocation write tenant audit and outbox records. Expired, rejected, revoked, cross-tenant and write attempts fail at the server boundary.
 
 Elevated support writes, emergency access and standing support credentials are unavailable. They require a separately approved policy and are not inferred from platform administrator status.
+
+## Platform console (Track A)
+
+Platform administrators are a fourth principal (`platform_users` + `platform_sessions`), not tenant staff. They sign in on the same email/password page. Staff lookup runs first; a platform password is accepted only when no valid staff session can be issued for that email.
+
+Seeded operator: `systemadmin@zettaz.com`. Password comes from `PLATFORM_ADMIN_PASSWORD` or, locally, `LOCAL_DEFAULT_PASSWORD`. Production: set the password then `npm run platform:admin:prod` after migrations `095`–`097`. Do not store a production password in git.
+
+The web app opens a **dedicated platform shell** (not a tenant workspace): Overview, Tenants (list/detail/provision), Support, Health, Activity, and Account. Guest names, waiver evidence, and booking money are omitted. Using an approved support grant parks the platform session cookie and issues a support session; **Return to platform** restores the parked cookie. Specification: [platform-console.md](platform-console.md).

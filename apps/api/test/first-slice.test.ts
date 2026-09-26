@@ -7,7 +7,7 @@ import request from "supertest";
 import { DateTime } from "luxon";
 import { INestApplication } from "@nestjs/common";
 import { localDatabase } from "../scripts/local-database";
-import { bootstrapPlatform, issueSession } from "../scripts/sessions";
+import { bootstrapPlatform, issueSession, upsertPlatformAdmin } from "../scripts/sessions";
 import { createApp } from "../src/app";
 import { Database, digest } from "../src/database";
 import { OutboxService } from "../src/operations";
@@ -1491,6 +1491,96 @@ test("tenant owners approve, observe and revoke time-limited read-only platform 
       "support_access.revoked",
     ],
   );
+});
+
+test("platform administrators sign in separately from tenant staff and list tenants without guest records", async () => {
+  assert.equal((await get("/platform/v1/tenants", a.token)).status, 403);
+  const listed = await get("/platform/v1/tenants", platform);
+  assert.equal(listed.status, 200, JSON.stringify(listed.body));
+  assert.ok(listed.body.items.some((item: { slug: string }) => item.slug === "mock-harbor"));
+  for (const item of listed.body.items) {
+    assert.equal(item.leadName, undefined);
+    assert.equal(item.ownerEmail, undefined);
+    assert.ok(item.id && item.name && item.slug);
+  }
+  const payload = JSON.stringify(listed.body);
+  assert.equal(payload.includes("traveler@example.invalid"), false);
+  const password = "ZettazPlatform!test12";
+  await upsertPlatformAdmin(admin, password);
+  const signed = await request(app.getHttpServer())
+    .post("/auth/v1/sign-in")
+    .send({ email: "systemadmin@zettaz.com", password });
+  assert.equal(signed.status, 201, JSON.stringify(signed.body));
+  assert.equal(signed.body.platform, true);
+  const session = await get("/staff/v1/workspace/session", signed.body.token);
+  assert.equal(session.status, 200, JSON.stringify(session.body));
+  assert.equal(session.body.role, "platform");
+  assert.equal(session.body.tenant.name, "Zettaz");
+  assert.equal(session.body.actorEmail, "systemadmin@zettaz.com");
+  const fromPassword = await get("/platform/v1/tenants", signed.body.token);
+  assert.equal(fromPassword.status, 200, JSON.stringify(fromPassword.body));
+  assert.equal((await get("/platform/v1/overview", a.token)).status, 403);
+  const overview = await get("/platform/v1/overview", platform);
+  assert.equal(overview.status, 200, JSON.stringify(overview.body));
+  assert.ok(overview.body.tenants_total >= 2);
+  assert.equal(overview.body.outbox_pending, 0);
+  const one = await get(`/platform/v1/tenants/${a.tenantId}`, platform);
+  assert.equal(one.status, 200, JSON.stringify(one.body));
+  assert.equal(one.body.slug, "mock-harbor");
+  assert.equal(one.body.payload, undefined);
+  assert.ok(Array.isArray(one.body.features));
+  assert.ok(one.body.limits && typeof one.body.limits === "object");
+  assert.ok(!JSON.stringify(one.body).includes("traveler@example.invalid"));
+  const health = await get("/platform/v1/health", platform);
+  assert.equal(health.status, 200, JSON.stringify(health.body));
+  assert.ok(Array.isArray(health.body.items));
+  for (const item of health.body.items) {
+    assert.equal(item.kind, "inbox");
+    assert.equal(item.payload, undefined);
+    assert.equal(item.failure_reason, undefined);
+  }
+  const extended = await post(
+    `/platform/v1/tenants/${a.tenantId}/subscription`,
+    platform,
+    { action: "extend_trial", days: 7, reason: "Test extra trial days" },
+  );
+  assert.equal(extended.status, 201, JSON.stringify(extended.body));
+  assert.equal(extended.body.subscription_status, "trial");
+  const suspended = await post(
+    `/platform/v1/tenants/${a.tenantId}/subscription`,
+    platform,
+    { action: "suspend", reason: "Test suspend" },
+  );
+  assert.equal(suspended.status, 201, JSON.stringify(suspended.body));
+  assert.equal(suspended.body.subscription_status, "suspended");
+  const resumed = await post(
+    `/platform/v1/tenants/${a.tenantId}/subscription`,
+    platform,
+    { action: "resume", reason: "Test resume" },
+  );
+  assert.equal(resumed.status, 201, JSON.stringify(resumed.body));
+  assert.equal(resumed.body.subscription_status, "trial");
+  assert.equal(
+    (await post(`/platform/v1/tenants/${a.tenantId}/subscription`, a.token, {
+      action: "suspend",
+    })).status,
+    403,
+  );
+  const activity = await get("/platform/v1/activity", platform);
+  assert.equal(activity.status, 200, JSON.stringify(activity.body));
+  assert.ok(
+    activity.body.items.some(
+      (item: { action: string }) => item.action === "tenant.created",
+    ),
+    JSON.stringify(activity.body),
+  );
+  for (const item of activity.body.items) {
+    assert.equal(item.before_data, undefined);
+    assert.equal(item.after_data, undefined);
+  }
+  const mine = await get("/platform/v1/support-access", platform);
+  assert.equal(mine.status, 200, JSON.stringify(mine.body));
+  assert.ok(Array.isArray(mine.body.items));
 });
 
 test("tenant invitations create access only after the recipient activates with a password", async () => {

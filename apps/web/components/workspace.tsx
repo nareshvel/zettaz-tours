@@ -38,6 +38,7 @@ import {
   useResource,
 } from "@/lib/client";
 import { Loading, Notice } from "./common";
+import { PlatformConsole } from "./platform";
 import { LegalPage } from "./legal";
 import { Entry, Signup, VerifyEmail } from "./auth";
 import {
@@ -94,7 +95,7 @@ function normalizeBootstrap(value: Session | null): Session | null {
     actorName:
       value.actorName ||
       value.tenant.authorized_contact?.name ||
-      "Tenant owner",
+      (value.role === "platform" ? "Platform administrator" : "Tenant owner"),
     actorEmail:
       value.actorEmail ||
       value.tenant.authorized_contact?.email ||
@@ -345,10 +346,12 @@ export function Workspace({
       setSession(normalizeSession(data.session ?? null));
       if (data.tenants) setTenants(data.tenants);
       router.replace(
-        data.session?.permissions?.includes("crew.trip.read") &&
-          !data.session?.permissions?.includes("bookings.read")
-          ? "/crew"
-          : "/",
+        data.session?.role === "platform"
+          ? "/"
+          : data.session?.permissions?.includes("crew.trip.read") &&
+              !data.session?.permissions?.includes("bookings.read")
+            ? "/crew"
+            : "/",
       );
     } catch (e) {
       setError((e as Error).message);
@@ -369,13 +372,49 @@ export function Workspace({
       setLoading(false);
     }
   }
+  async function returnToPlatform() {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resumePlatform: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(errorText(data));
+      setSession(normalizeSession(data.session ?? null));
+      router.replace("/");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
   setTenantContext(
-    session ? { id: session.tenant.id, name: session.tenant.name } : null,
+    session && session.role !== "platform"
+      ? { id: session.tenant.id, name: session.tenant.name }
+      : null,
   );
-  // Set alongside the tenant context and before anything renders, so every
-  // money() and date helper in the tree formats the tenant's way without each
-  // call site having to pass the config down.
-  setFormatContext(session ? session.tenant.config : null);
+  setFormatContext(
+    session && session.role !== "platform" ? session.tenant.config : null,
+  );
+  if (path === "/terms") return <LegalPage doc="terms" />;
+  if (path === "/privacy") return <LegalPage doc="privacy" />;
+  if (session?.role === "platform") {
+    return (
+      <PlatformConsole
+        session={session}
+        loading={loading}
+        error={error}
+        logout={() => void logout()}
+        onSupportSession={(next) => {
+          setSession(normalizeSession(next));
+          router.replace("/");
+        }}
+      />
+    );
+  }
   if (loading && !session) {
     return (
       <main className="workspace-boot" aria-busy="true">
@@ -384,8 +423,6 @@ export function Workspace({
     );
   }
   // Public marketing / legal / signup pages — accessible without a session
-  if (path === "/terms") return <LegalPage doc="terms" />;
-  if (path === "/privacy") return <LegalPage doc="privacy" />;
   if (path === "/signup") return <Signup />;
   if (path === "/verify-email") return <VerifyEmail />;
 
@@ -851,7 +888,7 @@ export function Workspace({
             <ShieldCheck size={17} />
             <strong>Zettaz support access</strong>
             <span>{session.supportAccess.purpose}</span>
-            <span suppressHydrationWarning>
+            <span className="support-access-expiry" suppressHydrationWarning>
               Expires{" "}
               {new Intl.DateTimeFormat("en", {
                 timeZone: session.tenant.timezone,
@@ -859,6 +896,14 @@ export function Workspace({
                 timeStyle: "short",
               }).format(new Date(session.supportAccess.expires_at))}
             </span>
+            <button
+              type="button"
+              className="ghost support-access-resume"
+              disabled={loading}
+              onClick={() => void returnToPlatform()}
+            >
+              Return to platform
+            </button>
           </div>
         )}
         <main id="main" className="page" key={session.tenant.id + path}>

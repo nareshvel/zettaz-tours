@@ -16,6 +16,8 @@
     "dev": "npm run build && node --env-file=.env.development --env-file-if-exists=.env dist/apps/api/src/main.js",
     "db:migrate": "npm run build && node --env-file=.env.development --env-file-if-exists=.env dist/apps/api/scripts/migrate.js",
     "db:seed": "npm run build && node --env-file=.env.development --env-file-if-exists=.env dist/apps/api/scripts/seed.js",
+    "platform:admin": "npm run build && node --env-file=.env.development --env-file-if-exists=.env dist/apps/api/scripts/upsert-platform-admin.js",
+    "platform:admin:prod": "npm run build && node --env-file=.env.production dist/apps/api/scripts/upsert-platform-admin.js",
     "db:seed:reservations": "npm run build && node --env-file=.env.development --env-file-if-exists=.env dist/apps/api/scripts/seed-reservations.js",
     "workspace:dev": "npm run build && node --env-file=.env.development --env-file-if-exists=.env dist/apps/api/scripts/workspace.js",
     "demo": "npm run build && node --env-file-if-exists=.env.development --env-file-if-exists=.env dist/apps/api/scripts/demo.js",

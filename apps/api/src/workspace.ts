@@ -83,6 +83,58 @@ export class WorkspaceController {
   @Access("authenticated")
   session(@CurrentActor() actor: Actor) {
     return this.db.transaction(actor, async (tx) => {
+      if (actor.platform) {
+        const {
+          rows: [admin],
+        } = await tx.query(
+          "SELECT name,email FROM platform_users WHERE id=$1",
+          [actor.actorId],
+        );
+        return {
+          actorId: actor.actorId,
+          actorName: admin?.name ?? "Platform administrator",
+          actorEmail: admin?.email ?? "",
+          actorPhone: null,
+          role: actor.role,
+          permissions: actor.permissions,
+          supportAccess: null,
+          tenant: {
+            id: "00000000-0000-0000-0000-000000000000",
+            name: "Zettaz",
+            timezone: "UTC",
+            version: 0,
+            config: {
+              supportedLocales: ["en"],
+              locale: "en",
+              dateFormat: "DD/MM/YYYY",
+              timeFormat: "12h",
+              weekStartsOn: 1,
+              numberFormat: "comma_decimal",
+              measurementSystem: "metric",
+              bookingCurrency: "USD",
+              collectionCurrency: "USD",
+              reportingCurrency: "USD",
+              holdSeconds: 1800,
+              minimumPaidPercent: 100,
+              taxBasisPoints: 0,
+              taxInclusive: false,
+              allowUnresolvedPickup: false,
+              allowAmendmentBalance: true,
+              overbookPolicy: "authorized",
+              manualPaymentMethods: ["cash"],
+              bookingSources: ["phone"],
+              documentStorage: {
+                hotProvider: "filesystem",
+                archiveProvider: "none",
+                hotRetentionDays: 7,
+              },
+              documentLibrary: { quotaBytes: 1073741824 },
+            },
+            is_mock: false,
+            logo_path: null,
+          },
+        };
+      }
       const {
         rows: [staff],
       } =

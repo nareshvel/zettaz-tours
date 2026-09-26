@@ -1,7 +1,7 @@
 # Zettaz Crew — delivery plan
 
-**Updated:** 19 September 2026  
-**Status:** Owner-accepted 17 September 2026. Phases 1–4 on production (`cad0ed8`). Store binaries 19 Sep: iOS App Store Connect `6813693098` 1.0.1 (2); Play Internal 1.0.1/2. **Phase 5 reopened 19 Sep for guest kiosk lock only.** GPS, card-present, push, white-label, and a consumer app stay gated.  
+**Updated:** 22 September 2026  
+**Status:** Owner-accepted 17 September 2026. Phases 1–4 on production (`cad0ed8`). Store: Apple **rejected 1.0 (2)** 21 Sep for **5.1.2(i)** (privacy labels, not missing ATT) — [crew-app-store-5.1.2-tracking.md](../ISSUES_FIXES/crew-app-store-5.1.2-tracking.md). Play Internal 1.0.1/2. **Phase 5 guest kiosk** engineering exists; GPS, card-present, push, white-label, and a consumer app stay gated.  
 **Audience:** owner + any IDE agent  
 **Scope authority:** [launch-contract.md](launch-contract.md) · **epic:** E08/E07 in [delivery.md](delivery.md) · **facade:** [crew-mobile-facade.md](../FEATURES/operations/crew-mobile-facade.md)
 

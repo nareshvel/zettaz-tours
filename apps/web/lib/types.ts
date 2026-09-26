@@ -17,6 +17,27 @@ export {
   EMERGENCY_RELATIONSHIP_OPTIONS,
   EMERGENCY_RELATIONSHIP_OTHER,
 } from "../../../packages/shared/src/contracts";
+export type SessionTenant = {
+  id: string;
+  name: string;
+  timezone: string;
+  version: number;
+  config: TenantConfig;
+  is_mock: boolean;
+  logo_path?: string | null;
+  business_profile?: {
+    displayName: string;
+    streetAddress: string;
+    suite: string;
+    city: string;
+    stateParish: string;
+    postalCode: string;
+    country: string;
+    email: string;
+    phone: string;
+  };
+  authorized_contact?: { name: string; email: string; phone: string };
+};
 export type Session = {
   actorId: string;
   actorName: string;
@@ -30,27 +51,7 @@ export type Session = {
     permissions: string[];
     expires_at: string;
   } | null;
-  tenant: {
-    id: string;
-    name: string;
-    timezone: string;
-    version: number;
-    config: TenantConfig;
-    is_mock: boolean;
-    logo_path?: string | null;
-    business_profile?: {
-      displayName: string;
-      streetAddress: string;
-      suite: string;
-      city: string;
-      stateParish: string;
-      postalCode: string;
-      country: string;
-      email: string;
-      phone: string;
-    };
-    authorized_contact?: { name: string; email: string; phone: string };
-  };
+  tenant: SessionTenant;
 };
 export type DemoTenant = { tenantId: string; name: string; email: string };
 export type Product = {

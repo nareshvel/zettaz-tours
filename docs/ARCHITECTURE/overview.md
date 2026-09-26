@@ -62,15 +62,16 @@ Details: [003-tenancy.md](../DECISIONS/003-tenancy.md).
 
 ## Identity partitions
 
-Three principal types. Do not hang them off one `users` table with a type flag and shared passwords.
+Four principal types. Do not hang them off one `users` table with a type flag and shared passwords.
 
 | Principal | Authenticates as | Sees |
 | --- | --- | --- |
 | Tenant staff | Tenant membership + RBAC | That tenant’s operations |
 | Partner user | Partner organization membership (Track B portal) | Own organization only |
 | Customer | Magic link / optional account | Own bookings only |
+| Platform admin | `platform_users` session | Platform console; tenant records only via support grant |
 
-Platform admins are a fourth, Zettaz-scoped principal with audited support mode — not a tenant role.
+Platform admins are Zettaz-scoped with audited support mode — not a tenant role. Track A console: [platform-console.md](../FEATURES/platform-console.md).
 
 Details: [005-identity-partitions.md](../DECISIONS/005-identity-partitions.md).
 

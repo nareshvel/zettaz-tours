@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import {
   problemMessage,
+  platformParkCookie,
   sessionCookie,
   sessionCookieOptions,
   unavailable,
@@ -45,6 +46,78 @@ export async function POST(request: Request) {
   try {
     const input = await request.json();
     const existing = (await cookies()).get(sessionCookie)?.value;
+    if (input.resumePlatform === true) {
+      const parked = (await cookies()).get(platformParkCookie)?.value;
+      if (!parked)
+        return Response.json(
+          { message: "No platform session to resume." },
+          { status: 400 },
+        );
+      const res = await upstream("/staff/v1/workspace/session", {}, parked);
+      if (!res.ok)
+        return Response.json(
+          { message: "Platform session could not be resumed." },
+          { status: 401 },
+        );
+      const session = await res.json();
+      if (session.role !== "platform")
+        return Response.json(
+          { message: "Parked session is not a platform administrator." },
+          { status: 401 },
+        );
+      if (existing)
+        await upstream("/auth/v1/sign-out", { method: "POST" }, existing);
+      const jar = await cookies();
+      jar.set(sessionCookie, parked, sessionCookieOptions());
+      jar.delete({
+        name: platformParkCookie,
+        path: "/",
+        secure: Boolean(process.env.WEB_ORIGIN?.startsWith("https://")),
+      });
+      return Response.json(
+        { session, tenants: [] },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    if (typeof input.grantId === "string") {
+      if (!existing)
+        return Response.json({ message: "Sign in required." }, { status: 401 });
+      const used = await upstream(
+        `/platform/v1/support-access/${input.grantId}/use`,
+        { method: "POST", body: "{}" },
+        existing,
+      );
+      if (!used.ok) {
+        const body = await used.json().catch(() => ({}));
+        return Response.json(
+          {
+            message: problemMessage(
+              body,
+              "Support grant is unavailable or expired.",
+            ),
+          },
+          { status: used.status === 403 ? 403 : 400 },
+        );
+      }
+      const issued = await used.json();
+      const res = await upstream(
+        "/staff/v1/workspace/session",
+        {},
+        issued.token,
+      );
+      if (!res.ok)
+        return Response.json(
+          { message: "Support session could not be established." },
+          { status: 401 },
+        );
+      const jar = await cookies();
+      jar.set(platformParkCookie, existing, sessionCookieOptions());
+      jar.set(sessionCookie, issued.token, sessionCookieOptions());
+      return Response.json(
+        { session: await res.json(), tenants: [] },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
     // _rawToken: set directly after self-registration (no additional auth call needed)
     if (input._rawToken) {
       const res = await upstream(
@@ -143,6 +216,7 @@ export async function DELETE(request: Request) {
     );
   try {
     const current = (await cookies()).get(sessionCookie)?.value;
+    const parked = (await cookies()).get(platformParkCookie)?.value;
     if (current)
       await upstream(
         new URL(request.url).searchParams.get("all") === "true"
@@ -151,11 +225,19 @@ export async function DELETE(request: Request) {
         { method: "POST" },
         current,
       );
+    if (parked && parked !== current)
+      await upstream("/auth/v1/sign-out", { method: "POST" }, parked);
   } finally {
+    const secure = Boolean(process.env.WEB_ORIGIN?.startsWith("https://"));
     (await cookies()).delete({
       name: sessionCookie,
       path: "/",
-      secure: Boolean(process.env.WEB_ORIGIN?.startsWith("https://")),
+      secure,
+    });
+    (await cookies()).delete({
+      name: platformParkCookie,
+      path: "/",
+      secure,
     });
   }
   return Response.json({ ok: true });

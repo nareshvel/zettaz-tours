@@ -68,11 +68,11 @@ Legend: **Y** = proposed preset grant within tenant scope; **L** = constrained a
 
 ## Platform permissions (separate façade)
 
-- `platform.tenant.provision/read/status.manage`: tenant metadata and controlled lifecycle, not routine access to guest records.
-- `platform.support.grant/use/revoke`: explicit target tenant, purpose, expiry, allowed actions, requester/approver and full audit. Proposed default is read-only with separately approved elevated actions.
-- `platform.connector.release`: engineering rollout controls; cannot certify an unavailable provider or override merchant capability checks.
-- `platform.billing.read/manage` (E16): Zettaz subscription facts; cannot refund guest bookings.
-- `platform.audit.read`: platform events; sensitive tenant evidence still requires a scoped grant.
+- `platform.tenant.provision/read/status.manage`: tenant metadata and controlled lifecycle, not routine access to guest records. Implemented session grants: `tenant.provision`, `platform.tenant.read` (also used for Overview, Health, Activity reads).
+- `platform.support.grant/use/revoke`: explicit target tenant, purpose, expiry, allowed actions, requester/approver and full audit. Implemented: `platform.support.request`, `platform.support.use`. Tenant owners approve/revoke. Proposed default is read-only with separately approved elevated actions.
+- `platform.connector.release`: engineering rollout controls; cannot certify an unavailable provider or override merchant capability checks. **Not implemented.**
+- `platform.billing.read/manage` (E16): Zettaz subscription facts; cannot refund guest bookings. **Not implemented** (Track B / E16).
+- `platform.audit.read`: platform events; sensitive tenant evidence still requires a scoped grant. Track A Activity uses `platform.tenant.read` and only `tenant.created` / `support_access.*` rows.
 
 The policy for who approves support grants and emergency access is an E01 decision. Do not seed standing cross-tenant support access.
 

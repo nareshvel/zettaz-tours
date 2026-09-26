@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { Database } from "./database";
 import { Access, AuthGuard, ProblemFilter } from "./http";
 import { PlatformController, TenantController, TenantService } from "./tenant";
+import { PlatformOpsController } from "./platform";
 import { CatalogController, CatalogService } from "./catalog";
 import { InventoryController, InventoryService } from "./inventory";
 import { FinanceService } from "./finance";
@@ -63,7 +64,7 @@ import {
 class DatabaseModule {}
 @Module({
   providers: [TenantService, LimitsService],
-  controllers: [PlatformController, TenantController],
+  controllers: [PlatformController, PlatformOpsController, TenantController],
   exports: [TenantService, LimitsService],
 })
 class TenantModule {}

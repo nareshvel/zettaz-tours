@@ -80,6 +80,13 @@ export class SupportService {
       ).rows,
     }));
   }
+  listMine(actor: Actor) {
+    if (!actor.platform) throw new ForbiddenException();
+    return this.db.transaction(actor, async (tx) => ({
+      items: (await tx.query("SELECT * FROM list_platform_support_access()"))
+        .rows,
+    }));
+  }
   decision(actor: Actor, grantId: string, key: string, raw: unknown) {
     if (actor.role !== "owner")
       throw new ForbiddenException(
@@ -196,6 +203,11 @@ export class SupportService {
 @Controller("platform/v1/support-access")
 export class PlatformSupportController {
   constructor(private readonly service: SupportService) {}
+  @Get() @Access("platform.support.request") mine(
+    @CurrentActor() actor: Actor,
+  ) {
+    return this.service.listMine(actor);
+  }
   @Post("requests") @Access("platform.support.request") request(
     @CurrentActor() actor: Actor,
     @Body() body: unknown,

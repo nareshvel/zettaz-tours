@@ -2,14 +2,14 @@
 
 Keep under 200 lines. Update after sessions that change standing decisions.
 
-**Last updated:** 2026-09-20
+**Last updated:** 2026-09-22
 
 ## Current focus (agents)
 
 - **Sprint board:** [../HANDOFF/agent-current-sprint.md](../HANDOFF/agent-current-sprint.md) — prefer over chat history.
-- **Owner priority (20 Sep):** Assets + Staff on `origin/main` (`95cd044`). **Subscription** (Zettaz SaaS / Stripe Billing) and **Zettaz Pay** (Connect traveler collections) stay two Stripe accounts, two keys, two webhooks. **Pay Stripe platform activation is owner-later**; Settings shows waiting, not a Dashboard URL. GPS/Terminal/push still gated. **Hold** finance cashbook.
+- **Owner priority (22 Sep):** Unblock **Zettaz Crew** App Review **5.1.2(i)** — privacy labels said tracking; the app does not track. Do not add ATT. [crew-app-store-5.1.2-tracking.md](../ISSUES_FIXES/crew-app-store-5.1.2-tracking.md). **Platform console** paused until the owner reopens it. **Zettaz Pay** activation owner-later. GPS/Terminal/push gated. **Hold** finance cashbook.
 - **In progress (15 Sep):** Tenant settings pass — printing, waivers, integrations, localization, sidebar. See the 15 September section below.
-- **Crew app (17–19 Sep):** Phases 1–4 on production. Phase 5.1 guest kiosk + Phase 3.5 server-PDF share 19 Sep. Rebuild EAS; 4.8 + kiosk PIN cycle are owner.
+- **Crew app (22 Sep):** App Review **5.1.2(i)** — fix privacy labels, no ATT. Phases 1–4 remain on production. GPS/Terminal/push gated.
 - **Deploy:** VPS at tip `cad0ed8` via `./deploy.sh` (migrations through **089**, Pending: 0). `origin/main` `0acc028` not yet on VPS.
 - Claude paste brief: [../HANDOFF/claude-handoff-2026-09-14.md](../HANDOFF/claude-handoff-2026-09-14.md).
 

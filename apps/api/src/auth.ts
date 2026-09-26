@@ -123,30 +123,53 @@ export class AuthController {
     } = await this.db.pool.query("SELECT * FROM staff_login_identity($1)", [
       input.email,
     ]);
-    const valid =
+    const staffValid =
       Boolean(identity) &&
       (await verifyPassword(input.password, identity?.password_hash ?? ""));
-    if (!identity || !valid) {
-      await this.db.pool.query("SELECT record_login_attempt($1,false)", [
+    if (identity && staffValid) {
+      // email_verified_at comes from staff_login_identity (SECURITY DEFINER);
+      // a direct staff_users SELECT fails under RLS during public sign-in.
+      if (!identity.email_verified_at) {
+        throw new UnauthorizedException(
+          "Please verify your email address before signing in. Check your inbox for a verification link.",
+        );
+      }
+      const { rows: tenants } = await this.db.pool.query(
+        "SELECT * FROM staff_login_tenants($1)",
+        [identity.actor_id],
+      );
+      const selected = input.tenantId
+        ? tenants.find((tenant) => tenant.tenant_id === input.tenantId)
+        : tenants[0];
+      if (!selected) {
+        await this.db.pool.query("SELECT record_login_attempt($1,false)", [
+          identityHash,
+        ]);
+        throw new UnauthorizedException("Email or password is incorrect.");
+      }
+      const value = token();
+      const { rows: issued } = await this.db.pool.query(
+        "SELECT issue_staff_session($1,$2,$3) AS issued",
+        [identity.actor_id, selected.tenant_id, digest(value)],
+      );
+      if (!issued[0]?.issued) throw new UnauthorizedException();
+      await this.db.pool.query("SELECT record_login_attempt($1,true)", [
         identityHash,
       ]);
-      throw new UnauthorizedException("Email or password is incorrect.");
+      return { token: value, tenantId: selected.tenant_id, tenants };
     }
-    // email_verified_at comes from staff_login_identity (SECURITY DEFINER);
-    // a direct staff_users SELECT fails under RLS during public sign-in.
-    if (!identity.email_verified_at) {
-      throw new UnauthorizedException(
-        "Please verify your email address before signing in. Check your inbox for a verification link.",
-      );
-    }
-    const { rows: tenants } = await this.db.pool.query(
-      "SELECT * FROM staff_login_tenants($1)",
-      [identity.actor_id],
-    );
-    const selected = input.tenantId
-      ? tenants.find((tenant) => tenant.tenant_id === input.tenantId)
-      : tenants[0];
-    if (!selected) {
+    const {
+      rows: [platformIdentity],
+    } = await this.db.pool.query("SELECT * FROM platform_login_identity($1)", [
+      input.email,
+    ]);
+    const platformValid =
+      Boolean(platformIdentity) &&
+      (await verifyPassword(
+        input.password,
+        platformIdentity?.password_hash ?? "",
+      ));
+    if (!platformIdentity || !platformValid) {
       await this.db.pool.query("SELECT record_login_attempt($1,false)", [
         identityHash,
       ]);
@@ -154,14 +177,14 @@ export class AuthController {
     }
     const value = token();
     const { rows: issued } = await this.db.pool.query(
-      "SELECT issue_staff_session($1,$2,$3) AS issued",
-      [identity.actor_id, selected.tenant_id, digest(value)],
+      "SELECT issue_platform_session($1,$2) AS issued",
+      [platformIdentity.actor_id, digest(value)],
     );
     if (!issued[0]?.issued) throw new UnauthorizedException();
     await this.db.pool.query("SELECT record_login_attempt($1,true)", [
       identityHash,
     ]);
-    return { token: value, tenantId: selected.tenant_id, tenants };
+    return { token: value, platform: true, tenants: [] };
   }
 
   @Post("invitations/accept")
@@ -222,7 +245,9 @@ export class AuthController {
     await this.db.pool.query(
       actor.role === "support"
         ? "SELECT revoke_support_session($1)"
-        : "SELECT revoke_staff_session($1)",
+        : actor.platform
+          ? "SELECT revoke_platform_session($1)"
+          : "SELECT revoke_staff_session($1)",
       [tokenHash],
     );
     return { ok: true };
@@ -232,7 +257,9 @@ export class AuthController {
   @Access("authenticated")
   async signOutAll(@CurrentActor() actor: Actor) {
     const { rows } = await this.db.pool.query(
-      "SELECT revoke_all_staff_sessions($1) AS revoked",
+      actor.platform
+        ? "SELECT revoke_all_platform_sessions($1) AS revoked"
+        : "SELECT revoke_all_staff_sessions($1) AS revoked",
       [actor.actorId],
     );
     return { ok: true, revoked: rows[0]?.revoked ?? 0 };

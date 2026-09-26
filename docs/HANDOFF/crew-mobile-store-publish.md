@@ -1,17 +1,19 @@
 # Crew mobile store publish
 
-**Updated:** 19 September 2026  
+**Updated:** 22 September 2026  
 **Audience:** owner + agent preparing TestFlight / Play Internal, then unlisted production
 
 Zettaz Crew is a **staff-only** connected check-in app. Do not list it as a consumer booking app. Preferred production shape: Apple **Unlisted** (or Custom App) + Google Play **Internal / Closed** testing.
 
-## Status (19 Sep 2026)
+## Status (22 Sep 2026)
+
+Apple **rejected** App Store version **1.0 (2)** on 21 Sep — guideline **5.1.2(i)**. The listing said the app tracks (Device ID, location, User ID). The binary does **not** track. Owner action: App Privacy + Resolution Center. Do not add ATT. [crew-app-store-5.1.2-tracking.md](../ISSUES_FIXES/crew-app-store-5.1.2-tracking.md).
 
 | Track | Status |
 | --- | --- |
 | Expo | `@zettazglobal/zettaz-crew` · `06c5ee72-752e-4e24-8519-a148f57b84d3` |
-| iOS | **Uploaded** 1.0.1 (2) to App Store Connect **6813693098**. Fill listing / Unlisted / review as needed. |
-| Android | **Internal testing live** — release **2 (1.0.1)** on `com.zettaz.crew`. Manual AAB (no Play service-account JSON). |
+| iOS | **Rejected** 1.0 (2) / ASC **6813693098** — privacy questionnaire, not a missing ATT SDK |
+| Android | **Internal testing live** — release **2 (1.0.1)** on `com.zettaz.crew`. Manual AAB (no Play service-account JSON). Align Play Data safety: **no tracking**, **no location**. |
 | Preview | Internal APK/IPA: Android `6b84a7dc-…` · iOS `b1a161d9-…` |
 
 Production AAB (versionCode **2**):  
@@ -106,16 +108,20 @@ No photos are stored. The camera is used only to read an opaque check-in QR code
 
 ## Data safety / privacy nutrition (connected 1.0)
 
-| Data | Collected | Linked to identity | Purpose |
-| --- | --- | --- | --- |
-| Email | Yes (sign-in) | Yes | Account |
-| Name (guest/signer) | Yes (roster + waiver) | Yes | Operations |
-| Signatures (stroke vectors) | Yes | Yes | Waiver evidence |
-| Photos / camera roll | No | — | Camera preview only; no image saved |
-| Precise location | No | — | — |
-| Payment info | Manual cash/method amounts only; no card numbers | Yes | Boarding collection |
-| Device PIN / biometrics | Unlock only; not sent to server | No | Offline lock |
-| Advertising ID | No | — | — |
+**Tracking (Apple 5.1.2 / Play “data used to track”): No.** Never mark Device ID, User ID, or location as used for tracking. Precise/coarse location are **not** collected.
+
+| Data | Collected | Linked to identity | Used for tracking | Purpose |
+| --- | --- | --- | --- | --- |
+| Email | Yes (sign-in) | Yes | No | Account |
+| Name (guest/signer) | Yes (roster + waiver) | Yes | No | Operations |
+| User ID | Yes (staff/tenant) | Yes | No | Account |
+| Device ID | Offline enrollment UUID only; not IDFA | Yes | No | App functionality |
+| Signatures (stroke vectors) | Yes | Yes | No | Waiver evidence |
+| Photos / camera roll | No | — | — | Camera preview only; no image saved |
+| Precise / coarse location | No | — | — | Pickup “location” is a catalog stop name |
+| Payment info | Manual cash/method amounts only; no card numbers | Yes | No | Boarding collection |
+| Device PIN / biometrics | Unlock only; not sent to server | No | No | Offline lock |
+| Advertising ID | No | — | — | — |
 
 Encryption in transit: HTTPS. Encryption at rest: OS secure storage for the session token. `ITSAppUsesNonExemptEncryption` is false (HTTPS + OS keychain only).
 

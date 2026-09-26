@@ -14,6 +14,7 @@ Test plans, golden datasets, and acceptance evidence. Launch-blocking criteria t
 - [Print/PDF and connected crew](print-and-mobile-evidence.md)
 - [Crew passenger waiver online](crew-waiver-online-evidence.md)
 - [Crew mobile store readiness](crew-mobile-store-readiness-evidence.md)
+- [Crew App Store 5.1.2(i) tracking labels](../ISSUES_FIXES/crew-app-store-5.1.2-tracking.md)
 - [Catalog and departures foundation](catalog-departures-evidence.md)
 - [Day Board polish](day-board-polish-evidence.md)
 - [Manifest boarding polish](manifest-boarding-polish-evidence.md)
@@ -25,3 +26,4 @@ Test plans, golden datasets, and acceptance evidence. Launch-blocking criteria t
 - [Tenant settings polish](tenant-settings-polish-evidence.md)
 - [Profile polish](profile-polish-evidence.md)
 - [Subscription polish](subscription-polish-evidence.md)
+- [Platform console](platform-console-evidence.md)

@@ -70,7 +70,7 @@ Metric contract: each widget states date basis (booking/travel/payment/receipt),
 
 ## Platform console boundary
 
-Track A minimum: **Tenants** (provisioning/setup status), **Support access** (request/use/revoke), **Integration health** (redacted operational failures), **Platform audit**. Platform dashboard shows tenant setup and service/reconciliation issues without guest names, waiver evidence or booking-level financial drill-down absent a grant.
+Track A minimum (shipped 20 September 2026): dedicated shell after platform sign-in — **Overview**, **Tenants** (list, record, provision; local trial extend/suspend), **Support** (request/use), **Health** (redacted connector inbox), **Activity** (provision, support-access, and local subscription audit), **Account**. Support resume parks the platform cookie. No guest names, waiver evidence, or booking-level financial drill-down without a grant. Specification: [platform-console.md](../FEATURES/platform-console.md).
 
 Track B: **Plans & subscriptions**, billing failures and entitlement administration, self-service onboarding controls and SaaS reports. Platform subscription revenue never mixes with gross tenant booking value.
 

@@ -2,6 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 
 export const sessionCookie = "zettaz_session";
+export const platformParkCookie = "zettaz_platform_session";
 function apiBase() {
   const value = process.env.API_BASE_URL;
   if (!value) throw new Error("API_BASE_URL is not configured");

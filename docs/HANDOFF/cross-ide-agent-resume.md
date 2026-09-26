@@ -1,6 +1,6 @@
 # Cross-IDE agent resume guide
 
-**Updated:** 19 September 2026  
+**Updated:** 22 September 2026  
 **Audience:** ChatGPT Codex, Cursor, Claude, Devin, or another IDE agent continuing this project
 
 This file is the portable resume packet for Zettaz Tours & Charters. Use it when work moves between tools, then update it when a session changes the implementation state, task order, or a standing decision.
@@ -28,7 +28,9 @@ Stack is locked: NestJS modular monolith, Next.js workspace, Expo crew app, Post
 ## Current implementation state
 
 - Persistent local PostgreSQL is the normal development database.
-- Repo migrations exist through **`089_crew_captain_roles.sql`**. Production migrate via `./deploy.sh` → `db:migrate:prod`. Sign-in email verification under RLS: migration `061` + [../ISSUES_FIXES/signin-email-verified-rls.md](../ISSUES_FIXES/signin-email-verified-rls.md).
+- Repo migrations exist through **`097_platform_health_and_subscription.sql`** locally. Production migrate via `./deploy.sh` → `db:migrate:prod` (confirm applied SHA; prod was through **089** on 19 Sep). Sign-in email verification under RLS: migration `061` + [../ISSUES_FIXES/signin-email-verified-rls.md](../ISSUES_FIXES/signin-email-verified-rls.md).
+- Platform console Track A: [../FEATURES/platform-console.md](../FEATURES/platform-console.md). **Paused 22 Sep** until the owner reopens (visual + prod **095**–**097**). Seed `systemadmin@zettaz.com` after **095**. Parked cookie `zettaz_platform_session` resumes after a support grant.
+- **Crew App Store:** rejected 21 Sep **5.1.2(i)**. Fix App Privacy (no tracking), do not add ATT. [crew-app-store-5.1.2-tracking.md](../ISSUES_FIXES/crew-app-store-5.1.2-tracking.md).
 - Owner ran a full VPS `./deploy.sh` on 19 Sep. Confirm checkout SHA on the box. 19 Sep settings polish may still be local-only until push.
 - Production demo (`tours.zettaz.com`): tenant `f6e566ce-…`; deploy notes in [deploy.md](deploy.md) and [demo-tenant-export.md](demo-tenant-export.md).
 - **Ops pickups (14 September 2026) closed:** Plan pickups Phase 1, Print list polish, Settings → Pickup locations (Esri map, tenant city/country default), demo multi-stop seed. See [../FEATURES/operations/pickup-disposition-and-plans.md](../FEATURES/operations/pickup-disposition-and-plans.md) and [../TESTING/pickup-location-modal-and-print-evidence.md](../TESTING/pickup-location-modal-and-print-evidence.md).
@@ -37,13 +39,12 @@ Stack is locked: NestJS modular monolith, Next.js workspace, Expo crew app, Post
 
 ## Current task sequence
 
-See [agent-current-sprint.md](agent-current-sprint.md). Short form (19 Sep):
+See [agent-current-sprint.md](agent-current-sprint.md). Short form (22 Sep):
 
-1. **Crew store binaries** iOS ASC `6813693098` 1.0.1 (2); Play Internal 1.0.1/2. Engineering Phases 1–4 on production. Owner: Unlisted/review notes, screenshots, **4.8 airplane-mode**.
-2. **Phase 5.1 guest kiosk** + Crew **Share PDF** (pickup/receipt) engineering 19 Sep. GPS, Terminal, push, white-label still gated. GPS possible expansion (held): [crew-gps-later.md](../STRATEGY/crew-gps-later.md). Next engineering is gated unless testing finds a Crew defect; owner visual + 4.8 + EAS.
+1. **Crew App Store 5.1.2(i)** — update App Privacy (Tracking = No). Same binary is enough unless Apple asks for a new IPA. Next EAS includes `NSPrivacyTracking: false`.
+2. **Platform console paused.** Do not expand until the owner reopens.
 3. **Operations menu group closed** pending further testing.
-4. **Customers / Audit / Document library** polish (owner visual outstanding). 19 Sep admin/finance/settings polish is local (`f40fb94` plus Localization/integrations/stays). Agent polish sequence complete unless owner names a surface. Owner visual outstanding.
-5. **Subscription messaging implemented 19 Sep.** **Hold** finance money in/out later ([finance-money-in-out-later.md](../STRATEGY/finance-money-in-out-later.md)) and Crew GPS ([crew-gps-later.md](../STRATEGY/crew-gps-later.md)). Owner visual is the remaining web pass.
+4. GPS, Terminal, push, white-label still gated.
 
 Pasteable Claude brief: [claude-handoff-2026-09-14.md](claude-handoff-2026-09-14.md).
 

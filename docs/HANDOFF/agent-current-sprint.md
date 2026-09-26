@@ -1,6 +1,6 @@
 # Agent current sprint board
 
-**Updated:** 20 September 2026 · **Audience:** any IDE agent (Cursor, Claude, Codex, Devin, ChatGPT)
+**Updated:** 22 September 2026 · **Audience:** any IDE agent (Cursor, Claude, Codex, Devin, ChatGPT)
 
 This is the **single “what next” page**. Read it before inventing a deploy or backlog plan from chat history.
 
@@ -10,12 +10,12 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 
 ---
 
-## Owner priority (20 September 2026 — Assets then Staff & access; Subscription + Zettaz Pay after)
+## Owner priority (22 September 2026 — Crew App Store 5.1.2; platform console paused)
 
-1. **Crew app.** Phases 1–4 on production. **Phase 5.1 guest kiosk** and **Phase 3.5 Share PDF** engineering 19 Sep. GPS, card-present, push, white-label stay gated. Owner still: TestFlight/Unlisted notes, **4.8 airplane-mode**, kiosk PIN + Share PDF on iPad, new EAS.
+1. **Crew App Store.** Apple rejected **1.0 (2)** on 21 Sep for guideline **5.1.2(i)** (privacy labels say the app tracks; there is no ATT prompt). The app **does not track**. Owner: fix App Store Connect **App Privacy** (Tracking = No; no location; no tracking flags) and reply in Resolution Center. Do **not** add App Tracking Transparency. Runbook: [crew-app-store-5.1.2-tracking.md](../ISSUES_FIXES/crew-app-store-5.1.2-tracking.md). GPS, card-present, push, white-label stay gated.
 2. **Operations menu group** remains functionally complete pending testing. Do not open new Ops web feature work unless testing finds a bug.
-3. **Assets (was Fleet)** engineering + agent visual 20 Sep: kinds, identity sheet, papers list, add/view document modals, document count on rows, Edit/Remove icons, coverage warn, status filter default Active, nav/header rename, page intro removed. **Owner still clicks through on their machine.** Commit/push requested; production needs owner `./deploy.sh` (migration **093**).
-4. **Now:** **Zettaz Pay** Settings layout + waiting-on-platform state 20 Sep. Owner will activate the **Zettaz Pay** Stripe platform account later — do not retry merchant create until then. **Subscription** cycle toggle uses shared `.billing-cycle`. Still never share Stripe clients. 1% fee (`ZETTAZ_PAY_APPLICATION_FEE_BPS`). Do not start money-in-out Phases 2–4, Terminal, or QBO OAuth until named here.
+3. **Platform console** Track A engineering is **paused** (22 Sep) until the owner reopens it. Working tree already has Overview / Tenants / Support / Health / Activity / Account, health = connector inbox only, local trial extend/suspend. When resumed: owner visual, then prod migrate **095**–**097**, `PLATFORM_ADMIN_PASSWORD`, `npm run platform:admin:prod`. Do not expand platform billing admin, extra platform users, or mix Stripe clients in the meantime.
+4. **Zettaz Pay** activation remains owner-later. Still never share Stripe Billing and Connect keys. Do not start money-in-out Phases 2–4, Terminal, or QBO OAuth until named here.
 
 ---
 
@@ -52,7 +52,7 @@ Phased delivery: [crew-app-delivery.md](../STRATEGY/crew-app-delivery.md).
 
 **On production (`cad0ed8`):** Phases 1–4 including encrypted offline (088) and Crew/Captain roles (089).
 
-**Now:** owner deploys later local commits, builds a new EAS preview for kiosk + Share PDF, and runs 4.8 airplane-mode plus a kiosk PIN cycle. GPS / Terminal / push stay gated. Simulator/Expo Go is enough for kiosk layout and the share sheet (real AirPrint/camera still need a device).
+**Now:** Apple rejected store build **1.0 (2)** on 21 Sep (**5.1.2(i)**). Owner updates App Privacy + Resolution Center reply — [crew-app-store-5.1.2-tracking.md](../ISSUES_FIXES/crew-app-store-5.1.2-tracking.md). GPS / Terminal / push stay gated. 4.8 airplane-mode and kiosk PIN remain owner device work after the listing is unblocked.
 
 Evidence: [crew-app-phase-2-evidence.md](../TESTING/crew-app-phase-2-evidence.md), [crew-app-phase-3-evidence.md](../TESTING/crew-app-phase-3-evidence.md), [crew-app-phase-4-evidence.md](../TESTING/crew-app-phase-4-evidence.md).
 
@@ -113,8 +113,9 @@ Remaining in this group: owner visual on General & branding, Taxes & commercial,
 
 ## Held — do not start unless owner reopens
 
+- **Platform console** — Track A UI/API in the working tree (migrations **095**–**097**). Paused 22 Sep. Reopen for owner visual + prod migrate/seed, not new menus.
 - **Finance money in/out later** — Phase 1 expense payments shipped 19 Sep. Guest strip, partner remittance tile, bank registers still held: [finance-money-in-out-later.md](../STRATEGY/finance-money-in-out-later.md).
-- **Crew GPS later** — Connecteam-informed stamps / fences / trails: [crew-gps-later.md](../STRATEGY/crew-gps-later.md). Do not start until the owner reopens that file.
+- **Crew GPS later** — Connecteam-informed stamps / fences / trails: [crew-gps-later.md](../STRATEGY/crew-gps-later.md). Do not start until the owner reopens that file. Do **not** add ATT or GPS to answer App Review 5.1.2.
 - Dependency-blocked Track A: Stripe eligibility, XCD→USD rate, Rock printers, Rock waiver legal text, WP payload / import ID reconciliation
 - Track B: public checkout, reseller portal, GPS/ETAs, OTA cert, rich analytics — [launch-contract.md](../STRATEGY/launch-contract.md). GPS possible expansion (held): [crew-gps-later.md](../STRATEGY/crew-gps-later.md).
 
@@ -162,9 +163,10 @@ Not the current focus. When owner returns to platform/track work:
 | 3 | E06 Ops print | **Agent client + paper profiles shipped 15 Sep (ADR 018).** Left: live agent acceptance on real hardware; tenant-shared printer routing (needs agent-side job polling — `printer_routes` dormant); tenant-designed templates |
 | 4 | Comms | Tenant-editable templates, suppression, delivery webhooks |
 | 5 | Boarding money | Complimentary/prepaid flags, mixed allocation, per-passenger owed; crew-mobile Pay is Phase 2 of [crew-app-delivery.md](../STRATEGY/crew-app-delivery.md) |
-| 6 | E07/E08 Crew | See [crew-app-delivery.md](../STRATEGY/crew-app-delivery.md). Offline + retained waiver PDFs are Phase 4 / server, not the next epic |
-| 7 | E12/E13 | WP/OTA transforms (blocked on payload evidence) |
-| 8 | Cutover | Parallel run + Rock workbook sign-off |
+| 6 | E07/E08 Crew | **Now:** App Privacy 5.1.2(i) — [crew-app-store-5.1.2-tracking.md](../ISSUES_FIXES/crew-app-store-5.1.2-tracking.md). Then see [crew-app-delivery.md](../STRATEGY/crew-app-delivery.md). Offline + retained waiver PDFs are Phase 4 / server |
+| 7 | Platform console | Paused 22 Sep. Resume: owner visual, prod **095**–**097**, `platform:admin:prod`. Spec: [platform-console.md](../FEATURES/platform-console.md) |
+| 8 | E12/E13 | WP/OTA transforms (blocked on payload evidence) |
+| 9 | Cutover | Parallel run + Rock workbook sign-off |
 
 ---
 

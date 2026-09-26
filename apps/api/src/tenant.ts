@@ -3,6 +3,7 @@ import {
   Body,
   ConflictException,
   Controller,
+  ForbiddenException,
   Get,
   Headers,
   Injectable,
@@ -37,6 +38,7 @@ import {
 import { Database, digest, record, Tx } from "./database";
 import { sendStaffAccessInvite, smtpConfigured } from "./email";
 import { LimitsService } from "./limits";
+import { z } from "zod";
 import { Access, CurrentActor, keySchema, parse } from "./http";
 type UploadedLogo = {
   mimetype: string;
@@ -165,12 +167,12 @@ export class TenantService {
       });
       // Create trial subscription inside the same transaction so the whole
       // signup is atomic — if this fails, tenant + owner are rolled back too.
-      if (data.planId) {
-        await tx.query("SELECT create_trial_subscription($1,$2)", [
-          tenantId,
-          data.planId,
-        ]);
-      }
+      const planId =
+        data.planId ?? "3e595412-81e5-4c76-8216-25321d7ba56a";
+      await tx.query("SELECT create_trial_subscription($1,$2)", [
+        tenantId,
+        planId,
+      ]);
 
       return { tenantId, ownerId, isMock: true };
     });
@@ -774,11 +776,84 @@ export class TenantService {
 }
 @Controller("platform/v1/tenants")
 export class PlatformController {
-  constructor(private readonly service: TenantService) {}
+  constructor(
+    private readonly service: TenantService,
+    private readonly db: Database,
+  ) {}
+  @Get()
+  @Access("platform.tenant.read")
+  list(@CurrentActor() actor: Actor) {
+    if (!actor.platform) throw new ForbiddenException();
+    return this.db.transaction(actor, async (tx) => {
+      const { rows } = await tx.query(
+        `SELECT t.id, t.slug, t.name, t.timezone, t.created_at, t.is_mock,
+                s.plan_id, p.name AS plan_name, s.status AS subscription_status,
+                s.period_ends_at
+         FROM tenants t
+         LEFT JOIN tenant_subscriptions s ON s.tenant_id = t.id
+         LEFT JOIN subscription_plans p ON p.id = s.plan_id
+         ORDER BY t.created_at DESC, t.name`,
+      );
+      return { items: rows };
+    });
+  }
+  @Get(":id")
+  @Access("platform.tenant.read")
+  one(@CurrentActor() actor: Actor, @Param("id") tenantId: string) {
+    if (!actor.platform) throw new ForbiddenException();
+    const idValue = parse(id, tenantId);
+    return this.db.transaction(actor, async (tx) => {
+      const {
+        rows: [row],
+      } = await tx.query("SELECT * FROM platform_tenant_record($1)", [idValue]);
+      if (!row) throw new NotFoundException();
+      return row;
+    });
+  }
   @Post()
   @Access("tenant.provision")
   create(@CurrentActor() actor: Actor, @Body() body: unknown) {
     return this.service.create(actor, body);
+  }
+  @Post(":id/subscription")
+  @Access("tenant.provision")
+  subscription(
+    @CurrentActor() actor: Actor,
+    @Param("id") tenantId: string,
+    @Body() body: unknown,
+  ) {
+    if (!actor.platform) throw new ForbiddenException();
+    const idValue = parse(id, tenantId);
+    const input = parse(
+      z
+        .object({
+          action: z.enum(["extend_trial", "suspend", "resume"]),
+          days: z.number().int().optional(),
+          reason: z.string().trim().max(500).optional(),
+        })
+        .strict(),
+      body,
+    );
+    return this.db.transaction(actor, async (tx) => {
+      const {
+        rows: [result],
+      } = await tx.query("SELECT platform_adjust_subscription($1,$2,$3,$4,$5) AS value", [
+        idValue,
+        input.action,
+        input.days ?? null,
+        input.reason ?? "",
+        randomUUID(),
+      ]);
+      const value = result?.value as { ok?: boolean; message?: string };
+      if (!value?.ok)
+        throw new BadRequestException(
+          value?.message || "Subscription could not be updated",
+        );
+      const {
+        rows: [row],
+      } = await tx.query("SELECT * FROM platform_tenant_record($1)", [idValue]);
+      return row;
+    });
   }
 }
 @Controller("admin/v1")

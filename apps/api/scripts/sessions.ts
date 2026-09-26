@@ -40,11 +40,37 @@ export async function issueSession(
     );
   return token;
 }
+export const PLATFORM_ADMIN_ID = "1b91ecbf-54a5-4afc-b0a5-95192f0527d3";
+export const PLATFORM_ADMIN_EMAIL = "systemadmin@zettaz.com";
+
+export async function upsertPlatformAdmin(
+  admin: Pool,
+  password: string,
+  email = process.env.PLATFORM_ADMIN_EMAIL || PLATFORM_ADMIN_EMAIL,
+) {
+  const hash = await hashPassword(password);
+  await admin.query(
+    `INSERT INTO platform_users(id,name,email,password_hash)
+     VALUES($1,$2,$3,$4)
+     ON CONFLICT (id) DO UPDATE SET
+       name=EXCLUDED.name,
+       email=EXCLUDED.email,
+       password_hash=EXCLUDED.password_hash`,
+    [PLATFORM_ADMIN_ID, "Zettaz platform administrator", email, hash],
+  );
+}
+
 export async function bootstrapPlatform(admin: Pool) {
   const actorId = randomUUID();
-  await admin.query("INSERT INTO platform_users VALUES($1,$2)", [
-    actorId,
-    "Mock platform administrator",
-  ]);
+  const hash = await hashPassword("ZettazPlatform!test12");
+  await admin.query(
+    "INSERT INTO platform_users(id,name,email,password_hash) VALUES($1,$2,$3,$4)",
+    [
+      actorId,
+      "Mock platform administrator",
+      `platform-${actorId}@example.invalid`,
+      hash,
+    ],
+  );
   return issueSession(admin, actorId, null);
 }

@@ -8,7 +8,7 @@ Sources: [overview](overview.md), [launch contract](../STRATEGY/launch-contract.
 
 | Module / epic | Owns and provides | First slice | Remaining Track A | Deferred |
 | --- | --- | --- | --- | --- |
-| Tenant + identity / E01 | Provisioning, settings, staff memberships, RBAC, sessions, support grants | Tenant creation, staff authorization, two-tenant isolation | MFA, device/session management, audited support UI | Self-service onboarding, SSO |
+| Tenant + identity / E01 | Provisioning, settings, staff memberships, RBAC, sessions, support grants | Tenant creation, staff authorization, two-tenant isolation | MFA, device/session management | Self-service onboarding, SSO |
 | Governance / E01 foundation | Immutable audit and durable outbox infrastructure | Every mutation, retryable event delivery | Permissioned exports, retention, recovery evidence | Advanced compliance tooling |
 | Catalog + pricing / E02 | Product/option/category, schedule rules, rates, policies; price calculation | Shared tour, recurring departures, category/season pricing | One add-on, channel/contract override, blackouts | Promotions, dynamic/group pricing, charter quotes |
 | Availability / E03 | Capacity pools, holds, commit/release operations | Expiry and concurrent hold/confirm safety | One exclusive resource type, reasoned overbooking | Allotments, waitlists, multiple resource types |

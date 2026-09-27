@@ -16946,3 +16946,9 @@ a.finance-net-tile.finance-net-tile.unpaid {
 .catalog-metrics:not(.reservation-insights) > div {
   min-width: 0;
 }
+/* Variant: coloured edge on the left instead of the right */
+.catalog-metrics.edge-left > div {
+  border-right-width: 1px;
+  border-right-color: var(--line);
+  border-left: 4px solid var(--edge);
+}

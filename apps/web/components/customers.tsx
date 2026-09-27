@@ -115,7 +115,7 @@ export function Customers({ session }: { session: Session }) {
         description="Guests are matched by email. Open a record for linked bookings — purchaser and emergency contacts stay on each reservation."
       />
       <div
-        className="catalog-metrics reservation-insights"
+        className="catalog-metrics edge-left"
         aria-label="Loaded customer summary"
       >
         <div>

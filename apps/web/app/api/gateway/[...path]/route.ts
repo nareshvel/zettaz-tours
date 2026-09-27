@@ -13,7 +13,11 @@ async function handle(
   context: { params: Promise<{ path: string[] }> },
 ) {
   const path = (await context.params).path.join("/");
-  const reportRead = request.method === "GET" && path === "reports/v1/overview";
+  const reportRead =
+    request.method === "GET" &&
+    /^reports\/v1\/(overview|sales-by-product|booking-sources|commission-summary)$/.test(
+      path,
+    );
   const connectorCatalogRead =
     request.method === "GET" && path === "integrations/v1/catalog";
   const importReportRead =

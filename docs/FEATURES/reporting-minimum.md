@@ -13,12 +13,17 @@ Insights → **Reports** (`/reports`) is a catalog grouped by Operations, Money,
 - **Period overview** (`reports/v1/overview`, `bookings.read`): departure-date range; confirmed/cancelled counts; booked value from the immutable price snapshot; settled guest payments, remaining guest balance after accepted partner credit, partner obligations; weather holds, closures, unassigned departures, unresolved pickups; daily volume.
 - **Partner aging** (`finance/v1/finance-aging`, `partner.statement.read`): as-of date, payable/receivable, optional partner; drill to the partner ledger.
 - **Expense summary** (`finance/v1/expenses`, `partner.statement.read`): expense-date period; recorded / paid / outstanding in reporting currency; totals by category.
+- **Sales by product** (`reports/v1/sales-by-product`, `bookings.read`): per product guests, occupancy against open-departure seats, cancellations, booked and received value.
+- **Booking sources** (`reports/v1/booking-sources`, `bookings.read`): bookings and value by booking source.
+- **Commission summary** (`reports/v1/commission-summary`, `partner.statement.read`): commission from the snapshot on `partner_booking_links`; commission, settled, outstanding by partner and direction.
+
+Period overview counts **received** on confirmed bookings only; money on held/cancelled bookings is shown separately. Bookings priced in a currency other than the reporting currency are excluded from money totals and counted. Reports accept `basis=departure|booked` and a range of at most 400 days.
 
 All commercial totals use the tenant reporting currency. Cross-currency conversion remains disabled unless an approved FX policy exists. Each request uses the tenant database context and never accepts a tenant identifier from the client.
 
-CSV is generated from the rows on screen. Later catalog items (P&amp;L, commission summary, partner PDF, accounting export, sales by product) are labelled not in this launch and have no fake numbers.
+CSV is generated from the rows on screen. Later catalog items (P&amp;L, partner statement PDF, accounting export) are labelled "coming later" (collapsed) and have no fake numbers.
 
-Tenant isolation for period overview, partner aging, and expense summary is covered in `apps/api/test/first-slice.test.ts`.
+Tenant isolation and arithmetic for all live reports are covered in `apps/api/test/first-slice.test.ts`.
 
 ## Boundary
 

@@ -7,7 +7,11 @@ import request from "supertest";
 import { DateTime } from "luxon";
 import { INestApplication } from "@nestjs/common";
 import { localDatabase } from "../scripts/local-database";
-import { bootstrapPlatform, issueSession, upsertPlatformAdmin } from "../scripts/sessions";
+import {
+  bootstrapPlatform,
+  issueSession,
+  upsertPlatformAdmin,
+} from "../scripts/sessions";
 import { createApp } from "../src/app";
 import { Database, digest } from "../src/database";
 import { OutboxService } from "../src/operations";
@@ -1176,10 +1180,13 @@ test("nested occupancy: glass-bottom hull plus partitioned tuk-tuk child cap", a
 });
 
 test("tenant overbookPolicy off rejects authorized overbook holds", async () => {
-  const demo = await setupTenant(`mock-overbook-off-${randomUUID().slice(0, 8)}`, {
-    ...mockConfig,
-    overbookPolicy: "off",
-  });
+  const demo = await setupTenant(
+    `mock-overbook-off-${randomUUID().slice(0, 8)}`,
+    {
+      ...mockConfig,
+      overbookPolicy: "off",
+    },
+  );
   const dep = await departure(demo.token, 1);
   const first = await heldBooking(dep.departureId, demo.token);
   await pay(first.bookingId, 10000, demo.token);
@@ -1497,7 +1504,11 @@ test("platform administrators sign in separately from tenant staff and list tena
   assert.equal((await get("/platform/v1/tenants", a.token)).status, 403);
   const listed = await get("/platform/v1/tenants", platform);
   assert.equal(listed.status, 200, JSON.stringify(listed.body));
-  assert.ok(listed.body.items.some((item: { slug: string }) => item.slug === "mock-harbor"));
+  assert.ok(
+    listed.body.items.some(
+      (item: { slug: string }) => item.slug === "mock-harbor",
+    ),
+  );
   for (const item of listed.body.items) {
     assert.equal(item.leadName, undefined);
     assert.equal(item.ownerEmail, undefined);
@@ -1561,9 +1572,11 @@ test("platform administrators sign in separately from tenant staff and list tena
   assert.equal(resumed.status, 201, JSON.stringify(resumed.body));
   assert.equal(resumed.body.subscription_status, "trial");
   assert.equal(
-    (await post(`/platform/v1/tenants/${a.tenantId}/subscription`, a.token, {
-      action: "suspend",
-    })).status,
+    (
+      await post(`/platform/v1/tenants/${a.tenantId}/subscription`, a.token, {
+        action: "suspend",
+      })
+    ).status,
     403,
   );
   const activity = await get("/platform/v1/activity", platform);
@@ -3223,6 +3236,146 @@ test("report totals use tenant-scoped published commercial and operational facts
   assert.equal((await get(path, b.token)).body.commercial.confirmed, 0);
 });
 
+test("report arithmetic reconciles and product, source and commission reports stay tenant-scoped", async () => {
+  const t = await setupTenant(`rpt-${randomUUID().slice(0, 8)}`);
+  const dep = await departure(t.token, 6);
+  const paidBooking = await heldBooking(dep.departureId, t.token);
+  const { rows: q } = await admin.query(
+    "SELECT (quote->>'totalMinor')::int AS total_minor FROM holds WHERE tenant_id=$1 AND id=$2",
+    [t.tenantId, paidBooking.holdId],
+  );
+  const total = q[0].total_minor;
+  assert.ok(total > 200);
+  await pay(paidBooking.bookingId, total, t.token);
+  assert.equal(
+    (
+      await post(
+        `/staff/v1/bookings/${paidBooking.bookingId}/confirm`,
+        t.token,
+        { version: 1 },
+      )
+    ).status,
+    201,
+  );
+  // A held booking with a deposit must not inflate confirmed receipts.
+  const deposit = await heldBooking(dep.departureId, t.token);
+  assert.equal((await pay(deposit.bookingId, 100, t.token)).status, 201);
+  const cancelled = await heldBooking(dep.departureId, t.token);
+  assert.equal(
+    (
+      await post(`/staff/v1/bookings/${cancelled.bookingId}/cancel`, t.token, {
+        version: 1,
+        reason: "Mock guest cancelled",
+      })
+    ).status,
+    201,
+  );
+  const { rows: d } = await admin.query(
+    "SELECT local_date::text AS date FROM departures WHERE tenant_id=$1 AND id=$2",
+    [t.tenantId, dep.departureId],
+  );
+  const day = d[0].date;
+  const range = `from=${day}&to=${day}`;
+  const overview = await get(`/reports/v1/overview?${range}`, t.token);
+  assert.equal(overview.status, 200, JSON.stringify(overview.body));
+  const c = overview.body.commercial;
+  assert.deepEqual(
+    [c.bookings, c.confirmed, c.held, c.cancelled],
+    [3, 1, 1, 1],
+  );
+  assert.equal(c.bookedMinor, total);
+  assert.equal(c.receivedMinor, total);
+  assert.equal(c.receivedUnconfirmedMinor, 100);
+  assert.equal(
+    c.bookedMinor - c.receivedMinor - c.partnerCreditMinor,
+    c.guestBalanceMinor,
+  );
+  assert.equal(overview.body.days.length, 1);
+  assert.ok(overview.body.previous.range.to < day);
+  const wide = await get(
+    `/reports/v1/overview?from=${DateTime.fromISO(day).minus({ days: 2 }).toISODate()}&to=${day}`,
+    t.token,
+  );
+  assert.equal(wide.body.days.length, 3, "zero-activity days are listed");
+  assert.equal(
+    (
+      await get(
+        `/reports/v1/overview?from=${day}&to=${day}&basis=booked`,
+        t.token,
+      )
+    ).status,
+    200,
+  );
+
+  const products = await get(`/reports/v1/sales-by-product?${range}`, t.token);
+  assert.equal(products.status, 200, JSON.stringify(products.body));
+  const row = products.body.rows.find(
+    (r: { productId: string }) => r.productId === dep.productId,
+  );
+  assert.ok(row);
+  assert.deepEqual(
+    [row.confirmed, row.cancelled, row.guests, row.departures, row.capacity],
+    [1, 1, 1, 1, 6],
+  );
+  assert.equal(row.bookedMinor, total);
+
+  const sources = await get(`/reports/v1/booking-sources?${range}`, t.token);
+  assert.equal(sources.status, 200, JSON.stringify(sources.body));
+  assert.deepEqual(
+    sources.body.rows.map((r: { source: string; bookings: number }) => [
+      r.source,
+      r.bookings,
+    ]),
+    [["phone", 3]],
+  );
+
+  const partnerId = randomUUID();
+  await admin.query(
+    "INSERT INTO partner_organizations(tenant_id,id,name) VALUES($1,$2,'Mock Hotel')",
+    [t.tenantId, partnerId],
+  );
+  await admin.query(
+    `INSERT INTO partner_booking_links(tenant_id,partner_id,booking_id,gross_amount_minor,pax_count,commission_type,commission_rate,commission_amount_minor,commission_direction,currency)
+     VALUES($1,$2,$3,$4,1,'percentage',0.1,$5,'tenant_owes_partner','USD')`,
+    [
+      t.tenantId,
+      partnerId,
+      paidBooking.bookingId,
+      total,
+      Math.round(total / 10),
+    ],
+  );
+  const commission = await get(
+    `/reports/v1/commission-summary?${range}`,
+    t.token,
+  );
+  assert.equal(commission.status, 200, JSON.stringify(commission.body));
+  assert.equal(commission.body.rows.length, 1);
+  assert.equal(commission.body.rows[0].commissionMinor, Math.round(total / 10));
+  assert.equal(
+    commission.body.rows[0].outstandingMinor,
+    Math.round(total / 10),
+  );
+  assert.equal(
+    (await get(`/reports/v1/commission-summary?${range}`, b.token)).body.rows
+      .length,
+    0,
+  );
+  assert.equal(
+    (
+      await get(`/reports/v1/sales-by-product?${range}`, b.token)
+    ).body.rows.some(
+      (r: { productId: string }) => r.productId === dep.productId,
+    ),
+    false,
+  );
+  assert.equal(
+    (await get(`/reports/v1/overview?from=2020-01-01&to=2026-12-31`, t.token))
+      .status,
+    400,
+  );
+});
+
 test("partner aging and expense summary reports stay tenant-scoped", async () => {
   const t = await setupTenant(`aging-report-${randomUUID().slice(0, 8)}`);
   const partner = await post("/finance/v1/partners", t.token, {
@@ -3254,9 +3407,7 @@ test("partner aging and expense summary reports stay tenant-scoped", async () =>
   assert.equal(aging.body.rows[0].direction, "receivable");
   assert.equal(aging.body.rows[0].buckets[0].days_31_60_minor, 5000);
   assert.equal(aging.body.rows[0].buckets[0].total_minor, 5000);
-  const outsider = await setupTenant(
-    `aging-other-${randomUUID().slice(0, 8)}`,
-  );
+  const outsider = await setupTenant(`aging-other-${randomUUID().slice(0, 8)}`);
   const isolated = await get(
     "/finance/v1/finance-aging?asOf=2026-09-19",
     outsider.token,
@@ -3283,8 +3434,12 @@ test("partner aging and expense summary reports stay tenant-scoped", async () =>
   assert.equal(summary.body.category_totals.length, 1);
   assert.equal(summary.body.category_totals[0].total_minor, 2000);
   assert.equal(
-    (await get("/finance/v1/expenses?dateFrom=2026-09-01&dateTo=2026-09-30", outsider.token))
-      .body.category_totals.length,
+    (
+      await get(
+        "/finance/v1/expenses?dateFrom=2026-09-01&dateTo=2026-09-30",
+        outsider.token,
+      )
+    ).body.category_totals.length,
     0,
   );
 });
@@ -3416,12 +3571,8 @@ test("crew mobile façade exposes only assigned trips and restricts crew check-i
   assert.equal(waiverPdf.status, 200, JSON.stringify(waiverPdf.body));
   assert.match(String(waiverPdf.headers["content-type"]), /pdf/i);
   assert.equal(
-    (
-      await get(
-        `/ops/v1/passengers/${crewPassenger.id}/waiver-pdf`,
-        guide,
-      )
-    ).status,
+    (await get(`/ops/v1/passengers/${crewPassenger.id}/waiver-pdf`, guide))
+      .status,
     403,
   );
   const afterWaiver = await get(
@@ -3585,9 +3736,7 @@ test("crew mobile façade exposes only assigned trips and restricts crew check-i
     t.token,
   );
   assert.equal(ownerToday.status, 200, JSON.stringify(ownerToday.body));
-  const ownerIds = ownerToday.body.trips.map(
-    (trip: { id: string }) => trip.id,
-  );
+  const ownerIds = ownerToday.body.trips.map((trip: { id: string }) => trip.id);
   assert.ok(ownerIds.includes(dep.departureId));
   assert.ok(ownerIds.includes(other.departureId));
   const otherTenant = await get(
@@ -4017,7 +4166,9 @@ test("crew tablet board, walk-up, and weather stay hidden from guides", async ()
   assert.ok(row, JSON.stringify(board.body));
   assert.ok(row.crew[0].name, "Mock Tablet Guide");
   assert.equal(
-    row.categories.some((category: { slug: string }) => category.slug === "child"),
+    row.categories.some(
+      (category: { slug: string }) => category.slug === "child",
+    ),
     true,
     JSON.stringify(row.categories),
   );
@@ -5419,32 +5570,52 @@ test("expense payments are append-only and cannot exceed the bill", async () => 
     vendor: "Fuel dock",
   });
   assert.equal(bill.status, 201, JSON.stringify(bill.body));
-  const pay = await post(`/finance/v1/expenses/${bill.body.id}/payments`, t.token, {
-    amount_minor: 4000,
-    paid_on: "2026-09-02",
-    method: "cash",
-    reference: "CASH-1",
-  });
+  const pay = await post(
+    `/finance/v1/expenses/${bill.body.id}/payments`,
+    t.token,
+    {
+      amount_minor: 4000,
+      paid_on: "2026-09-02",
+      method: "cash",
+      reference: "CASH-1",
+    },
+  );
   assert.equal(pay.status, 201, JSON.stringify(pay.body));
-  const isoPay = await post(`/finance/v1/expenses/${bill.body.id}/payments`, t.token, {
-    amount_minor: 1000,
-    paid_on: "2026-09-02T15:04:00.000Z",
-    method: "bank_transfer",
-  });
+  const isoPay = await post(
+    `/finance/v1/expenses/${bill.body.id}/payments`,
+    t.token,
+    {
+      amount_minor: 1000,
+      paid_on: "2026-09-02T15:04:00.000Z",
+      method: "bank_transfer",
+    },
+  );
   assert.equal(isoPay.status, 201, JSON.stringify(isoPay.body));
-  const listed = await get("/finance/v1/expenses?dateFrom=2026-09-01&dateTo=2026-09-30", t.token);
+  const listed = await get(
+    "/finance/v1/expenses?dateFrom=2026-09-01&dateTo=2026-09-30",
+    t.token,
+  );
   assert.equal(listed.status, 200, JSON.stringify(listed.body));
-  const row = listed.body.expenses.find((e: { id: string }) => e.id === bill.body.id);
+  const row = listed.body.expenses.find(
+    (e: { id: string }) => e.id === bill.body.id,
+  );
   assert.equal(row.paid_minor, 5000);
   assert.equal(row.outstanding_minor, 5000);
   assert.equal(row.payment_status, "partial");
-  const over = await post(`/finance/v1/expenses/${bill.body.id}/payments`, t.token, {
-    amount_minor: 6000,
-    paid_on: "2026-09-03",
-    method: "cash",
-  });
+  const over = await post(
+    `/finance/v1/expenses/${bill.body.id}/payments`,
+    t.token,
+    {
+      amount_minor: 6000,
+      paid_on: "2026-09-03",
+      method: "cash",
+    },
+  );
   assert.equal(over.status, 409);
-  const history = await get(`/finance/v1/expenses/${bill.body.id}/payments`, t.token);
+  const history = await get(
+    `/finance/v1/expenses/${bill.body.id}/payments`,
+    t.token,
+  );
   assert.equal(history.status, 200, JSON.stringify(history.body));
   const livePay = history.body.payments.find(
     (p: { id: string; voided_at: string | null }) => p.id === pay.body.id,
@@ -5456,13 +5627,21 @@ test("expense payments are append-only and cannot exceed the bill", async () => 
     .set("Idempotency-Key", key())
     .send({ void_reason: "wrong amount" });
   assert.equal(voidPay.status, 201, JSON.stringify(voidPay.body));
-  const afterPayVoid = await get("/finance/v1/expenses?dateFrom=2026-09-01&dateTo=2026-09-30", t.token);
-  const restored = afterPayVoid.body.expenses.find((e: { id: string }) => e.id === bill.body.id);
+  const afterPayVoid = await get(
+    "/finance/v1/expenses?dateFrom=2026-09-01&dateTo=2026-09-30",
+    t.token,
+  );
+  const restored = afterPayVoid.body.expenses.find(
+    (e: { id: string }) => e.id === bill.body.id,
+  );
   assert.equal(restored.paid_minor, 1000);
   assert.equal(restored.outstanding_minor, 9000);
-  const outsider = await setupTenant(`exp-pay-other-${randomUUID().slice(0, 8)}`);
+  const outsider = await setupTenant(
+    `exp-pay-other-${randomUUID().slice(0, 8)}`,
+  );
   assert.equal(
-    (await get(`/finance/v1/expenses/${bill.body.id}/payments`, outsider.token)).status,
+    (await get(`/finance/v1/expenses/${bill.body.id}/payments`, outsider.token))
+      .status,
     404,
   );
   const voidedBill = await request(app.getHttpServer())

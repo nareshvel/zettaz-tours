@@ -1,35 +1,36 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import {
-  AlertTriangle,
-  BarChart3,
-  CalendarDays,
-  ChevronDown,
-  Landmark,
-} from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, BarChart3, CalendarDays, Landmark } from "lucide-react";
 import type { Session } from "@/lib/types";
-import {
-  dateOnly,
-  formatMediumDateRange,
-  money,
-  useResource,
-} from "@/lib/client";
+import { dateOnly, money, useResource } from "@/lib/client";
 import { downloadCsv } from "@/lib/reports-csv";
-import { Empty, Loading, Notice, TenantDateInput } from "./common";
-import { ReportShell } from "./reports-shell";
+import { percentChange } from "@/lib/report-period";
+import { Empty, Loading, Notice } from "./common";
+import { ReportShell, csvHeader, useReportPeriod } from "./reports-shell";
 
 type Report = {
   range: { from: string; to: string };
+  basis: "departure" | "booked";
   currency: string;
   commercial: {
     bookings: number;
     confirmed: number;
+    held: number;
     cancelled: number;
+    otherCurrency: number;
     bookedMinor: number;
     receivedMinor: number;
+    receivedUnconfirmedMinor: number;
+    partnerCreditMinor: number;
     guestBalanceMinor: number;
     partnerDueMinor: number;
+  };
+  previous: {
+    range: { from: string; to: string };
+    confirmed: number;
+    bookedMinor: number;
+    receivedMinor: number;
   };
   operations: {
     departures: number;
@@ -46,156 +47,50 @@ type Report = {
   }[];
 };
 
-type ReportRange =
-  | "today"
-  | "last_7"
-  | "week"
-  | "month"
-  | "last_month"
-  | "year"
-  | "custom";
-
-function tenantDay(timezone: string, date = new Date()) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-}
-
-function shiftDay(day: string, days: number) {
-  const date = new Date(`${day}T12:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
-function mondayOf(day: string) {
-  const date = new Date(`${day}T12:00:00Z`);
-  const weekday = date.getUTCDay();
-  const offset = weekday === 0 ? -6 : 1 - weekday;
-  return shiftDay(day, offset);
-}
-
-function sundayOf(day: string) {
-  return shiftDay(mondayOf(day), 6);
-}
-
-function monthBounds(day: string): [string, string] {
-  const [year, month] = day.split("-").map(Number);
-  const from = `${year}-${String(month).padStart(2, "0")}-01`;
-  const to = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
-  return [from, to];
-}
-
-function previousMonthBounds(day: string): [string, string] {
-  const [year, month] = day.split("-").map(Number);
-  const prev = month === 1 ? [year - 1, 12] : [year, month - 1];
-  return monthBounds(`${prev[0]}-${String(prev[1]).padStart(2, "0")}-01`);
-}
-
-function yearBounds(day: string): [string, string] {
-  const year = day.slice(0, 4);
-  return [`${year}-01-01`, `${year}-12-31`];
-}
-
-function rangeBounds(
-  range: ReportRange,
-  today: string,
-  customFrom: string,
-  customTo: string,
-): [string, string] {
-  if (range === "today") return [today, today];
-  if (range === "last_7") return [shiftDay(today, -6), today];
-  if (range === "week") return [mondayOf(today), sundayOf(today)];
-  if (range === "month") return monthBounds(today);
-  if (range === "last_month") return previousMonthBounds(today);
-  if (range === "year") return yearBounds(today);
-  return [customFrom, customTo];
+export function Delta({
+  current,
+  previous,
+}: {
+  current: number;
+  previous: number;
+}) {
+  const change = percentChange(current, previous);
+  if (change === null)
+    return <em className="report-delta muted">no prior data</em>;
+  const tone = change > 0 ? "up" : change < 0 ? "down" : "flat";
+  return (
+    <em
+      className={`report-delta ${tone}`}
+      title="Compared with the previous period of equal length"
+    >
+      {change > 0 ? "▲" : change < 0 ? "▼" : "•"} {Math.abs(change)}% vs prior
+    </em>
+  );
 }
 
 export function PeriodOverviewReport({ session }: { session: Session }) {
-  const today = tenantDay(session.tenant.timezone);
-  const weekStart = mondayOf(today);
-  const weekEnd = sundayOf(today);
-  const [preset, setPreset] = useState<ReportRange>("week");
-  const [customFrom, setCustomFrom] = useState(weekStart);
-  const [customTo, setCustomTo] = useState(weekEnd);
-  const [rangeOpen, setRangeOpen] = useState(false);
-  const rangeRef = useRef<HTMLDivElement>(null);
-
-  const [from, to] = rangeBounds(preset, today, customFrom, customTo);
-  const report = useResource<Report>(
-    `reports/v1/overview?${new URLSearchParams({ from, to }).toString()}`,
-  );
-  const locale = session.tenant.config.locale;
-  const dateFormat = session.tenant.config.dateFormat;
-
-  function selectPreset(next: ReportRange) {
-    setPreset(next);
-    if (next === "custom") {
-      setCustomFrom(from);
-      setCustomTo(to);
-      return;
-    }
-    setRangeOpen(false);
-  }
-
-  useEffect(() => {
-    if (!rangeOpen) return;
-    function onPointer(event: MouseEvent) {
-      if (
-        rangeRef.current &&
-        !rangeRef.current.contains(event.target as Node) &&
-        !document.getElementById("tdp-popup")?.contains(event.target as Node)
-      ) {
-        setRangeOpen(false);
-      }
-    }
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") setRangeOpen(false);
-    }
-    document.addEventListener("mousedown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [rangeOpen]);
-
-  const rangeHint = formatMediumDateRange(from, to, locale);
+  const period = useReportPeriod(session, { basis: true });
+  const report = useResource<Report>(`reports/v1/overview?${period.query}`);
   const data = report.data;
-
-  const presets: { value: ReportRange; caption: string }[] = [
-    { value: "today", caption: "Today" },
-    { value: "last_7", caption: "Last 7 days" },
-    { value: "week", caption: "This week" },
-    { value: "month", caption: "This month" },
-    { value: "last_month", caption: "Last month" },
-    { value: "year", caption: "This year" },
-    { value: "custom", caption: "Custom" },
-  ];
-  const presetLabel =
-    presets.find((item) => item.value === preset)?.caption ?? "This week";
+  const { locale, dateFormat } = period;
 
   function exportCsv() {
     if (!data) return;
-    const c = data.currency;
-    downloadCsv(`period-overview-${from}-${to}.csv`, [
-      ["Basis", "Departure dates (tenant timezone)"],
-      ["From", from],
-      ["To", to],
-      ["Timezone", session.tenant.timezone],
-      ["Currency", c],
-      [],
+    const c = data.commercial;
+    downloadCsv(`period-overview-${period.from}-${period.to}.csv`, [
+      ...csvHeader(session, "Period overview", period, data.currency),
       ["Metric", "Value"],
-      ["Confirmed bookings", data.commercial.confirmed],
-      ["Bookings", data.commercial.bookings],
-      ["Cancelled", data.commercial.cancelled],
-      ["Booked value minor", data.commercial.bookedMinor],
-      ["Settled guest receipts minor", data.commercial.receivedMinor],
-      ["Guest balance minor", data.commercial.guestBalanceMinor],
-      ["Partner obligations minor", data.commercial.partnerDueMinor],
+      ["Bookings", c.bookings],
+      ["Confirmed", c.confirmed],
+      ["Held (not confirmed)", c.held],
+      ["Cancelled", c.cancelled],
+      ["Booked value (confirmed)", c.bookedMinor / 100],
+      ["Received on confirmed bookings", c.receivedMinor / 100],
+      ["Accepted partner credit", c.partnerCreditMinor / 100],
+      ["Guest balance", c.guestBalanceMinor / 100],
+      ["Received on held/cancelled bookings", c.receivedUnconfirmedMinor / 100],
+      ["Partner obligations", c.partnerDueMinor / 100],
+      ["Bookings in another currency (excluded)", c.otherCurrency],
       ["Departures", data.operations.departures],
       ["Weather holds", data.operations.weatherHolds],
       ["Closed", data.operations.closed],
@@ -212,149 +107,124 @@ export function PeriodOverviewReport({ session }: { session: Session }) {
     ]);
   }
 
-  const filters = (
-    <>
-      <div className="filter-menu report-filter-menu" ref={rangeRef}>
-        <button
-          type="button"
-          className={
-            "button secondary catalog-add-btn" +
-            (rangeOpen ? " active-filter" : "")
-          }
-          aria-label="Report date range"
-          aria-expanded={rangeOpen}
-          aria-haspopup="listbox"
-          onClick={() => setRangeOpen((open) => !open)}
-        >
-          <span className="button-label">{presetLabel}</span>
-          <ChevronDown size={16} aria-hidden="true" />
-        </button>
-        {rangeOpen && (
-          <div
-            className="filter-popover"
-            role="listbox"
-            aria-label="Report date range"
-          >
-            {presets.map((item) => (
-              <button
-                key={item.value}
-                type="button"
-                role="option"
-                aria-selected={preset === item.value}
-                className={
-                  "filter-range-option" +
-                  (preset === item.value ? " selected" : "")
-                }
-                onClick={() => selectPreset(item.value)}
-              >
-                {item.caption}
-              </button>
-            ))}
-            {preset === "custom" && (
-              <div className="report-custom-dates">
-                <TenantDateInput
-                  label="From"
-                  value={customFrom}
-                  max={customTo || undefined}
-                  onChange={setCustomFrom}
-                  locale={locale}
-                  dateFormat={dateFormat}
-                  compact
-                />
-                <TenantDateInput
-                  label="To"
-                  value={customTo}
-                  min={customFrom || undefined}
-                  onChange={setCustomTo}
-                  locale={locale}
-                  dateFormat={dateFormat}
-                  compact
-                />
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </>
-  );
+  // Short ranges list every calendar day; long ranges list active days only.
+  const rows = data
+    ? data.days.length > 31
+      ? data.days.filter((d) => d.departures > 0)
+      : data.days
+    : [];
+  const maxGuests = data ? Math.max(1, ...data.days.map((d) => d.guests)) : 1;
+  const showChart = data && data.days.length > 1 && data.days.length <= 62;
 
   return (
     <ReportShell
       title="Period overview"
-      filters={filters}
+      basis={`${period.basisLabel} · ${session.tenant.timezone}`}
+      filters={period.filters}
       onExport={exportCsv}
       exportDisabled={!data}
     >
       {report.error ? (
         <Notice error>{report.error}</Notice>
-      ) : !report.data ? (
+      ) : !data ? (
         <Loading />
       ) : (
         <>
           <p className="muted report-range-note">
-            Showing <strong>{rangeHint}</strong>
-            {report.data ? ` · ${report.data.currency}` : ""}
+            Showing <strong>{period.rangeHint}</strong> · {data.currency}
           </p>
           <section className="metric-grid report-metrics">
-            <div className="metric-card">
+            <Link className="metric-card metric-link" href="/reservations">
               <BarChart3 size={20} />
               <span>Confirmed bookings</span>
-              <strong>{report.data.commercial.confirmed}</strong>
+              <strong>{data.commercial.confirmed}</strong>
               <small>
-                {report.data.commercial.bookings} total ·{" "}
-                {report.data.commercial.cancelled} cancelled
+                {data.commercial.held} held · {data.commercial.cancelled}{" "}
+                cancelled · {data.commercial.bookings} total
               </small>
-            </div>
+              <Delta
+                current={data.commercial.confirmed}
+                previous={data.previous.confirmed}
+              />
+            </Link>
             <div className="metric-card">
               <Landmark size={20} />
               <span>Booked value</span>
               <strong>
-                {money(
-                  report.data.commercial.bookedMinor,
-                  report.data.currency,
-                )}
+                {money(data.commercial.bookedMinor, data.currency, locale)}
               </strong>
               <small>
-                {money(
-                  report.data.commercial.receivedMinor,
-                  report.data.currency,
-                )}{" "}
-                settled guest receipts
+                {money(data.commercial.receivedMinor, data.currency, locale)}{" "}
+                received
               </small>
+              <Delta
+                current={data.commercial.bookedMinor}
+                previous={data.previous.bookedMinor}
+              />
             </div>
             <div
               className={
                 "metric-card" +
-                (report.data.commercial.guestBalanceMinor > 0
-                  ? " attention"
-                  : "")
+                (data.commercial.guestBalanceMinor > 0 ? " attention" : "")
               }
             >
               <AlertTriangle size={20} />
               <span>Guest balances</span>
               <strong>
                 {money(
-                  report.data.commercial.guestBalanceMinor,
-                  report.data.currency,
+                  data.commercial.guestBalanceMinor,
+                  data.currency,
+                  locale,
                 )}
               </strong>
               <small>
-                {money(
-                  report.data.commercial.partnerDueMinor,
-                  report.data.currency,
-                )}{" "}
+                {money(data.commercial.partnerDueMinor, data.currency, locale)}{" "}
                 partner obligations
               </small>
             </div>
-            <div className="metric-card">
+            <Link className="metric-card metric-link" href="/departures">
               <CalendarDays size={20} />
               <span>Departures</span>
-              <strong>{report.data.operations.departures}</strong>
-              <small>
-                {report.data.operations.unassigned} without assignments
-              </small>
-            </div>
+              <strong>{data.operations.departures}</strong>
+              <small>{data.operations.unassigned} without assignments</small>
+            </Link>
           </section>
+
+          <p className="report-reconcile muted">
+            Booked {money(data.commercial.bookedMinor, data.currency, locale)} −
+            received{" "}
+            {money(data.commercial.receivedMinor, data.currency, locale)} −
+            partner credit{" "}
+            {money(data.commercial.partnerCreditMinor, data.currency, locale)} =
+            guest balance{" "}
+            <strong>
+              {money(data.commercial.guestBalanceMinor, data.currency, locale)}
+            </strong>
+            <span className="muted">
+              {" "}
+              (confirmed bookings only; overpaid bookings count as zero)
+            </span>
+          </p>
+
+          {data.commercial.receivedUnconfirmedMinor > 0 && (
+            <Notice>
+              {money(
+                data.commercial.receivedUnconfirmedMinor,
+                data.currency,
+                locale,
+              )}{" "}
+              was received on held or cancelled bookings. It is not counted
+              above — review for confirmation or refund.
+            </Notice>
+          )}
+          {data.commercial.otherCurrency > 0 && (
+            <Notice>
+              {data.commercial.otherCurrency} booking
+              {data.commercial.otherCurrency === 1 ? " is" : "s are"} priced in
+              another currency and excluded from money totals until an FX policy
+              is approved.
+            </Notice>
+          )}
 
           <section className="panel report-exceptions">
             <div className="panel-heading">
@@ -366,24 +236,30 @@ export function PeriodOverviewReport({ session }: { session: Session }) {
             <div className="report-exception-grid">
               {(
                 [
-                  ["Weather holds", report.data.operations.weatherHolds],
-                  ["Closed departures", report.data.operations.closed],
-                  ["Unassigned departures", report.data.operations.unassigned],
+                  ["Weather holds", data.operations.weatherHolds, "/day-board"],
+                  ["Closed departures", data.operations.closed, "/departures"],
+                  [
+                    "Unassigned departures",
+                    data.operations.unassigned,
+                    "/departures",
+                  ],
                   [
                     "Unresolved pickups",
-                    report.data.operations.unresolvedPickups,
+                    data.operations.unresolvedPickups,
+                    "/day-board",
                   ],
                 ] as const
-              ).map(([label, value]) => (
-                <div
+              ).map(([label, value, href]) => (
+                <Link
                   key={label}
+                  href={href}
                   className={
                     "report-exception" + (value > 0 ? " attention" : "")
                   }
                 >
                   <span>{label}</span>
                   <strong>{value}</strong>
-                </div>
+                </Link>
               ))}
             </div>
           </section>
@@ -396,12 +272,34 @@ export function PeriodOverviewReport({ session }: { session: Session }) {
               </div>
               <span className="muted">{session.tenant.timezone}</span>
             </div>
-            {!report.data.days.length ? (
+            {!data.days.some((d) => d.departures > 0) ? (
               <Empty title="No departures in this date range">
                 <p>Choose another period to review scheduled activity.</p>
               </Empty>
             ) : (
               <>
+                {showChart && (
+                  <div
+                    className="report-bars"
+                    aria-label="Guests per day"
+                    role="img"
+                  >
+                    {data.days.map((row) => (
+                      <div
+                        key={row.date}
+                        className="report-bar"
+                        title={`${dateOnly(row.date, dateFormat, locale)}: ${row.guests} guests`}
+                      >
+                        <span
+                          style={{
+                            height: `${(row.guests / maxGuests) * 100}%`,
+                          }}
+                        />
+                        <small>{row.date.slice(8)}</small>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="table-scroll report-daily-table">
                   <table>
                     <thead>
@@ -413,8 +311,11 @@ export function PeriodOverviewReport({ session }: { session: Session }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {report.data.days.map((row) => (
-                        <tr key={row.date}>
+                      {rows.map((row) => (
+                        <tr
+                          key={row.date}
+                          className={row.departures ? "" : "muted"}
+                        >
                           <td>{dateOnly(row.date, dateFormat, locale)}</td>
                           <td>{row.departures}</td>
                           <td>{row.confirmed_bookings}</td>
@@ -425,11 +326,9 @@ export function PeriodOverviewReport({ session }: { session: Session }) {
                   </table>
                 </div>
                 <div className="report-daily-cards">
-                  {report.data.days.map((row) => (
+                  {rows.map((row) => (
                     <article key={row.date} className="report-day-card">
-                      <strong>
-                        {dateOnly(row.date, dateFormat, locale)}
-                      </strong>
+                      <strong>{dateOnly(row.date, dateFormat, locale)}</strong>
                       <div className="report-day-stats">
                         <span>
                           <strong>{row.departures}</strong> departures
@@ -449,10 +348,10 @@ export function PeriodOverviewReport({ session }: { session: Session }) {
           </section>
 
           <Notice>
-            Amounts use <strong>{report.data.currency}</strong>, the tenant
-            reporting currency. Guest balances are after accepted partner
-            credit. Cross-currency conversion stays disabled until an approved
-            FX policy exists.
+            Amounts use <strong>{data.currency}</strong>, the tenant reporting
+            currency. Exceptions and the daily table always use departure dates.
+            Cross-currency conversion stays disabled until an approved FX policy
+            exists.
           </Notice>
         </>
       )}

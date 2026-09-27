@@ -14,3 +14,4 @@ apps/mobile/node_modules
 *.keystore
 google-services.json
 GoogleService-Info.plist
+.claude-tmp/

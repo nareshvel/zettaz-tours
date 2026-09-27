@@ -59,6 +59,12 @@ export function Entry({
   const [activationError, setActivationError] = useState("");
   const [recoveryToken, setRecoveryToken] = useState("");
   const [recoveryMessage, setRecoveryMessage] = useState("");
+  const [justReset, setJustReset] = useState(false);
+  useEffect(() => {
+    setJustReset(
+      new URLSearchParams(window.location.search).get("reset") === "1",
+    );
+  }, []);
   // Pre-fill token from email link on mount
   useEffect(() => {
     if (recovery) {
@@ -89,6 +95,8 @@ export function Entry({
             onSubmit={async (event) => {
               event.preventDefault();
               setActivationError("");
+              if (recoveryToken && password !== confirmPassword)
+                return setActivationError("The two passwords do not match.");
               const response = await fetch("/api/recovery", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -102,8 +110,11 @@ export function Entry({
               if (!response.ok)
                 return setActivationError(result.message ?? "Recovery failed.");
               if (recoveryToken) {
-                setRecoveryMessage(
-                  "Password updated. All previous sessions were signed out.",
+                setRecoveryMessage("Password updated. Taking you to sign in…");
+                // Token is single-use: send the user to sign in with the new password.
+                window.setTimeout(
+                  () => window.location.replace("/login?reset=1"),
+                  1500,
                 );
                 return;
               }
@@ -137,9 +148,23 @@ export function Entry({
                     onChange={(event) => setPassword(event.target.value)}
                   />
                 </label>
+                <label className="field">
+                  <span>Confirm new password</span>
+                  <input
+                    type="password"
+                    minLength={12}
+                    autoComplete="new-password"
+                    required
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                  />
+                </label>
               </>
             )}
-            <button className="button">
+            <button
+              className="button"
+              disabled={!!recoveryToken && !!recoveryMessage}
+            >
               {recoveryToken ? "Update password" : "Continue"}{" "}
               <ArrowRight size={17} />
             </button>
@@ -621,6 +646,12 @@ export function Entry({
         <p className="eyebrow">WORKSPACE ACCESS</p>
         <h1>Sign in</h1>
         <p className="subtitle">Use the email assigned to your organization.</p>
+        {justReset && (
+          <Notice>
+            Password updated and all previous sessions were signed out. Sign in
+            with your new password.
+          </Notice>
+        )}
         {busy ? (
           <Loading />
         ) : (

@@ -68,7 +68,34 @@ Web gateway allowlist (`app/api/gateway/[...path]/route.ts`) extended to the thr
 - Gateway allowlist extended; `config.accounting` added to the tenant config schema (defaults, fixture updated).
 - Test `partner statement, P&L and accounting journal reconcile and stay tenant-scoped`: statement closing = −commission for a tenant-owes-partner link; other tenant gets 404; P&L revenue = total − tax, net = revenue − commission − expenses; every journal balances; expense posts to category code; other tenant sees no journals. Suite: 56 pass / same 8 pre-existing failures.
 - Agent visual (Playwright, demo data): P&L, accounting export (mapping + journal), partner statement render correctly; journal/statement column widths tuned.
-- **Open question for owner/finance:** the existing Finance partner ledger (`partners.ts` → `partnerLedger`) treats **void** settlements like paid ones when computing balance (`status IN ('paid','voided','void')`). The new statement counts only paid settlements. If a settlement is voided the two will disagree; the ledger rule looks like a bug but was left unchanged pending confirmation.
+- Void settlement question resolved 27 Sep — see *Partner settlement and void accuracy* below.
+
+## Follow-up 27 September 2026 (partner settlement and void accuracy)
+
+Owner direction: calculations must be exact; fix voided settlements and voided expense bills.
+
+**Defects found and fixed**
+
+| # | Defect | Effect before | Fix |
+| --- | --- | --- | --- |
+| 1 | Finance partner ledger treated **void** settlements as cleared | A voided settlement (whose bookings are released back to unsettled) still reduced the balance → debt understated | Only **paid** settlements move money. Voiding a paid settlement posts a reversal on the void date |
+| 2 | Ledger running balance **reset to 0** on any cleared settlement | Wrong whenever unsettled bookings existed outside the settlement period | Running balance = cumulative sum of signed entries |
+| 3 | Running balance computed **per page** (restarted at 0 on each page) and three lists paginated separately then merged | Page 2+ balances and ordering wrong, rows skipped | One SQL ledger (window function over the whole ledger), then filter + paginate |
+| 4 | Partner-collects bookings counted **gross** in ledger/statement but **commission only** in Finance overview/summary; settlement net = gross − commission | Three different "owed" numbers for the same bookings; paid settlement left the commission stranded as balance | Everywhere: partner_owes_tenant link = gross − commission; tenant_owes_partner link = commission. Paid settlement clears to exactly 0 |
+| 5 | Direction taken from the partner's **current** setting, not the link snapshot | Changing a partner's terms rewrote history | Link snapshot direction used in ledger, summaries and settlement generation |
+| 6 | "Mark paid" ignored the entered **payment date** and **confirmed amount** | paid_at = click time; short payments silently accepted as full | paid_at = entered date (tenant local noon; future dates refused). Confirmed amount must equal net, otherwise 409 |
+| 7 | Settlement generation used the **UTC** date of departure start and included **cancelled** bookings | Evening departures fell in the wrong period; commission settled on cancelled trips | Migration `098_partner_settlement_accuracy.sql`: departure local date, cancelled excluded, refuses mixed directions/currencies in one settlement |
+| 8 | Aging "as of" used today's status | Settlements paid/voided after the as-of date vanished from historic aging; ones raised after it appeared | Open as of date = raised on/before it and not paid/voided by it |
+| 9 | Commission summary "settled" used `settled_at` (set when a **draft** is generated) | Draft settlements looked settled | Settled = inside a **paid** settlement |
+| 10 | Accounting export omitted voided expense bills (and voided expense payments) | A bill already imported by the accountant, then voided, was never reversed | Bill posts on its date; the void posts a reversing journal on the void date. Same for expense payments and paid-then-voided partner settlements. A bill voided on/before its own date is omitted entirely |
+
+**Single source of truth:** `apps/api/src/partner-ledger.ts` (`PARTNER_LEDGER_ENTRIES`) now feeds the Finance ledger and the partner statement, so both always agree.
+
+**Evidence:** new test `partner settlements: paid clears, void restores, dates and amounts are exact; voided bills reverse in the journal` — balance = statement = settlement net; draft moves nothing; short payment and future date refused (409); paid date stored as entered; paid clears to 0; void restores the full amount and releases links; statement shows paid + reversal; journal has bill, bill void, remittance (Bank 12,000 / Commission 3,000 / Income 15,000) and its reversal, all balanced; mixed directions refused. Aging test extended with an as-of-before-raised check. Suite: 56 pass / same 8 pre-existing failures.
+
+**Deploy note:** includes migration **098** (function replace, idempotent) — runs via `./deploy.sh`.
+
+**Still a design question (not changed):** accepted partner *collection claims* (`partner_obligations`) are a separate flow and are shown in the ledger for information only, not in the balance, to avoid double-counting bookings that also have a partner-collects link. Confirm whether both flows can apply to the same booking.
 
 ## Automated evidence
 

@@ -3376,6 +3376,113 @@ test("report arithmetic reconciles and product, source and commission reports st
   );
 });
 
+test("partner statement, P&L and accounting journal reconcile and stay tenant-scoped", async () => {
+  const t = await setupTenant(`fin-${randomUUID().slice(0, 8)}`);
+  const dep = await departure(t.token, 6);
+  const booking = await heldBooking(dep.departureId, t.token);
+  const { rows: q } = await admin.query(
+    "SELECT (quote->>'totalMinor')::int AS total, COALESCE((quote->>'taxMinor')::int,0) AS tax FROM holds WHERE tenant_id=$1 AND id=$2",
+    [t.tenantId, booking.holdId],
+  );
+  const { total, tax } = q[0];
+  assert.equal((await pay(booking.bookingId, total, t.token)).status, 201);
+  assert.equal(
+    (
+      await post(`/staff/v1/bookings/${booking.bookingId}/confirm`, t.token, {
+        version: 1,
+      })
+    ).status,
+    201,
+  );
+  const { rows: d } = await admin.query(
+    "SELECT local_date::text AS date FROM departures WHERE tenant_id=$1 AND id=$2",
+    [t.tenantId, dep.departureId],
+  );
+  const day = d[0].date;
+  const today = DateTime.now().setZone("America/Antigua").toISODate()!;
+  const from = today < day ? today : day;
+  const range = `from=${from}&to=${day}`;
+
+  const partnerId = randomUUID();
+  await admin.query(
+    "INSERT INTO partner_organizations(tenant_id,id,name) VALUES($1,$2,'Mock Resort')",
+    [t.tenantId, partnerId],
+  );
+  const commission = Math.round(total / 5);
+  await admin.query(
+    `INSERT INTO partner_booking_links(tenant_id,partner_id,booking_id,gross_amount_minor,pax_count,commission_type,commission_rate,commission_amount_minor,commission_direction,currency)
+     VALUES($1,$2,$3,$4,1,'percentage',0.2,$5,'tenant_owes_partner','USD')`,
+    [t.tenantId, partnerId, booking.bookingId, total, commission],
+  );
+  const statement = await get(
+    `/reports/v1/partner-statement?partnerId=${partnerId}&${range}`,
+    t.token,
+  );
+  assert.equal(statement.status, 200, JSON.stringify(statement.body));
+  assert.equal(statement.body.openingMinor, 0);
+  assert.equal(statement.body.lines.length, 1);
+  assert.equal(
+    statement.body.closingMinor,
+    -commission,
+    "we owe the partner its commission",
+  );
+  assert.equal(
+    (
+      await get(
+        `/reports/v1/partner-statement?partnerId=${partnerId}&${range}`,
+        b.token,
+      )
+    ).status,
+    404,
+  );
+
+  const cat = randomUUID();
+  await admin.query(
+    "INSERT INTO expense_categories(id,tenant_id,name,code) VALUES($1,$2,'Fuel','6100')",
+    [cat, t.tenantId],
+  );
+  await admin.query(
+    "INSERT INTO expenses(tenant_id,category_id,amount_minor,currency,expense_date,vendor,recorded_by,amount_reporting_minor) VALUES($1,$2,2500,'USD',$3,'Mock Marine',$4,2500)",
+    [t.tenantId, cat, day, t.ownerId],
+  );
+  const pnl = await get(`/reports/v1/profit-and-loss?${range}`, t.token);
+  assert.equal(pnl.status, 200, JSON.stringify(pnl.body));
+  assert.equal(pnl.body.revenueMinor, total - tax);
+  assert.equal(pnl.body.commissionMinor, commission);
+  assert.equal(pnl.body.expenseTotalMinor, 2500);
+  assert.equal(pnl.body.netMinor, total - tax - commission - 2500);
+
+  const journal = await get(`/reports/v1/accounting-journal?${range}`, t.token);
+  assert.equal(journal.status, 200, JSON.stringify(journal.body));
+  assert.equal(journal.body.totals.debit, journal.body.totals.credit);
+  for (const j of journal.body.journals) {
+    const dr = j.lines.reduce(
+      (s: number, l: { debit: number }) => s + l.debit,
+      0,
+    );
+    const cr = j.lines.reduce(
+      (s: number, l: { credit: number }) => s + l.credit,
+      0,
+    );
+    assert.equal(dr, cr, `journal ${j.number} balances`);
+  }
+  const sources = journal.body.journals
+    .map((j: { source: string }) => j.source)
+    .sort();
+  assert.deepEqual(sources, ["Expense bill", "Guest payment"]);
+  assert.ok(
+    journal.body.journals.some((j: { lines: { account: string }[] }) =>
+      j.lines.some((l) => l.account === "6100"),
+    ),
+    "expense posts to the category code",
+  );
+  assert.equal(
+    (await get(`/reports/v1/accounting-journal?${range}`, b.token)).body
+      .journals.length,
+    0,
+  );
+});
+
 test("partner aging and expense summary reports stay tenant-scoped", async () => {
   const t = await setupTenant(`aging-report-${randomUUID().slice(0, 8)}`);
   const partner = await post("/finance/v1/partners", t.token, {

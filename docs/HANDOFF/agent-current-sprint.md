@@ -27,7 +27,7 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 | Tip last seen on VPS | Owner ran `./deploy.sh` 19 Sep (`tours-api` / `tours-web` restarted; “Full deploy complete”). Confirm SHA on the box; do not assume it includes later local commits. |
 | `origin/main` | Confirm with `git status`. Local `main` has been ahead with 19 Sep polish (`a1399cd`, `f40fb94` logo, plus Localization/integrations/stays). |
 | Mac ↔ remote | Push not requested. Later local commits stay off VPS until push + `./deploy.sh`. |
-| Migrations | Through **`089_crew_captain_roles.sql`** on production. Prod migrate **COMPLETE**, Applied this run: **088**, **089**, Pending: 0 |
+| Migrations | Local adds **`098_partner_settlement_accuracy.sql`** (27 Sep). Through **`089_crew_captain_roles.sql`** on production. Prod migrate **COMPLETE**, Applied this run: **088**, **089**, Pending: 0 |
 | Email verification / trial auth | **Already on `main`** (`060`–`061`); do not invent “never pushed” |
 
 **VPS:** Owner completed a full `./deploy.sh` on 19 September 2026 (`/var/www/zettaz-tours`, PM2 `tours-api` + `tours-web`). SHA on the box must be read from that checkout. Migrations through **`089`**.
@@ -129,7 +129,7 @@ Work **outside** the Operations aside group. Suggested order (adjust with owner)
 - **Home / overview — My trips hidden for Day Board roles; setup checklist on Overview 19 Sep.** Evidence: [overview-polish-evidence.md](../TESTING/overview-polish-evidence.md). Owner visual still outstanding.
 
 ### 2. Insights
-- **Reports — 27 Sep: period overview reconciliation fixed (received on confirmed only, held count, currency exclusion, zero days, date basis, prior-period delta); new live reports Sales by product, Booking sources, Commission summary, Partner statement, Profit & loss, Accounting export (QBO journal CSV, mapping in `config.accounting`); URL-persisted filters; CSV headers.** Evidence: [reports-polish-evidence.md](../TESTING/reports-polish-evidence.md). Owner visual outstanding. Open: confirm whether void settlements should clear the partner ledger balance (see evidence).
+- **Reports — 27 Sep: period overview reconciliation fixed (received on confirmed only, held count, currency exclusion, zero days, date basis, prior-period delta); new live reports Sales by product, Booking sources, Commission summary, Partner statement, Profit & loss, Accounting export (QBO journal CSV, mapping in `config.accounting`); URL-persisted filters; CSV headers.** Evidence: [reports-polish-evidence.md](../TESTING/reports-polish-evidence.md). Owner visual outstanding. 27 Sep accuracy pass: partner ledger/settlement/void/aging/payment-date fixes + voided expense reversals; migration **098** pending on prod.
 - **Customers — polish implemented 17 Sep; owner visual still outstanding.** Evidence: [customers-polish-evidence.md](../TESTING/customers-polish-evidence.md).
 
 **Next non-Ops surface (owner 20 Sep):** **Staff & access** remaining polish. After that **Subscription** (profile billing) then **Zettaz Pay** (payment-gateway brand; Stripe Connect underneath).

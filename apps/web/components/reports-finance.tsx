@@ -26,7 +26,12 @@ type Statement = {
   openingMinor: number;
   closingMinor: number;
   lines: {
-    kind: "booking" | "settlement";
+    kind:
+      | "booking"
+      | "settlement"
+      | "settlement_reversal"
+      | "settlement_info"
+      | "claim";
     date: string;
     description: string;
     reference: string;

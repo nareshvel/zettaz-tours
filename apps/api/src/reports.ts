@@ -8,6 +8,7 @@ import {
 import { z } from "zod";
 import type { Actor } from "../../../packages/shared/src/contracts";
 import { Database, type Tx } from "./database";
+import { PARTNER_LEDGER_ENTRIES } from "./partner-ledger";
 import { Access, CurrentActor, parse } from "./http";
 
 /** Every report accepts a closed date range (max ~13 months) and a date basis. */
@@ -304,41 +305,21 @@ export class ReportService {
         [actor.tenantId, input.partnerId],
       );
       if (!partner) throw new NotFoundException("Partner not found");
-      const entries = `
-        SELECT 'booking' AS kind, (l.created_at AT TIME ZONE t.timezone)::date AS day, l.created_at AS at,
-          p.name || ' · ' || to_char(d.local_date,'DD Mon YYYY') || ' · ' || b.lead_name AS description,
-          LEFT(b.id::text,8) AS reference,
-          CASE l.commission_direction WHEN 'partner_owes_tenant' THEN l.gross_amount_minor
-            ELSE -l.commission_amount_minor END AS amount_minor,
-          l.gross_amount_minor, l.commission_amount_minor, trim(l.currency) AS currency, NULL::text AS status
-        FROM partner_booking_links l
-        JOIN t ON t.id=l.tenant_id
-        JOIN bookings b ON b.tenant_id=l.tenant_id AND b.id=l.booking_id
-        JOIN departures d ON d.tenant_id=b.tenant_id AND d.id=b.departure_id
-        JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id
-        WHERE l.tenant_id=$1 AND l.partner_id=$2 AND l.unlinked_at IS NULL
-        UNION ALL
-        SELECT 'settlement', (COALESCE(s.paid_at,s.created_at) AT TIME ZONE t.timezone)::date, COALESCE(s.paid_at,s.created_at),
-          'Settlement ' || to_char(s.period_start,'DD Mon') || '–' || to_char(s.period_end,'DD Mon YYYY'),
-          COALESCE(s.invoice_number, s.payment_ref, LEFT(s.id::text,8)),
-          CASE WHEN s.status='paid' THEN
-            CASE s.commission_direction WHEN 'partner_owes_tenant' THEN -s.net_amount_minor ELSE s.net_amount_minor END
-          ELSE 0 END,
-          NULL, NULL, trim(s.currency), s.status
-        FROM partner_settlements s JOIN t ON t.id=s.tenant_id
-        WHERE s.tenant_id=$1 AND s.partner_id=$2 AND s.status<>'void'`;
       const {
         rows: [opening],
       } = await tx.query(
-        `WITH t AS (SELECT id, timezone FROM tenants WHERE id=$1), e AS (${entries})
-         SELECT COALESCE(SUM(amount_minor),0)::text AS balance FROM e WHERE day < $3`,
+        `WITH t AS (SELECT id, timezone FROM tenants WHERE id=$1), e AS (${PARTNER_LEDGER_ENTRIES})
+         SELECT COALESCE(SUM(amount_minor),0)::text AS balance FROM e, t
+         WHERE (e.event_at AT TIME ZONE t.timezone)::date < $3`,
         [actor.tenantId, input.partnerId, input.from],
       );
       const { rows } = await tx.query(
-        `WITH t AS (SELECT id, timezone FROM tenants WHERE id=$1), e AS (${entries})
-         SELECT kind, day::text AS date, description, reference, amount_minor::text,
-           gross_amount_minor::text, commission_amount_minor::text, currency, status
-         FROM e WHERE day BETWEEN $3 AND $4 ORDER BY at, kind`,
+        `WITH t AS (SELECT id, timezone FROM tenants WHERE id=$1), e AS (${PARTNER_LEDGER_ENTRIES})
+         SELECT kind, (e.event_at AT TIME ZONE t.timezone)::date::text AS date, description, reference,
+           amount_minor::text, gross_minor::text AS gross_amount_minor,
+           commission_minor::text AS commission_amount_minor, currency, status
+         FROM e, t WHERE (e.event_at AT TIME ZONE t.timezone)::date BETWEEN $3 AND $4
+         ORDER BY e.event_at, e.kind, e.id`,
         [actor.tenantId, input.partnerId, input.from, input.to],
       );
       let running = Number(opening.balance);
@@ -346,7 +327,12 @@ export class ReportService {
         const amount = Number(r.amount_minor);
         running += amount;
         return {
-          kind: r.kind as "booking" | "settlement",
+          kind: r.kind as
+            | "booking"
+            | "settlement"
+            | "settlement_reversal"
+            | "settlement_info"
+            | "claim",
           date: r.date as string,
           description: r.description as string,
           reference: r.reference as string,
@@ -422,6 +408,9 @@ export class ReportService {
       const payAccount = (method: string) =>
         method === "cash" ? a.cashAccount : a.bankAccount;
 
+      const inRange = (day: string | null) =>
+        !!day && day >= input.from && day <= input.to;
+
       // 1. Guest payments settled in the period, and reversals/voids recorded in the period.
       const { rows: pays } = await tx.query(
         `SELECT p.id, (p.occurred_at AT TIME ZONE ${tz})::date::text AS day, p.amount_minor::text,
@@ -441,8 +430,6 @@ export class ReportService {
           continue;
         }
         const amount = Number(r.amount_minor);
-        const inRange = (d: string | null) =>
-          !!d && d >= input.from && d <= input.to;
         if (inRange(r.day))
           journals.push({
             date: r.day,
@@ -469,12 +456,15 @@ export class ReportService {
           });
       }
 
-      // 2. Expense bills dated in the period (voided bills are excluded).
+      // 2. Expense bills: posted on the bill date; a void posts the reversal on the
+      //    void date, so a bill already exported to the accountant is corrected, never erased.
       const { rows: bills } = await tx.query(
         `SELECT e.expense_date::text AS day, e.amount_minor::text, trim(e.currency) AS currency,
-           e.vendor, e.description, e.reference, COALESCE(NULLIF(trim(c.code),''), c.name) AS account
+           e.vendor, e.description, e.reference, COALESCE(NULLIF(trim(c.code),''), c.name) AS account,
+           (e.voided_at AT TIME ZONE ${tz})::date::text AS void_day, e.void_reason
          FROM expenses e JOIN expense_categories c ON c.id=e.category_id
-         WHERE e.tenant_id=$1 AND e.voided_at IS NULL AND e.expense_date BETWEEN $2 AND $3`,
+         WHERE e.tenant_id=$1 AND (e.expense_date BETWEEN $2 AND $3
+           OR (e.voided_at AT TIME ZONE ${tz})::date BETWEEN $2 AND $3)`,
         range.slice(0, 3),
       );
       for (const r of bills) {
@@ -483,29 +473,43 @@ export class ReportService {
           continue;
         }
         const amount = Number(r.amount_minor);
-        journals.push({
-          date: r.day,
-          source: "Expense bill",
-          reference: r.reference ?? "",
-          description: r.description ?? "Expense",
-          name: r.vendor ?? "",
-          lines: [
-            {
-              account: r.account || a.defaultExpenseAccount,
-              debit: amount,
-              credit: 0,
-            },
-            { account: a.accountsPayable, debit: 0, credit: amount },
-          ],
-        });
+        const expenseAccount = r.account || a.defaultExpenseAccount;
+        // A bill voided before (or on) its own date never existed for the books.
+        const voidedBeforeBill = r.void_day && r.void_day <= r.day;
+        if (inRange(r.day) && !voidedBeforeBill)
+          journals.push({
+            date: r.day,
+            source: "Expense bill",
+            reference: r.reference ?? "",
+            description: r.description ?? "Expense",
+            name: r.vendor ?? "",
+            lines: [
+              { account: expenseAccount, debit: amount, credit: 0 },
+              { account: a.accountsPayable, debit: 0, credit: amount },
+            ],
+          });
+        if (inRange(r.void_day) && !voidedBeforeBill)
+          journals.push({
+            date: r.void_day,
+            source: "Expense bill void",
+            reference: r.reference ?? "",
+            description: `Void: ${r.description ?? "expense"}${r.void_reason ? ` (${r.void_reason})` : ""}`,
+            name: r.vendor ?? "",
+            lines: [
+              { account: a.accountsPayable, debit: amount, credit: 0 },
+              { account: expenseAccount, debit: 0, credit: amount },
+            ],
+          });
       }
 
-      // 3. Expense payments made in the period.
+      // 3. Expense payments: posted on the paid date; a void posts the reversal on its void date.
       const { rows: expPays } = await tx.query(
         `SELECT p.paid_on::text AS day, p.amount_minor::text, trim(p.currency) AS currency, p.method,
-           p.reference, e.vendor, e.description
+           p.reference, e.vendor, e.description,
+           (p.voided_at AT TIME ZONE ${tz})::date::text AS void_day
          FROM expense_payments p JOIN expenses e ON e.id=p.expense_id
-         WHERE p.tenant_id=$1 AND p.voided_at IS NULL AND p.paid_on BETWEEN $2 AND $3`,
+         WHERE p.tenant_id=$1 AND (p.paid_on BETWEEN $2 AND $3
+           OR (p.voided_at AT TIME ZONE ${tz})::date BETWEEN $2 AND $3)`,
         range.slice(0, 3),
       );
       for (const r of expPays) {
@@ -514,29 +518,47 @@ export class ReportService {
           continue;
         }
         const amount = Number(r.amount_minor);
-        journals.push({
-          date: r.day,
-          source: "Expense payment",
-          reference: r.reference ?? "",
-          description: `Paid: ${r.description ?? "expense"}`,
-          name: r.vendor ?? "",
-          lines: [
-            { account: a.accountsPayable, debit: amount, credit: 0 },
-            { account: payAccount(r.method), debit: 0, credit: amount },
-          ],
-        });
+        const voidedBeforePaid = r.void_day && r.void_day < r.day;
+        if (inRange(r.day) && !voidedBeforePaid)
+          journals.push({
+            date: r.day,
+            source: "Expense payment",
+            reference: r.reference ?? "",
+            description: `Paid: ${r.description ?? "expense"}`,
+            name: r.vendor ?? "",
+            lines: [
+              { account: a.accountsPayable, debit: amount, credit: 0 },
+              { account: payAccount(r.method), debit: 0, credit: amount },
+            ],
+          });
+        if (inRange(r.void_day) && !voidedBeforePaid)
+          journals.push({
+            date: r.void_day,
+            source: "Expense payment void",
+            reference: r.reference ?? "",
+            description: `Void payment: ${r.description ?? "expense"}`,
+            name: r.vendor ?? "",
+            lines: [
+              { account: payAccount(r.method), debit: amount, credit: 0 },
+              { account: a.accountsPayable, debit: 0, credit: amount },
+            ],
+          });
       }
 
-      // 4. Partner settlements paid in the period.
+      // 4. Partner settlements: posted when PAID (on the recorded payment date); a paid
+      //    settlement that is later voided posts the reversal on its void date.
       const { rows: settlements } = await tx.query(
-        `SELECT (s.paid_at AT TIME ZONE ${tz})::date::text AS day, trim(s.currency) AS currency,
+        `SELECT (s.paid_at AT TIME ZONE ${tz})::date::text AS day,
+           CASE WHEN s.status='void' THEN (s.voided_at AT TIME ZONE ${tz})::date::text END AS void_day,
+           trim(s.currency) AS currency,
            s.gross_amount_minor::text, s.commission_amount_minor::text, s.net_amount_minor::text,
-           s.commission_direction, COALESCE(s.invoice_number, s.payment_ref, LEFT(s.id::text,8)) AS reference,
+           s.commission_direction, COALESCE(s.payment_ref, s.invoice_number, LEFT(s.id::text,8)) AS reference,
            po.name
          FROM partner_settlements s
          JOIN partner_organizations po ON po.tenant_id=s.tenant_id AND po.id=s.partner_id
-         WHERE s.tenant_id=$1 AND s.status='paid' AND s.paid_at IS NOT NULL
-           AND (s.paid_at AT TIME ZONE ${tz})::date BETWEEN $2 AND $3`,
+         WHERE s.tenant_id=$1 AND s.paid_at IS NOT NULL AND s.status IN ('paid','void')
+           AND ((s.paid_at AT TIME ZONE ${tz})::date BETWEEN $2 AND $3
+             OR (s.status='void' AND (s.voided_at AT TIME ZONE ${tz})::date BETWEEN $2 AND $3))`,
         range.slice(0, 3),
       );
       for (const r of settlements) {
@@ -548,7 +570,7 @@ export class ReportService {
         const commission = Math.abs(Number(r.commission_amount_minor));
         const lines: Line[] =
           r.commission_direction === "partner_owes_tenant"
-            ? // Partner collected from guests and remits net of its commission.
+            ? // Partner collected from guests and remits gross less its commission.
               [
                 { account: a.bankAccount, debit: net, credit: 0 },
                 ...(commission
@@ -571,17 +593,32 @@ export class ReportService {
                 { account: a.commissionExpense, debit: net, credit: 0 },
                 { account: a.bankAccount, debit: 0, credit: net },
               ];
-        journals.push({
-          date: r.day,
-          source: "Partner settlement",
-          reference: r.reference,
-          description:
-            r.commission_direction === "partner_owes_tenant"
-              ? "Partner remittance"
-              : "Commission paid to partner",
-          name: r.name,
-          lines,
-        });
+        const description =
+          r.commission_direction === "partner_owes_tenant"
+            ? "Partner remittance"
+            : "Commission paid to partner";
+        if (inRange(r.day))
+          journals.push({
+            date: r.day,
+            source: "Partner settlement",
+            reference: r.reference,
+            description,
+            name: r.name,
+            lines,
+          });
+        if (inRange(r.void_day))
+          journals.push({
+            date: r.void_day,
+            source: "Partner settlement void",
+            reference: r.reference,
+            description: `Void: ${description}`,
+            name: r.name,
+            lines: lines.map((l) => ({
+              account: l.account,
+              debit: l.credit,
+              credit: l.debit,
+            })),
+          });
       }
 
       journals.sort(
@@ -700,13 +737,15 @@ export class ReportService {
            SUM(l.pax_count)::int AS guests,
            SUM(l.gross_amount_minor)::text AS gross_minor,
            SUM(l.commission_amount_minor)::text AS commission_minor,
-           COALESCE(SUM(l.commission_amount_minor) FILTER(WHERE l.settled_at IS NOT NULL),0)::text AS settled_minor
+           COALESCE(SUM(l.commission_amount_minor) FILTER(WHERE ps.status='paid'),0)::text AS settled_minor
          FROM partner_booking_links l
          JOIN t ON t.id=l.tenant_id
          JOIN partner_organizations po ON po.tenant_id=l.tenant_id AND po.id=l.partner_id
          JOIN bookings b ON b.tenant_id=l.tenant_id AND b.id=l.booking_id
          JOIN departures d ON d.tenant_id=b.tenant_id AND d.id=b.departure_id
-         WHERE l.tenant_id=$1 AND l.unlinked_at IS NULL AND b.state<>'cancelled'
+         LEFT JOIN partner_settlements ps ON ps.tenant_id=l.tenant_id AND ps.id=l.settlement_id
+         WHERE l.tenant_id=$1 AND l.unlinked_at IS NULL
+           AND (b.state<>'cancelled' OR l.settlement_id IS NOT NULL)
            AND ${dateFilter(input.basis)}
          GROUP BY po.id, po.name, l.commission_direction, l.currency
          ORDER BY po.name, l.commission_direction`,

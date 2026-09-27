@@ -1,3 +1,4 @@
+import { PARTNER_LEDGER_ENTRIES } from "./partner-ledger";
 import {
   Body,
   ConflictException,
@@ -19,6 +20,26 @@ import { Database, record } from "./database";
 import { Access, CurrentActor, keySchema, parse } from "./http";
 
 // ─── Schemas ────────────────────────────────────────────────────────────────
+
+const SETTLEMENT_ERRORS: Record<string, string> = {
+  no_unsettled_bookings_in_period:
+    "No unsettled bookings in the selected period",
+  mixed_commission_directions_in_period:
+    "Bookings in this period were linked under different commission directions. Settle them in separate periods.",
+  mixed_currencies_in_period:
+    "Bookings in this period are in different currencies. Settle each currency separately.",
+  settlement_already_voided: "This settlement is already void",
+  settlement_already_paid:
+    "This settlement is already paid; it can only be voided",
+  settlement_not_found: "Settlement not found",
+  partner_not_found: "Partner not found",
+};
+function settlementError(error: { message?: string }) {
+  const code = Object.keys(SETTLEMENT_ERRORS).find((k) =>
+    error.message?.includes(k),
+  );
+  return code ? new ConflictException(SETTLEMENT_ERRORS[code]) : error;
+}
 
 const partnerSchema = z
   .object({
@@ -858,16 +879,17 @@ export class PartnerService {
       async (tx) => {
         const {
           rows: [settlement],
-        } = await tx.query(
-          `SELECT * FROM generate_partner_settlement($1,$2,$3,$4,$5)`,
-          [
+        } = await tx
+          .query(`SELECT * FROM generate_partner_settlement($1,$2,$3,$4,$5)`, [
             actor.tenantId,
             partnerId,
             input.period_start,
             input.period_end,
             actor.actorId,
-          ],
-        );
+          ])
+          .catch((error: { message?: string }) => {
+            throw settlementError(error);
+          });
         if (!settlement)
           throw new ConflictException(
             "No unsettled bookings in the selected period",
@@ -1012,30 +1034,64 @@ export class PartnerService {
           [settlementId, partnerId, actor.tenantId],
         );
         if (!before) throw new NotFoundException("Settlement not found");
+        if (
+          input.status === "paid" &&
+          input.confirmed_amount_minor != null &&
+          Number(input.confirmed_amount_minor) !==
+            Number(before.net_amount_minor)
+        )
+          throw new ConflictException(
+            "Confirmed amount must equal the settlement net amount. Partial settlement payments are not supported — void and regenerate, or record the exact amount.",
+          );
+        const paymentDate =
+          input.status === "paid" && input.payment_date
+            ? parse(z.string().date(), input.payment_date)
+            : null;
         const {
           rows: [result],
-        } = await tx.query(
-          `SELECT * FROM advance_settlement_status($1,$2,$3,$4,$5,$6,$7,$8)`,
-          [
-            actor.tenantId,
-            settlementId,
-            input.status,
-            input.payment_ref ?? null,
-            input.invoice_number ?? null,
-            input.invoice_pdf_path ?? null,
-            input.void_reason ?? null,
-            input.notes ?? null,
-          ],
-        );
+        } = await tx
+          .query(
+            `SELECT * FROM advance_settlement_status($1,$2,$3,$4,$5,$6,$7,$8)`,
+            [
+              actor.tenantId,
+              settlementId,
+              input.status,
+              input.payment_ref ?? null,
+              input.invoice_number ?? null,
+              input.invoice_pdf_path ?? null,
+              input.void_reason ?? null,
+              input.notes ?? null,
+            ],
+          )
+          .catch((error: { message?: string }) => {
+            throw settlementError(error);
+          });
+        let saved = result;
+        if (paymentDate) {
+          // Record the date the money actually arrived (tenant local noon), not the click time.
+          const {
+            rows: [dated],
+          } = await tx.query(
+            `UPDATE partner_settlements
+                SET paid_at = ($1::date + time '12:00') AT TIME ZONE (SELECT timezone FROM tenants WHERE id=$3)
+              WHERE id=$2 AND tenant_id=$3
+                AND $1::date <= (clock_timestamp() AT TIME ZONE (SELECT timezone FROM tenants WHERE id=$3))::date
+              RETURNING *`,
+            [paymentDate, settlementId, actor.tenantId],
+          );
+          if (!dated)
+            throw new ConflictException("Payment date cannot be in the future");
+          saved = dated;
+        }
         await record(
           tx,
           actor,
           `partner.settlement.${input.status}`,
           settlementId,
           before,
-          result,
+          saved,
         );
-        return result;
+        return saved;
       },
     );
   }
@@ -1045,12 +1101,13 @@ export class PartnerService {
       const {
         rows: [receivable],
       } = await tx.query(
-        `SELECT COALESCE(SUM(pbl.commission_amount_minor),0)::text AS total_minor, COUNT(*)::text AS cnt
+        // Partner collected from guests: it owes gross − its commission (matches settlement net).
+        `SELECT COALESCE(SUM(pbl.gross_amount_minor - pbl.commission_amount_minor),0)::text AS total_minor, COUNT(*)::text AS cnt
          FROM partner_booking_links pbl
-         JOIN partner_organizations po
-           ON po.tenant_id = pbl.tenant_id AND po.id = pbl.partner_id
+         JOIN bookings b ON b.tenant_id = pbl.tenant_id AND b.id = pbl.booking_id
          WHERE pbl.tenant_id=$1 AND pbl.settlement_id IS NULL AND pbl.unlinked_at IS NULL
-           AND po.commission_direction='partner_owes_tenant'`,
+           AND b.state <> 'cancelled'
+           AND pbl.commission_direction='partner_owes_tenant'`,
         [actor.tenantId],
       );
       const {
@@ -1058,10 +1115,10 @@ export class PartnerService {
       } = await tx.query(
         `SELECT COALESCE(SUM(pbl.commission_amount_minor),0)::text AS total_minor, COUNT(*)::text AS cnt
          FROM partner_booking_links pbl
-         JOIN partner_organizations po
-           ON po.tenant_id = pbl.tenant_id AND po.id = pbl.partner_id
+         JOIN bookings b ON b.tenant_id = pbl.tenant_id AND b.id = pbl.booking_id
          WHERE pbl.tenant_id=$1 AND pbl.settlement_id IS NULL AND pbl.unlinked_at IS NULL
-           AND po.commission_direction='tenant_owes_partner'`,
+           AND b.state <> 'cancelled'
+           AND pbl.commission_direction='tenant_owes_partner'`,
         [actor.tenantId],
       );
       const {
@@ -1117,12 +1174,13 @@ export class PartnerService {
       const {
         rows: [receivable],
       } = await tx.query(
-        `SELECT COALESCE(SUM(pbl.commission_amount_minor),0)::bigint AS total_minor,
+        `SELECT COALESCE(SUM(pbl.gross_amount_minor - pbl.commission_amount_minor),0)::bigint AS total_minor,
                 COUNT(DISTINCT pbl.partner_id)::int AS cnt
          FROM partner_booking_links pbl
-         JOIN partner_organizations po ON po.tenant_id=pbl.tenant_id AND po.id=pbl.partner_id
+         JOIN bookings b ON b.tenant_id=pbl.tenant_id AND b.id=pbl.booking_id
          WHERE pbl.tenant_id=$1 AND pbl.settlement_id IS NULL AND pbl.unlinked_at IS NULL
-           AND po.commission_direction='partner_owes_tenant'`,
+           AND b.state<>'cancelled'
+           AND pbl.commission_direction='partner_owes_tenant'`,
         [actor.tenantId],
       );
       const {
@@ -1131,9 +1189,10 @@ export class PartnerService {
         `SELECT COALESCE(SUM(pbl.commission_amount_minor),0)::bigint AS total_minor,
                 COUNT(DISTINCT pbl.partner_id)::int AS cnt
          FROM partner_booking_links pbl
-         JOIN partner_organizations po ON po.tenant_id=pbl.tenant_id AND po.id=pbl.partner_id
+         JOIN bookings b ON b.tenant_id=pbl.tenant_id AND b.id=pbl.booking_id
          WHERE pbl.tenant_id=$1 AND pbl.settlement_id IS NULL AND pbl.unlinked_at IS NULL
-           AND po.commission_direction='tenant_owes_partner'`,
+           AND b.state<>'cancelled'
+           AND pbl.commission_direction='tenant_owes_partner'`,
         [actor.tenantId],
       );
       const {
@@ -1366,7 +1425,10 @@ export class PartnerService {
          FROM partner_settlements ps
          JOIN partner_organizations po ON po.tenant_id = ps.tenant_id AND po.id = ps.partner_id
          WHERE ps.tenant_id = $1
-           AND ps.status NOT IN ('paid','void')
+           -- Open AS OF the chosen date: raised on/before it, not yet paid or voided by then.
+           AND (ps.created_at AT TIME ZONE (SELECT timezone FROM tenants WHERE id=$1))::date <= $2::date
+           AND (ps.paid_at IS NULL OR (ps.paid_at AT TIME ZONE (SELECT timezone FROM tenants WHERE id=$1))::date > $2::date)
+           AND (ps.voided_at IS NULL OR (ps.voided_at AT TIME ZONE (SELECT timezone FROM tenants WHERE id=$1))::date > $2::date)
            AND ps.due_date IS NOT NULL
            ${extraWhere.join("\n           ")}
          GROUP BY po.id, po.name, ps.currency, ps.commission_direction
@@ -1472,7 +1534,6 @@ export class PartnerService {
     } = {},
   ) {
     return this.db.transaction(actor, async (tx) => {
-      // Verify partner belongs to tenant
       const {
         rows: [partner],
       } = await tx.query(
@@ -1486,54 +1547,9 @@ export class PartnerService {
       );
       if (!partner) throw new NotFoundException("Partner not found");
 
-      // Compute true account balance independently of pagination
-      // Balance = sum of unsettled booking commissions (net of settled amounts)
-      const {
-        rows: [balRow],
-      } = await tx.query(
-        `SELECT
-           -- Balance = all booking DRs minus cleared settlement CRs.
-           -- This mirrors the running balance in the transaction register.
-           -- For partner_owes_tenant: DR = gross, CR cleared settlement = net (remitted)
-           -- For tenant_owes_partner: DR = commission, CR cleared settlement = net (paid out)
-           COALESCE(SUM(CASE WHEN pbl.unlinked_at IS NULL
-                              AND po.commission_direction = 'partner_owes_tenant'
-                         THEN pbl.gross_amount_minor ELSE 0 END), 0)
-           -
-           COALESCE(SUM(CASE WHEN pbl.unlinked_at IS NULL
-                              AND po.commission_direction = 'tenant_owes_partner'
-                         THEN pbl.commission_amount_minor ELSE 0 END), 0)
-           -- Subtract cleared (paid/voided) settlement net amounts (they reset the ledger)
-           - COALESCE((
-               SELECT SUM(CASE WHEN ps.commission_direction = 'partner_owes_tenant'
-                               THEN ps.net_amount_minor ELSE -ps.net_amount_minor END)
-               FROM partner_settlements ps
-               WHERE ps.tenant_id=$1 AND ps.partner_id=$2
-                 AND ps.status IN ('paid','voided','void')
-             ), 0)
-           AS balance_minor
-         FROM partner_booking_links pbl
-         JOIN partner_organizations po ON po.tenant_id=pbl.tenant_id AND po.id=pbl.partner_id
-         WHERE pbl.tenant_id=$1 AND pbl.partner_id=$2`,
-        [actor.tenantId, partnerId],
-      );
-      const balance_minor = Number(balRow?.balance_minor ?? 0);
-
-      // Unsettled booking count
-      const {
-        rows: [cntRow],
-      } = await tx.query(
-        `SELECT COUNT(*)::int AS cnt FROM partner_booking_links
-         WHERE tenant_id=$1 AND partner_id=$2 AND settlement_id IS NULL AND unlinked_at IS NULL`,
-        [actor.tenantId, partnerId],
-      );
-      const unsettled_count = Number(cntRow?.cnt ?? 0);
-
       const page = opts.page ?? 1;
       const limit = 50;
       const offset = (page - 1) * limit;
-
-      // Date range params
       const dateFrom =
         opts.dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(opts.dateFrom)
           ? opts.dateFrom
@@ -1547,185 +1563,74 @@ export class PartnerService {
           ? opts.status
           : null;
 
-      // Booking entries
-      const bookingDateWhere = [
-        dateFrom ? "pbl.created_at >= $5::date" : null,
-        dateTo ? "pbl.created_at <  ($6::date + interval '1 day')" : null,
-      ]
-        .filter(Boolean)
-        .join(" AND ");
-      const bookingStatusWhere =
-        statusFilter === "settled"
-          ? "AND pbl.settlement_id IS NOT NULL"
-          : statusFilter === "unsettled"
-            ? "AND pbl.settlement_id IS NULL"
-            : "";
-
-      const bookingParams: any[] = [actor.tenantId, partnerId, limit, offset];
-      if (dateFrom) bookingParams.push(dateFrom);
-      if (dateTo) bookingParams.push(dateTo);
-
-      const { rows: bookingRows } = await tx.query(
-        `SELECT 'booking' AS entry_type,
-                pbl.id,
-                pbl.created_at AS event_at,
-                p.name || ' — ' || TO_CHAR(d.starts_at, 'DD Mon YYYY') || ' (' || LEFT(b.id::text, 8) || ')' AS description,
-                pbl.gross_amount_minor::bigint AS gross_amount_minor,
-                pbl.commission_amount_minor::bigint AS commission_amount_minor,
-                -- DR = gross for partner_owes_tenant (they collected it); commission for tenant_owes_partner (we owe it)
-                CASE po.commission_direction
-                  WHEN 'partner_owes_tenant' THEN pbl.gross_amount_minor::bigint
-                  ELSE pbl.commission_amount_minor::bigint
-                END AS amount_minor,
-                pbl.currency,
-                po.commission_direction,
-                pbl.booking_id,
-                pbl.settlement_id
-         FROM partner_booking_links pbl
-         JOIN bookings b ON b.tenant_id=pbl.tenant_id AND b.id=pbl.booking_id
-         JOIN departures d ON d.tenant_id=b.tenant_id AND d.id=b.departure_id
-         JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id
-         JOIN partner_organizations po ON po.tenant_id=pbl.tenant_id AND po.id=pbl.partner_id
-         WHERE pbl.tenant_id=$1 AND pbl.partner_id=$2 AND pbl.unlinked_at IS NULL
-           ${bookingStatusWhere}
-           ${bookingDateWhere ? `AND ${bookingDateWhere}` : ""}
-         ORDER BY pbl.created_at DESC, pbl.id DESC
-         LIMIT $3 OFFSET $4`,
-        bookingParams,
+      // Running balance is computed over the WHOLE ledger (not per page), then
+      // filtered and paginated, so every row shows the true balance at that point.
+      const { rows } = await tx.query(
+        `WITH t AS (SELECT id, timezone FROM tenants WHERE id=$1),
+         e AS (${PARTNER_LEDGER_ENTRIES}),
+         ranked AS (
+           SELECT e.*, (e.event_at AT TIME ZONE t.timezone)::date AS day,
+             SUM(e.amount_minor) OVER (ORDER BY e.event_at, e.kind, e.id
+               ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS balance_minor
+           FROM e CROSS JOIN t
+         )
+         SELECT *, COUNT(*) OVER () AS filtered_count FROM ranked
+         WHERE ($3::date IS NULL OR day >= $3::date)
+           AND ($4::date IS NULL OR day <= $4::date)
+           AND ($5::text IS NULL
+             OR ($5='unsettled' AND kind IN ('booking','claim') AND (kind='claim' OR settlement_id IS NULL))
+             OR ($5='settled' AND (kind<>'booking' OR settlement_id IS NOT NULL)))
+         ORDER BY event_at DESC, kind DESC, id DESC
+         LIMIT $6 OFFSET $7`,
+        [
+          actor.tenantId,
+          partnerId,
+          dateFrom,
+          dateTo,
+          statusFilter,
+          limit,
+          offset,
+        ],
       );
-
-      // Settlement entries (not filtered by booking status — always show)
-      const settlementParams: any[] = [
-        actor.tenantId,
-        partnerId,
-        limit,
-        offset,
-      ];
-      const settlementDateWhere = [
-        dateFrom
-          ? `ps.created_at >= $${settlementParams.push(dateFrom)}::date`
-          : null,
-        dateTo
-          ? `ps.created_at <  ($${settlementParams.push(dateTo)}::date + interval '1 day')`
-          : null,
-      ].filter(Boolean);
-
-      const { rows: settlementRows } =
-        statusFilter === "unsettled"
-          ? { rows: [] }
-          : await tx.query(
-              `SELECT 'settlement' AS entry_type,
-                ps.id,
-                ps.created_at AS event_at,
-                'Settlement ' || TO_CHAR(ps.period_start,'Mon DD') || '–' || TO_CHAR(ps.period_end,'Mon DD, YYYY')
-                  || CASE WHEN ps.invoice_number IS NOT NULL THEN ' (' || ps.invoice_number || ')' ELSE '' END
-                  AS description,
-                ps.net_amount_minor::bigint AS amount_minor,
-                ps.currency,
-                ps.commission_direction,
-                ps.status,
-                ps.due_date,
-                ps.invoice_number,
-                ps.payment_ref,
-                ps.paid_at,
-                ps.voided_at
-         FROM partner_settlements ps
-         WHERE ps.tenant_id=$1 AND ps.partner_id=$2
-           ${settlementDateWhere.length ? `AND ${settlementDateWhere.join(" AND ")}` : ""}
-         ORDER BY ps.created_at DESC, ps.id DESC
-         LIMIT $3 OFFSET $4`,
-              settlementParams,
-            );
-
-      const { rows: claimRows } = await tx.query(
-        `SELECT 'claim' AS entry_type,
-                c.id,
-                c.recorded_at AS event_at,
-                'Collection claim — ' || c.reference AS description,
-                c.amount_minor::bigint AS amount_minor,
-                c.currency,
-                'partner_owes_tenant' AS commission_direction,
-                d.decision,
-                d.reason AS decision_reason
-         FROM partner_collection_claims c
-         LEFT JOIN partner_claim_decisions d ON d.tenant_id=c.tenant_id AND d.claim_id=c.id
-         WHERE c.tenant_id=$1 AND c.partner_id=$2
-         ORDER BY c.recorded_at DESC, c.id DESC
-         LIMIT $3 OFFSET $4`,
-        [actor.tenantId, partnerId, limit, offset],
+      const {
+        rows: [totals],
+      } = await tx.query(
+        `WITH t AS (SELECT id, timezone FROM tenants WHERE id=$1), e AS (${PARTNER_LEDGER_ENTRIES})
+         SELECT COALESCE(SUM(amount_minor),0)::text AS balance_minor,
+           COUNT(*) FILTER (WHERE kind='booking' AND settlement_id IS NULL)::int AS unsettled_count
+         FROM e`,
+        [actor.tenantId, partnerId],
       );
+      const balance_minor = Number(totals.balance_minor);
+      const unsettled_count = Number(totals.unsettled_count);
 
-      // Merge, sort, paginate
-      const allEntries = [...bookingRows, ...settlementRows, ...claimRows]
-        .sort(
-          (a: any, b: any) =>
-            new Date(b.event_at).getTime() - new Date(a.event_at).getTime(),
-        )
-        .slice(0, limit);
-
-      // Running balance: booking/claim entries build the debt; settlements clear it.
-      // Pending settlements (draft/issued/sent) are informational only — bookings already counted.
-      let runBalance = 0;
-      const entriesWithBalance = allEntries.reverse().map((entry: any) => {
-        const amount = Number(entry.amount_minor);
-        const isSettlement = entry.entry_type === "settlement";
-        const isClearedSettlement =
-          isSettlement &&
-          ["paid", "void", "voided"].includes(entry.status ?? "");
-        const isPendingSettlement = isSettlement && !isClearedSettlement;
-
-        if (isClearedSettlement) {
-          runBalance = 0;
-        } else if (!isPendingSettlement) {
-          if (entry.commission_direction === "partner_owes_tenant") {
-            runBalance += amount;
-          } else if (entry.commission_direction === "tenant_owes_partner") {
-            runBalance -= amount;
-          }
-        }
-        // Settlement rows show on the CR side (they clear the receivable/payable).
-        // Booking/claim rows show on DR or CR per commission direction.
-        let dr_minor: number;
-        let cr_minor: number;
-        if (isSettlement) {
-          if (entry.commission_direction === "partner_owes_tenant") {
-            dr_minor = 0;
-            cr_minor = amount;
-          } else {
-            dr_minor = amount;
-            cr_minor = 0;
-          }
-        } else {
-          dr_minor =
-            entry.commission_direction === "partner_owes_tenant" ? amount : 0;
-          cr_minor =
-            entry.commission_direction === "tenant_owes_partner" ? amount : 0;
-        }
-        const status: string =
-          entry.status ?? (entry.settlement_id ? "settled" : "unsettled");
+      const entries = rows.map((r: any) => {
+        const amount = Number(r.amount_minor);
         return {
-          id: entry.id,
-          kind: entry.entry_type as string,
-          event_at: entry.event_at as string,
-          description: entry.description as string,
-          dr_minor,
-          cr_minor,
-          balance_minor: runBalance,
-          currency: entry.currency as string,
-          status,
-          ref: (entry.invoice_number ??
-            entry.payment_ref ??
-            (entry.booking_id
-              ? String(entry.booking_id).slice(0, 8)
-              : null)) as string | null,
+          id: r.id,
+          kind:
+            r.kind === "booking" || r.kind === "claim" ? r.kind : "settlement",
+          event_at: r.event_at as string,
+          description: r.description as string,
+          dr_minor: amount > 0 ? amount : 0,
+          cr_minor: amount < 0 ? -amount : 0,
+          gross_minor: r.gross_minor === null ? null : Number(r.gross_minor),
+          commission_minor:
+            r.commission_minor === null ? null : Number(r.commission_minor),
+          balance_minor: Number(r.balance_minor),
+          currency: r.currency as string,
+          status: r.status as string,
+          ref: r.reference as string | null,
         };
       });
 
       return {
         partner: { ...partner, balance_minor, unsettled_count },
-        entries: entriesWithBalance.reverse(),
+        entries,
         page,
-        has_more: allEntries.length === limit,
+        has_more: rows.length
+          ? offset + rows.length < Number(rows[0].filtered_count)
+          : false,
       };
     });
   }

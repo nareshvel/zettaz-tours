@@ -44,4 +44,4 @@ Which product (QBO vs Xero vs CSV-only), home currency of the file, and whether 
 - Journals: guest payment Dr receipts (cash → Cash account, otherwise Guest receipts) / Cr Tour income; payment void/reversal posts the reverse on its own date; expense bill Dr category code (or name, or default) / Cr AP; expense payment Dr AP / Cr Cash or Bank; paid partner settlement — partner collected: Dr Bank net + Dr Commission / Cr Income gross; we collected: Dr Commission / Cr Bank.
 - Mapping lives in `config.accounting` (seven account names with defaults), edited on the report page by `config.write`.
 - CSV columns: `JournalNo,JournalDate,AccountName,Debits,Credits,Description,Name,Currency,Memo` (QBO Import Data → Journal Entries).
-- Voided expense bills are omitted (no reversing entry yet) — if a bill is voided after the accountant imported it, they must reverse manually. Candidate follow-up.
+- Voids are append-only corrections: a voided expense bill, expense payment, guest payment, or paid partner settlement keeps its original journal and gets a reversing journal on the void date. A bill voided on or before its own date is omitted.

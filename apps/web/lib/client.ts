@@ -321,6 +321,11 @@ export function digits(currency: string) {
     }).resolvedOptions().maximumFractionDigits ?? 2
   );
 }
+/** Minor units → plain decimal string for an input field (no symbol, no grouping). */
+export function major(amountMinor: number, currency: string) {
+  const precision = digits(currency);
+  return (amountMinor / 10 ** precision).toFixed(precision);
+}
 export function minor(value: string, currency: string) {
   const precision = digits(currency);
   if (!new RegExp(`^\\d+(?:\\.\\d{1,${precision || 1}})?$`).test(value))

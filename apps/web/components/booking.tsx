@@ -45,6 +45,7 @@ import {
   downloadApiFile,
   fetchApiFile,
   label,
+  major,
   minor,
   money,
   paymentMethodLabel,
@@ -716,9 +717,9 @@ export function NewReservation({
         const value = amendBooking?.emergency_contact?.relationship ?? "";
         return Boolean(
           value &&
-            !(EMERGENCY_RELATIONSHIP_OPTIONS as readonly string[]).includes(
-              value,
-            ),
+          !(EMERGENCY_RELATIONSHIP_OPTIONS as readonly string[]).includes(
+            value,
+          ),
         );
       },
     ),
@@ -937,7 +938,11 @@ export function NewReservation({
       (key) => (amendBooking.party[key] ?? 0) !== (party[key] ?? 0),
     ),
   );
-  const flowReady = amendMode || Boolean(hold);
+  // Guest details open as soon as a departure and party are chosen. Seats are
+  // held only when the user commits the guest details, so the hold timer is
+  // spent on payment, not on typing.
+  const flowReady =
+    amendMode || Boolean(hold) || Boolean(departure && partyTotal > 0);
   const quoteExpired = Boolean(
     changeQuote && new Date(changeQuote.expiresAt).getTime() <= Date.now(),
   );
@@ -1022,6 +1027,23 @@ export function NewReservation({
   useEffect(() => {
     if (collectionMode === "partner_invoice") setInvoiceRequired(true);
   }, [collectionMode]);
+  useEffect(() => {
+    if (amendMode || hold) return;
+    setPassengerDrafts((current) =>
+      (departure?.categories ?? []).flatMap((category) => {
+        const existing = current.filter((p) => p.category === category.slug);
+        return Array.from(
+          { length: party[category.slug] ?? 0 },
+          (_, i) =>
+            existing[i] ?? {
+              name: "",
+              category: category.slug,
+              isMinor: categoryIsMinor(category.slug),
+            },
+        );
+      }),
+    );
+  }, [amendMode, hold, departure, party]);
   const partnerSourceSelected = isPartnerResellerSource(source);
   const selectedPartnerName =
     (partners.data ?? []).find((partner) => partner.id === partnerId)?.name ??
@@ -1129,7 +1151,15 @@ export function NewReservation({
   async function reserve(e: React.FormEvent) {
     e.preventDefault();
     if (amendMode) return;
-    if (!scheduledDiscovery) return;
+    // Step 1 no longer holds on its own: move the user to guest details.
+    guestPanelRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+    window.setTimeout(() => leadNameRef.current?.focus(), 250);
+  }
+  async function placeHold() {
+    if (amendMode || !scheduledDiscovery) return null;
     const result = await holdMutation.run<{
       holdId: string;
       quote: Quote;
@@ -1139,32 +1169,18 @@ export function NewReservation({
       party,
       ...(authorizeOverbook ? { reason: overbookReason } : {}),
     });
-    if (result) {
-      setHold(result);
-      setOpenSections({
-        lead: true,
-        roster: false,
-        pickup: false,
-        stay: false,
-        concession: true,
-        contacts: false,
-      });
-      setPassengerDrafts(
-        (departure?.categories ?? []).flatMap((category) =>
-          Array.from({ length: party[category.slug] ?? 0 }, () => ({
-            name: "",
-            category: category.slug,
-            isMinor: categoryIsMinor(category.slug),
-          })),
-        ),
-      );
-    }
+    if (result) setHold(result);
+    return result;
   }
   async function create(e: React.FormEvent) {
     e.preventDefault();
     if (amendMode) return submitAmend(e);
-    if (!hold || remaining <= 0) return;
     if (partnerSourceSelected && !partnerId) return;
+    let activeHold = hold && remaining > 0 ? hold : null;
+    if (!createdBookingId && !activeHold) {
+      activeHold = (await placeHold()) ?? null;
+      if (!activeHold) return;
+    }
     const pickup: Pickup =
       pickupKind === "none"
         ? { kind: "none" }
@@ -1176,7 +1192,7 @@ export function NewReservation({
       const result = await bookingMutation.run<{ bookingId: string }>(
         "staff/v1/bookings",
         {
-          holdId: hold.holdId,
+          holdId: activeHold!.holdId,
           leadName: name,
           leadEmail: email,
           leadPhone: phone,
@@ -1234,7 +1250,10 @@ export function NewReservation({
           ...(discountAmount.trim()
             ? {
                 concession: {
-                  discountMinor: minor(discountAmount, hold.quote.currency),
+                  discountMinor: minor(
+                    discountAmount,
+                    activeHold!.quote.currency,
+                  ),
                   reason: discountReason.trim(),
                   promoCode: promoCode.trim(),
                 },
@@ -1275,8 +1294,8 @@ export function NewReservation({
     );
     if (recorded) {
       const next = returnTo
-        ? `/reservations/${bookingId}?returnTo=${encodeURIComponent(returnTo)}`
-        : `/reservations/${bookingId}`;
+        ? `/reservations/${bookingId}?step=payment&returnTo=${encodeURIComponent(returnTo)}`
+        : `/reservations/${bookingId}?step=payment`;
       router.push(next);
     }
   }
@@ -1316,7 +1335,8 @@ export function NewReservation({
             emergencyContact: {
               name: emergencyName || name,
               phone: emergencyPhone || phone || "n/a",
-              relationship: emergencyRelationship || EMERGENCY_RELATIONSHIP_OTHER,
+              relationship:
+                emergencyRelationship || EMERGENCY_RELATIONSHIP_OTHER,
             },
           }
         : {}),
@@ -1638,11 +1658,11 @@ export function NewReservation({
       ) : (
         <div className="quote-empty">
           <LockKeyhole size={22} />
-          <p>Price appears after seats are held.</p>
+          <p>The exact price is locked when the seats are held.</p>
         </div>
       )}
       <div className="summary-footnote">
-        Payment and confirmation happen on the next screen.
+        Seats are held when you continue. Payment and confirmation come next.
       </div>
     </>
   );
@@ -1653,7 +1673,7 @@ export function NewReservation({
         <p className="booking-flow-subtitle">
           {amendMode
             ? "Update guest, pickup, stay, and (when confirmed) departure or party. Review a change quote before accepting."
-            : "Find a departure, hold seats, then capture the guest."}
+            : "Choose the trip and party, add the guests, then take payment."}
         </p>
       </div>
       {amendMode && commercialLocked && (
@@ -2111,8 +2131,8 @@ export function NewReservation({
                                             item.available_adults <= 0
                                           ? " limited"
                                           : item.available <= 3
-                                          ? " limited"
-                                          : "")
+                                            ? " limited"
+                                            : "")
                                     }
                                   >
                                     <Users size={14} />
@@ -2159,9 +2179,9 @@ export function NewReservation({
                       <div>
                         <strong>{category.label}</strong>
                         <small>
-                            {category.countsTowardCapacity
-                              ? "Counts toward occupancy"
-                              : "Does not count toward occupancy"}
+                          {category.countsTowardCapacity
+                            ? "Counts toward occupancy"
+                            : "Does not count toward occupancy"}
                         </small>
                       </div>
                       <div className="party-stepper-controls">
@@ -2218,24 +2238,6 @@ export function NewReservation({
                     )}
                   </div>
                 )}
-              {scheduledDiscovery && !hold && !amendMode && (
-                <div className="form-actions mobile-sticky">
-                  <button
-                    className="button"
-                    disabled={
-                      !departure ||
-                      partyTotal < 1 ||
-                      holdMutation.busy ||
-                      (authorizeOverbook && overbookReason.trim().length < 8)
-                    }
-                  >
-                    {holdMutation.busy
-                      ? "Checking availability…"
-                      : "Hold seats"}
-                    <ArrowRight size={16} />
-                  </button>
-                </div>
-              )}
             </form>
           </section>
           <section
@@ -2252,9 +2254,9 @@ export function NewReservation({
                 <p>
                   {amendMode
                     ? "Update lead, contacts, pickup, and stay. Traveller roster is managed on the reservation page."
-                    : hold
-                      ? "Required lead details first. Optional sections stay collapsed."
-                      : "Unlocks after seats are held."}
+                    : flowReady
+                      ? "Lead guest first. Seats are held when you continue to payment."
+                      : "Choose a departure and party size first."}
                 </p>
               </div>
             </div>
@@ -2265,8 +2267,8 @@ export function NewReservation({
                     ? Boolean(changeQuote) ||
                       quoteMutation.busy ||
                       acceptMutation.busy
-                    : !hold ||
-                      (remaining <= 0 && !createdBookingId) ||
+                    : !flowReady ||
+                      holdMutation.busy ||
                       bookingMutation.busy ||
                       rosterMutation.busy
                 }
@@ -2347,7 +2349,7 @@ export function NewReservation({
                 {amendMode && (
                   <BookingAccordion
                     id="roster"
-                    title="Travel party names"
+                    title="Other guests in this party"
                     hint={
                       partyChangedFromBooking
                         ? "Updated after this change is accepted"
@@ -2380,7 +2382,7 @@ export function NewReservation({
                         {amendPassengers.data.length ? (
                           <div
                             className="party-name-badges"
-                            aria-label="Travel party names"
+                            aria-label="Other guests in this party"
                           >
                             {amendPassengers.data.map((passenger) => (
                               <span
@@ -2437,7 +2439,7 @@ export function NewReservation({
                 {!amendMode && (
                   <BookingAccordion
                     id="roster"
-                    title="Travel party names"
+                    title="Other guests in this party"
                     hint="Can be completed before waiver signing"
                     badge="Optional now"
                     open={Boolean(openSections.roster)}
@@ -2961,8 +2963,8 @@ export function NewReservation({
                       <button
                         className="button"
                         disabled={
-                          !hold ||
-                          (remaining <= 0 && !createdBookingId) ||
+                          !flowReady ||
+                          holdMutation.busy ||
                           bookingMutation.busy ||
                           rosterMutation.busy ||
                           (partnerSourceSelected && !partnerId) ||
@@ -2970,13 +2972,15 @@ export function NewReservation({
                             discountReason.trim().length < 3)
                         }
                       >
-                        {bookingMutation.busy
-                          ? "Creating reservation…"
-                          : rosterMutation.busy
-                            ? "Saving guest roster…"
-                            : createdBookingId
-                              ? "Retry guest roster"
-                              : "Create reservation"}
+                        {holdMutation.busy
+                          ? "Holding seats…"
+                          : bookingMutation.busy
+                            ? "Creating reservation…"
+                            : rosterMutation.busy
+                              ? "Saving guest names…"
+                              : createdBookingId
+                                ? "Retry guest names"
+                                : "Hold & continue to payment"}
                         <ArrowRight size={16} />
                       </button>
                     )}
@@ -2985,7 +2989,7 @@ export function NewReservation({
                       remaining <= 0 &&
                       !createdBookingId && (
                         <span className="muted">
-                          Hold expired — create a new hold first.
+                          Hold expired — continuing will hold the seats again.
                         </span>
                       )}
                   </div>
@@ -3111,6 +3115,7 @@ export function BookingDetail({
     [promoCode, setPromoCode] = useState(""),
     [discountReason, setDiscountReason] = useState(""),
     [inputError, setInputError] = useState(""),
+    [methodError, setMethodError] = useState(""),
     [success, setSuccess] = useState("");
   const [printError, setPrintError] = useState("");
   const [adjustingPaymentId, setAdjustingPaymentId] = useState("");
@@ -3122,6 +3127,21 @@ export function BookingDetail({
   const [compactSummary, setCompactSummary] = useState(false);
   const [occurredAt] = useState(() => new Date().toISOString());
   const remaining = useRemaining(booking.data?.expiresAt);
+  useEffect(() => {
+    // Arriving from New reservation: open the payment step straight away.
+    if (new URLSearchParams(window.location.search).get("step") !== "payment")
+      return;
+    setSummaryOpen(true);
+    const timer = window.setTimeout(() => {
+      document
+        .querySelector(".booking-payment-form")
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      document
+        .querySelector<HTMLInputElement>(".booking-payment-form .amount-input")
+        ?.focus();
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, []);
   useEffect(() => {
     const media = window.matchMedia("(max-width: 1280px)");
     const sync = () => {
@@ -3275,30 +3295,71 @@ export function BookingDetail({
       setPrintError((error as Error).message);
     }
   }
-  async function payAndConfirm() {
+  /** Validates the entry and records the payment. Returns false to stop. */
+  async function recordEnteredPayment(): Promise<boolean> {
     setInputError("");
-    if (b.balanceMinor > 0 && method) {
-      if (!session.permissions.includes("payment.write")) {
-        setInputError("Payment permission is required to record collection.");
-        return;
-      }
-      try {
-        const paid = await pay.run(`staff/v1/bookings/${bookingId}/payments`, {
-          amountMinor: minor(amount, b.quote.currency),
-          currency: b.quote.currency,
-          method,
-          status: "settled",
-          reference: reference.trim(),
-          reason: note.trim(),
-          occurredAt,
-        });
-        if (!paid) return;
-      } catch (e) {
-        setInputError((e as Error).message);
-        return;
-      }
+    setMethodError("");
+    const entered = amount.trim();
+    if (!entered) return true;
+    let amountMinor = 0;
+    try {
+      amountMinor = minor(entered, b.quote.currency);
+    } catch {
+      setInputError("Enter a valid amount, for example 125.00.");
+      return false;
     }
+    if (amountMinor <= 0) {
+      setInputError(
+        "Amount must be greater than zero, or choose No payment now.",
+      );
+      return false;
+    }
+    if (amountMinor > b.balanceMinor) {
+      setInputError(
+        `Amount is more than the balance due (${money(b.balanceMinor, b.quote.currency)}).`,
+      );
+      return false;
+    }
+    if (!method) {
+      setMethodError("Choose how the guest paid");
+      return false;
+    }
+    if (!session.permissions.includes("payment.write")) {
+      setInputError("Payment permission is required to record collection.");
+      return false;
+    }
+    const paid = await pay.run(`staff/v1/bookings/${bookingId}/payments`, {
+      amountMinor,
+      currency: b.quote.currency,
+      method,
+      status: "settled",
+      reference: reference.trim(),
+      reason: note.trim(),
+      occurredAt,
+    });
+    if (!paid) return false;
+    setAmount("");
+    return true;
+  }
+  async function payAndConfirm() {
+    const enteredMinor = paymentAmountValid ? paymentAmountMinor : 0;
+    if (!partnerSettles && b.paidMinor + enteredMinor < required) {
+      // Validate the entry first so a missing method is reported before the minimum.
+      if (amount.trim() && !method) {
+        setMethodError("Choose how the guest paid");
+        return;
+      }
+      setInputError(
+        `At least ${money(required - b.paidMinor, b.quote.currency)} is needed to confirm (${b.quote.minimumPaidPercent}% of total). Record that amount, or use Keep on hold.`,
+      );
+      return;
+    }
+    if (!(await recordEnteredPayment())) return;
     await confirmation();
+  }
+  async function keepOnHold() {
+    if (!(await recordEnteredPayment())) return;
+    router.push(returnTo ?? "/reservations");
   }
   async function restoreHold() {
     const result = await reviveHold.run(
@@ -3350,18 +3411,62 @@ export function BookingDetail({
     session.permissions.includes("payment.write") &&
     !partnerSettlementWithoutGuestPay(b.partner?.collectionMode) ? (
       <div className="booking-payment-form">
+        <div className="payment-quick" role="group" aria-label="Amount">
+          {b.state === "held" &&
+            required > b.paidMinor &&
+            required < b.balanceMinor + b.paidMinor && (
+              <button
+                type="button"
+                className="chip"
+                onClick={() =>
+                  setAmount(major(required - b.paidMinor, b.quote.currency))
+                }
+              >
+                Deposit {money(required - b.paidMinor, b.quote.currency)}
+              </button>
+            )}
+          <button
+            type="button"
+            className="chip"
+            onClick={() => setAmount(major(b.balanceMinor, b.quote.currency))}
+          >
+            Full balance {money(b.balanceMinor, b.quote.currency)}
+          </button>
+          <button
+            type="button"
+            className="chip"
+            onClick={() => {
+              setAmount("");
+              setMethod("");
+              setMethodError("");
+              setInputError("");
+            }}
+          >
+            No payment now
+          </button>
+        </div>
         <div className="form-grid">
           <Field label={"Amount received · " + b.quote.currency}>
             <input
               className="amount-input"
               inputMode="decimal"
-              required
+              placeholder="0.00"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => {
+                setAmount(e.target.value);
+                setInputError("");
+              }}
             />
           </Field>
-          <Field label="Payment method">
-            <select value={method} onChange={(e) => setMethod(e.target.value)}>
+          <Field label="Payment method" error={methodError}>
+            <select
+              value={method}
+              aria-invalid={Boolean(methodError)}
+              onChange={(e) => {
+                setMethod(e.target.value);
+                setMethodError("");
+              }}
+            >
               <option value="">Select</option>
               {session.tenant.config.manualPaymentMethods.map((m) => (
                 <option key={m} value={m}>
@@ -3418,15 +3523,13 @@ export function BookingDetail({
     (Boolean(method) &&
       paymentAmountValid &&
       b.paidMinor + paymentAmountMinor >= required);
+  void fundingReady;
+  // The button stays usable; payAndConfirm explains exactly what is missing.
   const canConfirm =
     b.state === "held" &&
     !expired &&
     pickupReady &&
-    fundingReady &&
-    session.permissions.includes("bookings.write") &&
-    (partnerSettles ||
-      alreadyFunded ||
-      (Boolean(method) && session.permissions.includes("payment.write")));
+    session.permissions.includes("bookings.write");
   async function collectZettazPay() {
     const here = `${window.location.origin}/reservations/${bookingId}`;
     const result = await zettazCheckout.run<{ url: string }>(
@@ -3771,7 +3874,7 @@ export function BookingDetail({
             ) : passengers.data && passengers.data.length > 0 ? (
               <div
                 className="party-name-badges"
-                aria-label="Travel party names"
+                aria-label="Other guests in this party"
               >
                 {passengers.data.map((passenger) => (
                   <span
@@ -4223,7 +4326,7 @@ export function BookingDetail({
                   {pickupReady
                     ? partnerSettles
                       ? "Resolve any blocking issues, then confirm."
-                      : "Select a guest payment method and amount that meets the required total, then confirm."
+                      : "Take at least the required amount to confirm, or keep the reservation on hold."
                     : "Resolve required pickup before confirming."}
                 </p>
               )}
@@ -4240,10 +4343,22 @@ export function BookingDetail({
                     ? method && b.balanceMinor > 0 && !partnerSettles
                       ? "Recording & confirming…"
                       : "Confirming…"
-                    : method && b.balanceMinor > 0 && !partnerSettles
-                      ? "Record payment & confirm"
+                    : amount.trim() && b.balanceMinor > 0 && !partnerSettles
+                      ? "Record payment & confirm reservation"
                       : "Confirm reservation"}
                   <Check size={17} />
+                </button>
+              )}
+              {session.permissions.includes("bookings.write") && !expired && (
+                <button
+                  type="button"
+                  className="button secondary full"
+                  disabled={confirm.busy || pay.busy}
+                  onClick={() => void keepOnHold()}
+                >
+                  {amount.trim()
+                    ? "Record payment & keep on hold"
+                    : "Keep on hold"}
                 </button>
               )}
             </>

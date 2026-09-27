@@ -16713,3 +16713,22 @@ a.report-exception:hover {
 .journal-table td:last-child {
   min-width: 180px;
 }
+.payment-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.payment-quick .chip {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.payment-quick .chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}

@@ -16775,3 +16775,166 @@ a.report-exception:hover {
 .pnl-table .pnl-total th {
   font-size: 16px;
 }
+
+/* ── Metric cards: coloured right edge (shared across the app) ─────────────
+   Default colours cycle so neighbouring cards read as separate figures;
+   semantic states override: attention/warn/payable = amber, good/receivable = green. */
+:root {
+  --edge-1: #5b4a4f;
+  --edge-2: #34b37e;
+  --edge-3: #cbd2d9;
+  --edge-4: #f2b705;
+  --edge-warn: #f2b705;
+  --edge-good: #34b37e;
+  --edge-danger: #d9534f;
+}
+.metric-card,
+.briefing-tile,
+.finance-net-tile,
+.finance-account-tile,
+.statement-summary > div,
+.report-exception,
+.catalog-metrics > *,
+.resource-metrics > *,
+.boarding-metrics > * {
+  border-right: 4px solid var(--edge, var(--edge-1));
+  box-shadow: 0 1px 3px rgba(20, 47, 54, 0.08);
+}
+:is(
+  .metric-card,
+  .briefing-tile,
+  .finance-net-tile,
+  .finance-account-tile,
+  .statement-summary > div,
+  .report-exception,
+  .catalog-metrics > *,
+  .resource-metrics > *,
+  .boarding-metrics > *
+):nth-child(4n + 1) {
+  --edge: var(--edge-1);
+}
+:is(
+  .metric-card,
+  .briefing-tile,
+  .finance-net-tile,
+  .finance-account-tile,
+  .statement-summary > div,
+  .report-exception,
+  .catalog-metrics > *,
+  .resource-metrics > *,
+  .boarding-metrics > *
+):nth-child(4n + 2) {
+  --edge: var(--edge-2);
+}
+:is(
+  .metric-card,
+  .briefing-tile,
+  .finance-net-tile,
+  .finance-account-tile,
+  .statement-summary > div,
+  .report-exception,
+  .catalog-metrics > *,
+  .resource-metrics > *,
+  .boarding-metrics > *
+):nth-child(4n + 3) {
+  --edge: var(--edge-3);
+}
+:is(
+  .metric-card,
+  .briefing-tile,
+  .finance-net-tile,
+  .finance-account-tile,
+  .statement-summary > div,
+  .report-exception,
+  .catalog-metrics > *,
+  .resource-metrics > *,
+  .boarding-metrics > *
+):nth-child(4n + 4) {
+  --edge: var(--edge-4);
+}
+:is(
+  .metric-card,
+  .briefing-tile,
+  .finance-net-tile,
+  .finance-account-tile,
+  .statement-summary > div,
+  .report-exception,
+  .catalog-metrics > *,
+  .resource-metrics > *,
+  .boarding-metrics > *
+):is(.attention, .warn, .warning, .payable) {
+  --edge: var(--edge-warn);
+}
+:is(
+  .metric-card,
+  .briefing-tile,
+  .finance-net-tile,
+  .finance-account-tile,
+  .statement-summary > div,
+  .report-exception,
+  .catalog-metrics > *,
+  .resource-metrics > *,
+  .boarding-metrics > *
+):is(.good, .ok, .receivable) {
+  --edge: var(--edge-good);
+}
+:is(
+  .metric-card,
+  .briefing-tile,
+  .finance-net-tile,
+  .finance-account-tile,
+  .statement-summary > div,
+  .report-exception,
+  .catalog-metrics > *,
+  .resource-metrics > *,
+  .boarding-metrics > *
+):is(.danger, .overdue) {
+  --edge: var(--edge-danger);
+}
+@media print {
+  .metric-card,
+  .statement-summary > div {
+    box-shadow: none;
+  }
+}
+/* Finance tiles keep their own colours, moved from the top edge to the right edge */
+.finance-net-tile.finance-net-tile {
+  border-top: 1px solid var(--line);
+}
+div.finance-net-tile.finance-net-tile.receivable,
+a.finance-net-tile.finance-net-tile.receivable {
+  --edge: var(--teal, #176c63);
+}
+div.finance-net-tile.finance-net-tile.payable,
+a.finance-net-tile.finance-net-tile.payable {
+  --edge: #d97706;
+}
+div.finance-net-tile.finance-net-tile.overdue,
+a.finance-net-tile.finance-net-tile.overdue {
+  --edge: #dc2626;
+}
+div.finance-net-tile.finance-net-tile.expenses,
+a.finance-net-tile.finance-net-tile.expenses {
+  --edge: #8b5cf6;
+}
+div.finance-net-tile.finance-net-tile.unpaid,
+a.finance-net-tile.finance-net-tile.unpaid {
+  --edge: #9a5b00;
+}
+/* Inline summary counters become small cards so the edge reads as a card, not a divider */
+.catalog-metrics:not(.reservation-insights) > div {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-right-width: 4px;
+  border-right-color: var(--edge);
+  border-radius: 12px;
+  padding: 10px 16px;
+  min-width: 140px;
+}
+.catalog-metrics:not(.reservation-insights) {
+  gap: 12px;
+}
+.catalog-metrics.reservation-insights > div {
+  border-right: 0;
+  box-shadow: none;
+}

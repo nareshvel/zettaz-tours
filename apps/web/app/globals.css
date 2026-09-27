@@ -16732,3 +16732,46 @@ a.report-exception:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
+/* Report header: title left, filters + export + print on the same row */
+.report-shell-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.report-shell-head .page-heading {
+  margin-bottom: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.report-shell-head .report-shell-toolbar {
+  margin-bottom: 0;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
+@media (max-width: 1100px) {
+  .report-shell-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .report-shell-head .report-shell-toolbar {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+}
+.report-shell-head .report-shell-filters {
+  flex-wrap: nowrap;
+}
+/* Totals rows read at body size, not header size */
+.report-table tfoot th,
+.report-table tbody th {
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--ink, #142f36);
+}
+.pnl-table .pnl-total th {
+  font-size: 16px;
+}

@@ -87,31 +87,33 @@ export function ReportShell({
 }) {
   return (
     <div className="report-shell">
-      <Heading eyebrow="REPORT" title={title} description={basis} />
-      <div className="report-shell-toolbar no-print">
-        <div className="report-shell-filters">{filters}</div>
-        <div className="report-shell-actions">
-          {onExport && (
+      <div className="report-shell-head">
+        <Heading eyebrow="REPORT" title={title} description={basis} />
+        <div className="report-shell-toolbar no-print">
+          <div className="report-shell-filters">{filters}</div>
+          <div className="report-shell-actions">
+            {onExport && (
+              <button
+                type="button"
+                className="button secondary icon-only"
+                disabled={exportDisabled}
+                onClick={onExport}
+                aria-label="Export CSV"
+                title="Export CSV"
+              >
+                <Download size={16} />
+              </button>
+            )}
             <button
               type="button"
               className="button secondary icon-only"
-              disabled={exportDisabled}
-              onClick={onExport}
-              aria-label="Export CSV"
-              title="Export CSV"
+              onClick={() => window.print()}
+              aria-label="Print"
+              title="Print"
             >
-              <Download size={16} />
+              <Printer size={16} />
             </button>
-          )}
-          <button
-            type="button"
-            className="button secondary icon-only"
-            onClick={() => window.print()}
-            aria-label="Print"
-            title="Print"
-          >
-            <Printer size={16} />
-          </button>
+          </div>
         </div>
       </div>
       <div className="report-shell-body">{children}</div>

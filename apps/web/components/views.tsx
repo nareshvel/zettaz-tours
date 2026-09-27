@@ -1242,7 +1242,7 @@ export function Reservations({ session }: { session: Session }) {
         description="Find and manage bookings — guest details, money, amendments, and status."
       />
       <div
-        className="catalog-metrics reservation-insights"
+        className="catalog-metrics"
         aria-label="Loaded reservation summary"
       >
         <div>

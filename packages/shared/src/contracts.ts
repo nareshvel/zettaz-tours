@@ -106,7 +106,12 @@ export const configSchema = z
           })
           .default({}),
       })
-      .default({}),
+      .default({
+        booking_confirmation: {},
+        payment_request: {},
+        waiver_request: {},
+        cancellation: {},
+      }),
   })
   .strict(); // Multi-currency supported: bookingCurrency, collectionCurrency, and reportingCurrency
 // may each differ. FX conversion is deferred; expense records store their own currency.

@@ -35,6 +35,12 @@ export const mockConfig: TenantConfig = {
   documentLibrary: {
     quotaBytes: 1073741824,
   },
+  emailTemplates: {
+    booking_confirmation: {},
+    payment_request: {},
+    waiver_request: {},
+    cancellation: {},
+  },
 };
 export const mockProduct = {
   name: "Mock Coastal Discovery",

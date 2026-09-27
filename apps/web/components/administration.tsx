@@ -99,7 +99,11 @@ import {
   AssignmentsFilterButton,
   type AssignmentListFilters,
 } from "./catalog-assignments";
-import { defaultOccupancyClass, occupancyCaption, occupancyFillCopy } from "@/lib/types";
+import {
+  defaultOccupancyClass,
+  occupancyCaption,
+  occupancyFillCopy,
+} from "@/lib/types";
 import { PickupLocationsSettings } from "./pickup-locations";
 import { PartnerSettings } from "./partner-settings";
 import { PrintersSettings } from "./printers-settings";
@@ -136,6 +140,7 @@ const SETTINGS_TABS = new Set([
   "payments",
   "partners",
   "waivers",
+  "email-templates",
   "integrations",
   "security",
 ]);
@@ -632,8 +637,20 @@ function periodId() {
   return crypto.randomUUID();
 }
 const starterCategories: CategoryDraft[] = [
-  { id: "adult", slug: "adult", label: "Adult", countsTowardCapacity: true, occupancyClass: "adult" },
-  { id: "child", slug: "child", label: "Child", countsTowardCapacity: true, occupancyClass: "child" },
+  {
+    id: "adult",
+    slug: "adult",
+    label: "Adult",
+    countsTowardCapacity: true,
+    occupancyClass: "adult",
+  },
+  {
+    id: "child",
+    slug: "child",
+    label: "Child",
+    countsTowardCapacity: true,
+    occupancyClass: "child",
+  },
   {
     id: "infant",
     slug: "infant",
@@ -676,12 +693,14 @@ function emptyAmounts(
   );
 }
 function sanitizeCategories(categories: CategoryDraft[]) {
-  return categories.map(({ slug, label, countsTowardCapacity, occupancyClass }) => ({
-    slug,
-    label,
-    countsTowardCapacity,
-    occupancyClass,
-  }));
+  return categories.map(
+    ({ slug, label, countsTowardCapacity, occupancyClass }) => ({
+      slug,
+      label,
+      countsTowardCapacity,
+      occupancyClass,
+    }),
+  );
 }
 function periodsFromRates(
   categories: CategoryDraft[],
@@ -2782,9 +2801,7 @@ export function AvailabilityDetail({
                                   locale,
                                 )}
                               </strong>
-                              <span>
-                                {occupancyFillCopy(departure)}
-                              </span>
+                              <span>{occupancyFillCopy(departure)}</span>
                             </Link>
                           ))}
                         </div>
@@ -3033,10 +3050,7 @@ export function Settings({
       !session.permissions.includes("integration.manage")
     )
       return;
-    if (
-      next === "partners" &&
-      !session.permissions.includes("partner.manage")
-    )
+    if (next === "partners" && !session.permissions.includes("partner.manage"))
       return;
     settingsTab(router, searchParams, next);
   }
@@ -3189,6 +3203,15 @@ export function Settings({
               <span className="settings-nav-label">Waiver templates</span>
               <span className="settings-nav-label-short">Waivers</span>
             </button>
+            <button
+              className={tab === "email-templates" ? "active" : ""}
+              type="button"
+              onClick={() => selectTab("email-templates")}
+            >
+              <MailPlus size={16} />
+              <span className="settings-nav-label">Email templates</span>
+              <span className="settings-nav-label-short">Emails</span>
+            </button>
             {session.permissions.includes("partner.manage") && (
               <button
                 className={tab === "partners" ? "active" : ""}
@@ -3248,6 +3271,10 @@ export function Settings({
         ) : tab === "partners" ? (
           <div className="panel form-panel settings-tab-content">
             <PartnerSettings session={session} />
+          </div>
+        ) : tab === "email-templates" ? (
+          <div className="panel form-panel settings-tab-content">
+            <EmailTemplatesSettings session={session} />
           </div>
         ) : (
           <form className="panel form-panel" onSubmit={submit}>
@@ -3991,16 +4018,13 @@ export function Settings({
                     </article>
                   </div>
                   <p className="pay-integrations-note">
-                    Card-present / Stripe Terminal is not in this launch.
-                    Do not capture card numbers in this workspace or in Crew.
+                    Card-present / Stripe Terminal is not in this launch. Do not
+                    capture card numbers in this workspace or in Crew.
                   </p>
                 </div>
               </section>
             )}
             {tab === "waivers" && <WaiverSettings session={session} />}
-            {tab === "email-templates" && (
-              <EmailTemplatesSettings session={session} />
-            )}
             {tab === "security" ? (
               session.role === "owner" ? (
                 <SupportAccessSettings session={session} />
@@ -4136,8 +4160,7 @@ function taxHoldPreview(
   if (taxBasisPoints === 0) return "No tax is added.";
   const sample = money(10000, currency);
   const rate = `${taxBasisPoints / 100}%`;
-  if (taxInclusive)
-    return `Guest pays ${sample} including ${rate} tax.`;
+  if (taxInclusive) return `Guest pays ${sample} including ${rate} tax.`;
   return `Guest pays ${sample} plus ${rate} tax.`;
 }
 
@@ -4157,7 +4180,9 @@ function CurrencySelect({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const options = CURRENCIES.includes(value) ? CURRENCIES : [value, ...CURRENCIES];
+  const options = CURRENCIES.includes(value)
+    ? CURRENCIES
+    : [value, ...CURRENCIES];
   return (
     <select value={value} onChange={(event) => onChange(event.target.value)}>
       {options.map((code) => (
@@ -4415,14 +4440,14 @@ function SupportAccessSettings({ session }: { session: Session }) {
                 <small>{grant.permissions.map(label).join(" · ")}</small>
                 {grant.expires_at && (
                   <small>
-                      Expires{" "}
-                      {dateTime(
-                        grant.expires_at,
-                        session.tenant.timezone,
-                        session.tenant.config.locale,
-                        session.tenant.config.dateFormat,
-                        session.tenant.config.timeFormat,
-                      )}
+                    Expires{" "}
+                    {dateTime(
+                      grant.expires_at,
+                      session.tenant.timezone,
+                      session.tenant.config.locale,
+                      session.tenant.config.dateFormat,
+                      session.tenant.config.timeFormat,
+                    )}
                   </small>
                 )}
                 <div className="row-actions support-grant-actions">

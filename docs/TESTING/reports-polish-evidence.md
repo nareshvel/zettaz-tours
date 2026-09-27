@@ -62,6 +62,14 @@ Web gateway allowlist (`app/api/gateway/[...path]/route.ts`) extended to the thr
 
 **Evidence 27 Sep:** API typecheck + web typecheck clean. Full API suite: 55 pass / 8 fail — the same 8 fail on the untouched original code (invitations, recovery, sign-in, webhook, crew session, receipt PDF, migrations rerun; environment-related, not reports). New test `report arithmetic reconciles and product, source and commission reports stay tenant-scoped` passes, and fails against the old reports code. Agent visual via Playwright on demo data: overview, sales by product, booking sources, commission summary render correctly.
 
+## Follow-up 27 September 2026 (finance reports)
+
+- **Partner statement**, **Profit & loss**, **Accounting export** are live (see reporting-minimum.md). Catalog has no remaining "later" items.
+- Gateway allowlist extended; `config.accounting` added to the tenant config schema (defaults, fixture updated).
+- Test `partner statement, P&L and accounting journal reconcile and stay tenant-scoped`: statement closing = −commission for a tenant-owes-partner link; other tenant gets 404; P&L revenue = total − tax, net = revenue − commission − expenses; every journal balances; expense posts to category code; other tenant sees no journals. Suite: 56 pass / same 8 pre-existing failures.
+- Agent visual (Playwright, demo data): P&L, accounting export (mapping + journal), partner statement render correctly; journal/statement column widths tuned.
+- **Open question for owner/finance:** the existing Finance partner ledger (`partners.ts` → `partnerLedger`) treats **void** settlements like paid ones when computing balance (`status IN ('paid','voided','void')`). The new statement counts only paid settlements. If a settlement is voided the two will disagree; the ledger rule looks like a bug but was left unchanged pending confirmation.
+
 ## Automated evidence
 
 - `npm run typecheck --workspace=@zettaz/web` after this follow-up (passed).

@@ -75,6 +75,46 @@ export const configSchema = z
           .default(1073741824),
       })
       .default({ quotaBytes: 1073741824 }),
+    /** Chart-of-accounts names used by the accounting journal export (CSV). */
+    accounting: z
+      .object({
+        incomeAccount: z.string().trim().min(1).max(80).default("Tour income"),
+        guestReceiptsAccount: z
+          .string()
+          .trim()
+          .min(1)
+          .max(80)
+          .default("Undeposited Funds"),
+        cashAccount: z.string().trim().min(1).max(80).default("Cash on hand"),
+        bankAccount: z.string().trim().min(1).max(80).default("Bank"),
+        accountsPayable: z
+          .string()
+          .trim()
+          .min(1)
+          .max(80)
+          .default("Accounts Payable"),
+        commissionExpense: z
+          .string()
+          .trim()
+          .min(1)
+          .max(80)
+          .default("Commission expense"),
+        defaultExpenseAccount: z
+          .string()
+          .trim()
+          .min(1)
+          .max(80)
+          .default("Operating expenses"),
+      })
+      .default({
+        incomeAccount: "Tour income",
+        guestReceiptsAccount: "Undeposited Funds",
+        cashAccount: "Cash on hand",
+        bankAccount: "Bank",
+        accountsPayable: "Accounts Payable",
+        commissionExpense: "Commission expense",
+        defaultExpenseAccount: "Operating expenses",
+      }),
     emailTemplates: z
       .object({
         booking_confirmation: z

@@ -15,7 +15,7 @@ async function handle(
   const path = (await context.params).path.join("/");
   const reportRead =
     request.method === "GET" &&
-    /^reports\/v1\/(overview|sales-by-product|booking-sources|commission-summary)$/.test(
+    /^reports\/v1\/(overview|sales-by-product|booking-sources|commission-summary|partner-statement|accounting-journal|profit-and-loss)$/.test(
       path,
     );
   const connectorCatalogRead =

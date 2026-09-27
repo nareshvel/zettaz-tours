@@ -1,4 +1,10 @@
-import { Controller, Get, Injectable, Query } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  Injectable,
+  NotFoundException,
+  Query,
+} from "@nestjs/common";
 import { z } from "zod";
 import type { Actor } from "../../../packages/shared/src/contracts";
 import { Database, type Tx } from "./database";
@@ -18,6 +24,15 @@ const reportQuery = z
     "Choose a range of 400 days or less",
   );
 type ReportInput = z.infer<typeof reportQuery>;
+
+const statementQuery = z
+  .object({
+    partnerId: z.string().uuid(),
+    from: z.string().date(),
+    to: z.string().date(),
+  })
+  .strict()
+  .refine((v) => v.from <= v.to, "From date must not follow to date");
 
 /**
  * Date filter for a booking row `b` joined to departure `d`.
@@ -270,6 +285,408 @@ export class ReportService {
     });
   }
 
+  /**
+   * Partner statement for a period. Positive balance = partner owes the tenant.
+   * Booking links add gross (partner collected for us) or subtract commission
+   * (we owe the partner); paid settlements clear by their net amount.
+   * Draft/invoiced/sent/overdue settlements are listed for information only.
+   */
+  partnerStatement(actor: Actor, raw: unknown) {
+    const input = parse(statementQuery, raw);
+    return this.db.transaction(actor, async (tx: Tx) => {
+      const tenant = await this.tenant(tx, actor);
+      const {
+        rows: [partner],
+      } = await tx.query(
+        `SELECT id, name, email, phone, commission_direction,
+           CASE WHEN commission_type IS NULL THEN NULL ELSE commission_currency END AS currency
+         FROM partner_organizations WHERE tenant_id=$1 AND id=$2`,
+        [actor.tenantId, input.partnerId],
+      );
+      if (!partner) throw new NotFoundException("Partner not found");
+      const entries = `
+        SELECT 'booking' AS kind, (l.created_at AT TIME ZONE t.timezone)::date AS day, l.created_at AS at,
+          p.name || ' · ' || to_char(d.local_date,'DD Mon YYYY') || ' · ' || b.lead_name AS description,
+          LEFT(b.id::text,8) AS reference,
+          CASE l.commission_direction WHEN 'partner_owes_tenant' THEN l.gross_amount_minor
+            ELSE -l.commission_amount_minor END AS amount_minor,
+          l.gross_amount_minor, l.commission_amount_minor, trim(l.currency) AS currency, NULL::text AS status
+        FROM partner_booking_links l
+        JOIN t ON t.id=l.tenant_id
+        JOIN bookings b ON b.tenant_id=l.tenant_id AND b.id=l.booking_id
+        JOIN departures d ON d.tenant_id=b.tenant_id AND d.id=b.departure_id
+        JOIN products p ON p.tenant_id=d.tenant_id AND p.id=d.product_id
+        WHERE l.tenant_id=$1 AND l.partner_id=$2 AND l.unlinked_at IS NULL
+        UNION ALL
+        SELECT 'settlement', (COALESCE(s.paid_at,s.created_at) AT TIME ZONE t.timezone)::date, COALESCE(s.paid_at,s.created_at),
+          'Settlement ' || to_char(s.period_start,'DD Mon') || '–' || to_char(s.period_end,'DD Mon YYYY'),
+          COALESCE(s.invoice_number, s.payment_ref, LEFT(s.id::text,8)),
+          CASE WHEN s.status='paid' THEN
+            CASE s.commission_direction WHEN 'partner_owes_tenant' THEN -s.net_amount_minor ELSE s.net_amount_minor END
+          ELSE 0 END,
+          NULL, NULL, trim(s.currency), s.status
+        FROM partner_settlements s JOIN t ON t.id=s.tenant_id
+        WHERE s.tenant_id=$1 AND s.partner_id=$2 AND s.status<>'void'`;
+      const {
+        rows: [opening],
+      } = await tx.query(
+        `WITH t AS (SELECT id, timezone FROM tenants WHERE id=$1), e AS (${entries})
+         SELECT COALESCE(SUM(amount_minor),0)::text AS balance FROM e WHERE day < $3`,
+        [actor.tenantId, input.partnerId, input.from],
+      );
+      const { rows } = await tx.query(
+        `WITH t AS (SELECT id, timezone FROM tenants WHERE id=$1), e AS (${entries})
+         SELECT kind, day::text AS date, description, reference, amount_minor::text,
+           gross_amount_minor::text, commission_amount_minor::text, currency, status
+         FROM e WHERE day BETWEEN $3 AND $4 ORDER BY at, kind`,
+        [actor.tenantId, input.partnerId, input.from, input.to],
+      );
+      let running = Number(opening.balance);
+      const lines = rows.map((r) => {
+        const amount = Number(r.amount_minor);
+        running += amount;
+        return {
+          kind: r.kind as "booking" | "settlement",
+          date: r.date as string,
+          description: r.description as string,
+          reference: r.reference as string,
+          status: r.status as string | null,
+          currency: r.currency as string,
+          grossMinor:
+            r.gross_amount_minor === null ? null : Number(r.gross_amount_minor),
+          commissionMinor:
+            r.commission_amount_minor === null
+              ? null
+              : Number(r.commission_amount_minor),
+          amountMinor: amount,
+          balanceMinor: running,
+        };
+      });
+      return {
+        range: { from: input.from, to: input.to },
+        tenant: { currency: tenant.currency, timezone: tenant.timezone },
+        partner: {
+          id: partner.id,
+          name: partner.name,
+          email: partner.email,
+          phone: partner.phone,
+          direction: partner.commission_direction,
+          currency: String(partner.currency ?? tenant.currency).trim(),
+        },
+        openingMinor: Number(opening.balance),
+        closingMinor: running,
+        lines,
+      };
+    });
+  }
+
+  /**
+   * Cash-basis journal for the accountant (QuickBooks Online "Journal Entries" import).
+   * Only facts already recorded in Zettaz, in the reporting currency; open guest
+   * balances are never posted. Every journal balances (debits = credits).
+   */
+  accountingJournal(actor: Actor, raw: unknown) {
+    const input = parse(reportQuery, raw);
+    return this.db.transaction(actor, async (tx: Tx) => {
+      const tenant = await this.tenant(tx, actor);
+      const {
+        rows: [cfg],
+      } = await tx.query("SELECT config FROM tenants WHERE id=$1", [
+        actor.tenantId,
+      ]);
+      const a = {
+        incomeAccount: "Tour income",
+        guestReceiptsAccount: "Undeposited Funds",
+        cashAccount: "Cash on hand",
+        bankAccount: "Bank",
+        accountsPayable: "Accounts Payable",
+        commissionExpense: "Commission expense",
+        defaultExpenseAccount: "Operating expenses",
+        ...((cfg?.config?.accounting ?? {}) as Record<string, string>),
+      };
+      const range = [actor.tenantId, input.from, input.to, tenant.currency];
+      const tz = `(SELECT timezone FROM tenants WHERE id=$1)`;
+      type Line = { account: string; debit: number; credit: number };
+      type Journal = {
+        date: string;
+        source: string;
+        reference: string;
+        description: string;
+        name: string;
+        lines: Line[];
+      };
+      const journals: Journal[] = [];
+      let excluded = 0;
+      const receiptAccount = (method: string) =>
+        method === "cash" ? a.cashAccount : a.guestReceiptsAccount;
+      const payAccount = (method: string) =>
+        method === "cash" ? a.cashAccount : a.bankAccount;
+
+      // 1. Guest payments settled in the period, and reversals/voids recorded in the period.
+      const { rows: pays } = await tx.query(
+        `SELECT p.id, (p.occurred_at AT TIME ZONE ${tz})::date::text AS day, p.amount_minor::text,
+           p.currency, p.method, p.reference, b.lead_name, LEFT(b.id::text,8) AS booking_ref,
+           a.kind AS adj_kind, (a.occurred_at AT TIME ZONE ${tz})::date::text AS adj_day
+         FROM payments p
+         JOIN bookings b ON b.tenant_id=p.tenant_id AND b.id=p.booking_id
+         LEFT JOIN payment_adjustments a ON a.tenant_id=p.tenant_id AND a.payment_id=p.id
+         WHERE p.tenant_id=$1 AND p.status='settled'
+           AND (((p.occurred_at AT TIME ZONE ${tz})::date BETWEEN $2 AND $3)
+             OR ((a.occurred_at AT TIME ZONE ${tz})::date BETWEEN $2 AND $3))`,
+        range.slice(0, 3),
+      );
+      for (const r of pays) {
+        if (r.currency !== tenant.currency) {
+          excluded += 1;
+          continue;
+        }
+        const amount = Number(r.amount_minor);
+        const inRange = (d: string | null) =>
+          !!d && d >= input.from && d <= input.to;
+        if (inRange(r.day))
+          journals.push({
+            date: r.day,
+            source: "Guest payment",
+            reference: r.reference || r.booking_ref,
+            description: `Booking ${r.booking_ref} · ${r.method}`,
+            name: r.lead_name,
+            lines: [
+              { account: receiptAccount(r.method), debit: amount, credit: 0 },
+              { account: a.incomeAccount, debit: 0, credit: amount },
+            ],
+          });
+        if (inRange(r.adj_day))
+          journals.push({
+            date: r.adj_day,
+            source: `Guest payment ${r.adj_kind}`,
+            reference: r.reference || r.booking_ref,
+            description: `Booking ${r.booking_ref} · ${r.adj_kind}`,
+            name: r.lead_name,
+            lines: [
+              { account: a.incomeAccount, debit: amount, credit: 0 },
+              { account: receiptAccount(r.method), debit: 0, credit: amount },
+            ],
+          });
+      }
+
+      // 2. Expense bills dated in the period (voided bills are excluded).
+      const { rows: bills } = await tx.query(
+        `SELECT e.expense_date::text AS day, e.amount_minor::text, trim(e.currency) AS currency,
+           e.vendor, e.description, e.reference, COALESCE(NULLIF(trim(c.code),''), c.name) AS account
+         FROM expenses e JOIN expense_categories c ON c.id=e.category_id
+         WHERE e.tenant_id=$1 AND e.voided_at IS NULL AND e.expense_date BETWEEN $2 AND $3`,
+        range.slice(0, 3),
+      );
+      for (const r of bills) {
+        if (r.currency !== tenant.currency) {
+          excluded += 1;
+          continue;
+        }
+        const amount = Number(r.amount_minor);
+        journals.push({
+          date: r.day,
+          source: "Expense bill",
+          reference: r.reference ?? "",
+          description: r.description ?? "Expense",
+          name: r.vendor ?? "",
+          lines: [
+            {
+              account: r.account || a.defaultExpenseAccount,
+              debit: amount,
+              credit: 0,
+            },
+            { account: a.accountsPayable, debit: 0, credit: amount },
+          ],
+        });
+      }
+
+      // 3. Expense payments made in the period.
+      const { rows: expPays } = await tx.query(
+        `SELECT p.paid_on::text AS day, p.amount_minor::text, trim(p.currency) AS currency, p.method,
+           p.reference, e.vendor, e.description
+         FROM expense_payments p JOIN expenses e ON e.id=p.expense_id
+         WHERE p.tenant_id=$1 AND p.voided_at IS NULL AND p.paid_on BETWEEN $2 AND $3`,
+        range.slice(0, 3),
+      );
+      for (const r of expPays) {
+        if (r.currency !== tenant.currency) {
+          excluded += 1;
+          continue;
+        }
+        const amount = Number(r.amount_minor);
+        journals.push({
+          date: r.day,
+          source: "Expense payment",
+          reference: r.reference ?? "",
+          description: `Paid: ${r.description ?? "expense"}`,
+          name: r.vendor ?? "",
+          lines: [
+            { account: a.accountsPayable, debit: amount, credit: 0 },
+            { account: payAccount(r.method), debit: 0, credit: amount },
+          ],
+        });
+      }
+
+      // 4. Partner settlements paid in the period.
+      const { rows: settlements } = await tx.query(
+        `SELECT (s.paid_at AT TIME ZONE ${tz})::date::text AS day, trim(s.currency) AS currency,
+           s.gross_amount_minor::text, s.commission_amount_minor::text, s.net_amount_minor::text,
+           s.commission_direction, COALESCE(s.invoice_number, s.payment_ref, LEFT(s.id::text,8)) AS reference,
+           po.name
+         FROM partner_settlements s
+         JOIN partner_organizations po ON po.tenant_id=s.tenant_id AND po.id=s.partner_id
+         WHERE s.tenant_id=$1 AND s.status='paid' AND s.paid_at IS NOT NULL
+           AND (s.paid_at AT TIME ZONE ${tz})::date BETWEEN $2 AND $3`,
+        range.slice(0, 3),
+      );
+      for (const r of settlements) {
+        if (r.currency !== tenant.currency) {
+          excluded += 1;
+          continue;
+        }
+        const net = Math.abs(Number(r.net_amount_minor));
+        const commission = Math.abs(Number(r.commission_amount_minor));
+        const lines: Line[] =
+          r.commission_direction === "partner_owes_tenant"
+            ? // Partner collected from guests and remits net of its commission.
+              [
+                { account: a.bankAccount, debit: net, credit: 0 },
+                ...(commission
+                  ? [
+                      {
+                        account: a.commissionExpense,
+                        debit: commission,
+                        credit: 0,
+                      },
+                    ]
+                  : []),
+                {
+                  account: a.incomeAccount,
+                  debit: 0,
+                  credit: net + commission,
+                },
+              ]
+            : // We collected from guests and pay the partner its commission.
+              [
+                { account: a.commissionExpense, debit: net, credit: 0 },
+                { account: a.bankAccount, debit: 0, credit: net },
+              ];
+        journals.push({
+          date: r.day,
+          source: "Partner settlement",
+          reference: r.reference,
+          description:
+            r.commission_direction === "partner_owes_tenant"
+              ? "Partner remittance"
+              : "Commission paid to partner",
+          name: r.name,
+          lines,
+        });
+      }
+
+      journals.sort(
+        (x, y) =>
+          x.date.localeCompare(y.date) || x.source.localeCompare(y.source),
+      );
+      const numbered = journals.map((j, i) => ({ number: i + 1, ...j }));
+      const totals = numbered.reduce(
+        (t, j) => {
+          for (const l of j.lines) {
+            t.debit += l.debit;
+            t.credit += l.credit;
+          }
+          return t;
+        },
+        { debit: 0, credit: 0 },
+      );
+      return {
+        range: { from: input.from, to: input.to },
+        currency: tenant.currency,
+        accounts: a,
+        journals: numbered,
+        totals,
+        excludedOtherCurrency: excluded,
+      };
+    });
+  }
+
+  /**
+   * Management P&L (not a tax filing). Revenue is recognised on the departure date
+   * from each confirmed booking's price snapshot, net of tax. Commission comes from
+   * partner link snapshots; expenses use the reporting amount recorded on each bill.
+   */
+  profitAndLoss(actor: Actor, raw: unknown) {
+    const input = parse(reportQuery, raw);
+    return this.db.transaction(actor, async (tx: Tx) => {
+      const tenant = await this.tenant(tx, actor);
+      const {
+        rows: [rev],
+      } = await tx.query(
+        `WITH t AS (SELECT id, COALESCE(reporting_currency, base_currency, 'XCD') AS reporting_currency, timezone FROM tenants WHERE id=$1)
+         SELECT
+           COALESCE(SUM((s.quote->>'totalMinor')::bigint - COALESCE((s.quote->>'taxMinor')::bigint,0))
+             FILTER(WHERE COALESCE(s.quote->>'currency', t.reporting_currency)=t.reporting_currency),0)::text AS revenue_minor,
+           COALESCE(SUM(COALESCE((s.quote->>'taxMinor')::bigint,0))
+             FILTER(WHERE COALESCE(s.quote->>'currency', t.reporting_currency)=t.reporting_currency),0)::text AS tax_minor,
+           COUNT(*) FILTER(WHERE COALESCE(s.quote->>'currency', t.reporting_currency)<>t.reporting_currency)::int AS excluded,
+           COUNT(*)::int AS bookings
+         FROM bookings b
+         JOIN t ON t.id=b.tenant_id
+         JOIN departures d ON d.tenant_id=b.tenant_id AND d.id=b.departure_id
+         JOIN LATERAL (SELECT quote FROM price_snapshots ps WHERE ps.tenant_id=b.tenant_id AND ps.booking_id=b.id
+           ORDER BY version DESC LIMIT 1) s ON true
+         WHERE b.tenant_id=$1 AND b.state='confirmed' AND d.local_date BETWEEN $2 AND $3`,
+        [actor.tenantId, input.from, input.to],
+      );
+      const {
+        rows: [com],
+      } = await tx.query(
+        `SELECT COALESCE(SUM(l.commission_amount_minor) FILTER(WHERE trim(l.currency)=$4),0)::text AS commission_minor,
+           COUNT(*) FILTER(WHERE trim(l.currency)<>$4)::int AS excluded
+         FROM partner_booking_links l
+         JOIN bookings b ON b.tenant_id=l.tenant_id AND b.id=l.booking_id
+         JOIN departures d ON d.tenant_id=b.tenant_id AND d.id=b.departure_id
+         WHERE l.tenant_id=$1 AND l.unlinked_at IS NULL AND b.state='confirmed'
+           AND d.local_date BETWEEN $2 AND $3`,
+        [actor.tenantId, input.from, input.to, tenant.currency],
+      );
+      const { rows: expenses } = await tx.query(
+        `SELECT c.name AS category,
+           COALESCE(SUM(COALESCE(e.amount_reporting_minor,
+             CASE WHEN trim(e.currency)=$4 THEN e.amount_minor END)),0)::text AS amount_minor,
+           COUNT(*) FILTER(WHERE e.amount_reporting_minor IS NULL AND trim(e.currency)<>$4)::int AS excluded
+         FROM expenses e JOIN expense_categories c ON c.id=e.category_id
+         WHERE e.tenant_id=$1 AND e.voided_at IS NULL AND e.expense_date BETWEEN $2 AND $3
+         GROUP BY c.name ORDER BY 2 DESC`,
+        [actor.tenantId, input.from, input.to, tenant.currency],
+      );
+      const revenue = Number(rev.revenue_minor);
+      const commission = Number(com.commission_minor);
+      const expenseRows = expenses.map((r) => ({
+        category: r.category as string,
+        amountMinor: Number(r.amount_minor),
+      }));
+      const expenseTotal = expenseRows.reduce((t, r) => t + r.amountMinor, 0);
+      return {
+        range: { from: input.from, to: input.to },
+        currency: tenant.currency,
+        revenueMinor: revenue,
+        taxCollectedMinor: Number(rev.tax_minor),
+        confirmedBookings: rev.bookings as number,
+        commissionMinor: commission,
+        grossProfitMinor: revenue - commission,
+        expenses: expenseRows,
+        expenseTotalMinor: expenseTotal,
+        netMinor: revenue - commission - expenseTotal,
+        excluded: {
+          bookings: rev.excluded as number,
+          commissions: com.excluded as number,
+          expenses: expenses.reduce((t, r) => t + Number(r.excluded), 0),
+        },
+      };
+    });
+  }
+
   commissionSummary(actor: Actor, raw: unknown) {
     const input = parse(reportQuery, raw);
     return this.db.transaction(actor, async (tx: Tx) => {
@@ -347,6 +764,30 @@ export class ReportController {
     @Query() query: Record<string, unknown>,
   ) {
     return this.service.bookingSources(actor, query);
+  }
+  @Get("partner-statement")
+  @Access("partner.statement.read")
+  partnerStatement(
+    @CurrentActor() actor: Actor,
+    @Query() query: Record<string, unknown>,
+  ) {
+    return this.service.partnerStatement(actor, query);
+  }
+  @Get("accounting-journal")
+  @Access("partner.statement.read")
+  accountingJournal(
+    @CurrentActor() actor: Actor,
+    @Query() query: Record<string, unknown>,
+  ) {
+    return this.service.accountingJournal(actor, query);
+  }
+  @Get("profit-and-loss")
+  @Access("partner.statement.read")
+  profitAndLoss(
+    @CurrentActor() actor: Actor,
+    @Query() query: Record<string, unknown>,
+  ) {
+    return this.service.profitAndLoss(actor, query);
   }
   @Get("commission-summary")
   @Access("partner.statement.read")

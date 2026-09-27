@@ -1,7 +1,7 @@
 # Accounting export (QuickBooks / Xero / CSV)
 
-**Status:** Specified, not built  
-**Date:** 19 September 2026  
+**Status:** CSV journal built 27 September 2026 (Insights → Reports → Accounting export). OAuth posting not built.  
+**Date:** 19 September 2026; updated 27 September 2026  
 **Reads with:** [PLAN.md](PLAN.md) · [finance-money-in-out-later.md](../../STRATEGY/finance-money-in-out-later.md) · [finance-and-offline.md](../../ARCHITECTURE/finance-and-offline.md) · ADR [004](../../DECISIONS/004-money.md)
 
 Zettaz is the operational ledger (bookings, partner claims, expense bills, vendor payments). The tenant’s accountant still owns the books. We export **facts that already exist**, mapped to the tenant’s chart of accounts. We do not invent FX, mix SaaS subscription with tenant books, or post open guest balances as cash.
@@ -37,3 +37,11 @@ IIF is QuickBooks **Desktop** only. QBO does not import IIF. Do not build Deskto
 ## Owner decisions before a live QBO app
 
 Which product (QBO vs Xero vs CSV-only), home currency of the file, and whether sales post as Sales Receipt vs Journal. Default: **QBO + reporting-currency CSV journals**.
+
+## Built 27 September 2026
+
+- `GET reports/v1/accounting-journal?from&to` (permission `partner.statement.read`), cash basis, reporting currency only (other-currency facts counted and excluded).
+- Journals: guest payment Dr receipts (cash → Cash account, otherwise Guest receipts) / Cr Tour income; payment void/reversal posts the reverse on its own date; expense bill Dr category code (or name, or default) / Cr AP; expense payment Dr AP / Cr Cash or Bank; paid partner settlement — partner collected: Dr Bank net + Dr Commission / Cr Income gross; we collected: Dr Commission / Cr Bank.
+- Mapping lives in `config.accounting` (seven account names with defaults), edited on the report page by `config.write`.
+- CSV columns: `JournalNo,JournalDate,AccountName,Debits,Credits,Description,Name,Currency,Memo` (QBO Import Data → Journal Entries).
+- Voided expense bills are omitted (no reversing entry yet) — if a bill is voided after the accountant imported it, they must reverse manually. Candidate follow-up.

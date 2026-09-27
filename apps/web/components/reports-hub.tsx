@@ -8,6 +8,11 @@ import { Empty, Notice } from "./common";
 import { PeriodOverviewReport } from "./reports";
 import { AgingReport, ExpenseSummary } from "./finance-reports";
 import {
+  AccountingExportReport,
+  PartnerStatementReport,
+  ProfitAndLossReport,
+} from "./reports-finance";
+import {
   BookingSourcesReport,
   CommissionSummaryReport,
   SalesByProductReport,
@@ -102,24 +107,27 @@ export const REPORT_CATALOG: ReportEntry[] = [
   },
   {
     slug: "partner-statement",
-    group: "later",
-    title: "Partner statement PDF",
-    description: "Printable ledger per partner.",
-    status: "later",
+    group: "partners",
+    title: "Partner statement",
+    description: "Printable statement of account per partner.",
+    permission: "partner.statement.read",
+    status: "live",
+  },
+  {
+    slug: "profit-and-loss",
+    group: "money",
+    title: "Profit & loss",
+    description: "Revenue, commission, and expenses for the owner.",
+    permission: "partner.statement.read",
+    status: "live",
   },
   {
     slug: "accounting-export",
-    group: "later",
+    group: "money",
     title: "Accounting export",
-    description: "Journal CSV for the accountant.",
-    status: "later",
-  },
-  {
-    slug: "pnl-overview",
-    group: "later",
-    title: "P&L overview",
-    description: "Income minus operating expenses.",
-    status: "later",
+    description: "Journal CSV for QuickBooks or your accountant.",
+    permission: "partner.statement.read",
+    status: "live",
   },
 ];
 
@@ -266,6 +274,12 @@ function LiveReport({ session, slug }: { session: Session; slug: string }) {
     return <SalesByProductReport session={session} />;
   if (slug === "booking-sources")
     return <BookingSourcesReport session={session} />;
+  if (slug === "partner-statement")
+    return <PartnerStatementReport session={session} />;
+  if (slug === "profit-and-loss")
+    return <ProfitAndLossReport session={session} />;
+  if (slug === "accounting-export")
+    return <AccountingExportReport session={session} />;
   if (slug === "commission-summary")
     return <CommissionSummaryReport session={session} />;
   return null;

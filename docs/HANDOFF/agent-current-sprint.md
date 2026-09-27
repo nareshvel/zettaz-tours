@@ -129,7 +129,7 @@ Work **outside** the Operations aside group. Suggested order (adjust with owner)
 - **Home / overview — My trips hidden for Day Board roles; setup checklist on Overview 19 Sep.** Evidence: [overview-polish-evidence.md](../TESTING/overview-polish-evidence.md). Owner visual still outstanding.
 
 ### 2. Insights
-- **Reports — 27 Sep: period overview reconciliation fixed (received on confirmed only, held count, currency exclusion, zero days, date basis, prior-period delta); new live reports Sales by product, Booking sources, Commission summary; URL-persisted filters; CSV headers.** Evidence: [reports-polish-evidence.md](../TESTING/reports-polish-evidence.md). Owner visual outstanding. Still later: partner statement PDF, accounting export, P&L (needs FX / account mapping decisions).
+- **Reports — 27 Sep: period overview reconciliation fixed (received on confirmed only, held count, currency exclusion, zero days, date basis, prior-period delta); new live reports Sales by product, Booking sources, Commission summary, Partner statement, Profit & loss, Accounting export (QBO journal CSV, mapping in `config.accounting`); URL-persisted filters; CSV headers.** Evidence: [reports-polish-evidence.md](../TESTING/reports-polish-evidence.md). Owner visual outstanding. Open: confirm whether void settlements should clear the partner ledger balance (see evidence).
 - **Customers — polish implemented 17 Sep; owner visual still outstanding.** Evidence: [customers-polish-evidence.md](../TESTING/customers-polish-evidence.md).
 
 **Next non-Ops surface (owner 20 Sep):** **Staff & access** remaining polish. After that **Subscription** (profile billing) then **Zettaz Pay** (payment-gateway brand; Stripe Connect underneath).

@@ -35,6 +35,15 @@ export const mockConfig: TenantConfig = {
   documentLibrary: {
     quotaBytes: 1073741824,
   },
+  accounting: {
+    incomeAccount: "Tour income",
+    guestReceiptsAccount: "Undeposited Funds",
+    cashAccount: "Cash on hand",
+    bankAccount: "Bank",
+    accountsPayable: "Accounts Payable",
+    commissionExpense: "Commission expense",
+    defaultExpenseAccount: "Operating expenses",
+  },
   emailTemplates: {
     booking_confirmation: {},
     payment_request: {},

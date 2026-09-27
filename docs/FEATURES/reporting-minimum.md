@@ -16,12 +16,15 @@ Insights → **Reports** (`/reports`) is a catalog grouped by Operations, Money,
 - **Sales by product** (`reports/v1/sales-by-product`, `bookings.read`): per product guests, occupancy against open-departure seats, cancellations, booked and received value.
 - **Booking sources** (`reports/v1/booking-sources`, `bookings.read`): bookings and value by booking source.
 - **Commission summary** (`reports/v1/commission-summary`, `partner.statement.read`): commission from the snapshot on `partner_booking_links`; commission, settled, outstanding by partner and direction.
+- **Partner statement** (`reports/v1/partner-statement`, `partner.statement.read`): opening balance, booking and settlement lines with running balance, closing balance for one partner. Positive = partner owes the tenant. Only **paid** settlements move the balance; void settlements are ignored. Browser print → Save as PDF (no print agent).
+- **Profit & loss** (`reports/v1/profit-and-loss`, `partner.statement.read`): management view. Revenue = confirmed price snapshots net of tax on departure date; less partner commission (link snapshots); less expenses by category (`amount_reporting_minor`, the per-bill recorded rate). Tax collected shown as a memo. Not a tax filing.
+- **Accounting export** (`reports/v1/accounting-journal`, `partner.statement.read`): cash-basis balanced journals (guest payments + reversals, expense bills, expense payments, paid partner settlements) exported as QuickBooks Online Journal Entries CSV. Account names come from `config.accounting` (editable on the report by `config.write`); expense bills post to the category code, else its name.
 
 Period overview counts **received** on confirmed bookings only; money on held/cancelled bookings is shown separately. Bookings priced in a currency other than the reporting currency are excluded from money totals and counted. Reports accept `basis=departure|booked` and a range of at most 400 days.
 
 All commercial totals use the tenant reporting currency. Cross-currency conversion remains disabled unless an approved FX policy exists. Each request uses the tenant database context and never accepts a tenant identifier from the client.
 
-CSV is generated from the rows on screen. Later catalog items (P&amp;L, partner statement PDF, accounting export) are labelled "coming later" (collapsed) and have no fake numbers.
+CSV is generated from the rows on screen. There are no "later" items left in the catalog; QBO/Xero OAuth posting remains Track B and have no fake numbers.
 
 Tenant isolation and arithmetic for all live reports are covered in `apps/api/test/first-slice.test.ts`.
 

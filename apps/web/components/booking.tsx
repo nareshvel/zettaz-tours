@@ -4349,18 +4349,27 @@ export function BookingDetail({
                   <Check size={17} />
                 </button>
               )}
-              {session.permissions.includes("bookings.write") && !expired && (
-                <button
-                  type="button"
-                  className="button secondary full"
-                  disabled={confirm.busy || pay.busy}
-                  onClick={() => void keepOnHold()}
-                >
-                  {amount.trim()
-                    ? "Record payment & keep on hold"
-                    : "Keep on hold"}
-                </button>
-              )}
+              {session.permissions.includes("bookings.write") &&
+                !expired &&
+                // Hold only makes sense when the booking can't be confirmed yet:
+                // nothing taken, a part-payment below the minimum, or pickup unresolved.
+                (!amount.trim() ||
+                  !pickupReady ||
+                  (!partnerSettles &&
+                    b.paidMinor +
+                      (paymentAmountValid ? paymentAmountMinor : 0) <
+                      required)) && (
+                  <button
+                    type="button"
+                    className="button secondary full"
+                    disabled={confirm.busy || pay.busy}
+                    onClick={() => void keepOnHold()}
+                  >
+                    {amount.trim()
+                      ? "Record payment & keep on hold"
+                      : "Keep on hold"}
+                  </button>
+                )}
             </>
           )}
           {b.state === "confirmed" && (

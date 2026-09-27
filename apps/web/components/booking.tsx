@@ -3350,17 +3350,14 @@ export function BookingDetail({
         return;
       }
       setInputError(
-        `At least ${money(required - b.paidMinor, b.quote.currency)} is needed to confirm (${b.quote.minimumPaidPercent}% of total). Record that amount, or use Keep on hold.`,
+        `At least ${money(required - b.paidMinor, b.quote.currency)} is needed to confirm (${b.quote.minimumPaidPercent}% of total). The reservation stays on hold until then.`,
       );
       return;
     }
     if (!(await recordEnteredPayment())) return;
     await confirmation();
   }
-  async function keepOnHold() {
-    if (!(await recordEnteredPayment())) return;
-    router.push(returnTo ?? "/reservations");
-  }
+
   async function restoreHold() {
     const result = await reviveHold.run(
       `staff/v1/bookings/${bookingId}/revive-hold`,
@@ -4326,7 +4323,7 @@ export function BookingDetail({
                   {pickupReady
                     ? partnerSettles
                       ? "Resolve any blocking issues, then confirm."
-                      : "Take at least the required amount to confirm, or keep the reservation on hold."
+                      : "Take at least the required amount to confirm. Until then the reservation stays on hold."
                     : "Resolve required pickup before confirming."}
                 </p>
               )}
@@ -4349,26 +4346,6 @@ export function BookingDetail({
                   <Check size={17} />
                 </button>
               )}
-              {session.permissions.includes("bookings.write") &&
-                !expired &&
-                // Hold only makes sense when the booking can't be confirmed yet:
-                // nothing taken, a part-payment below the minimum, or pickup unresolved.
-                (!amount.trim() ||
-                  !pickupReady ||
-                  (!partnerSettles &&
-                    b.paidMinor +
-                      (paymentAmountValid ? paymentAmountMinor : 0) <
-                      required)) && (
-                  <button
-                    type="button"
-                    className="button secondary full"
-                    disabled={confirm.busy || pay.busy}
-                    onClick={() => void keepOnHold()}
-                  >
-                    {amount.trim()
-                      ? "Record payment & keep on hold"
-                      : "Keep on hold"}
-                  </button>
                 )}
             </>
           )}

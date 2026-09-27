@@ -113,7 +113,7 @@ Remaining in this group: owner visual on General & branding, Taxes & commercial,
 
 ## New reservation flow — 27 September 2026
 
-Owner-directed exception to the Ops freeze. Steps: (1) trip + party, no hold; (2) lead guest, "Other guests in this party", stay/pickup/discount — **Hold & continue to payment** places the hold, creates the booking and saves names in one action; (3) booking page opens on the payment step: quick amounts (Deposit when below 100 %, Full balance, No payment now), **Confirm reservation** or **Keep on hold** (all roles with `bookings.write`). Amount without a payment method → "Choose how the guest paid"; overpayment and below-minimum confirm are refused with a clear message (previously an amount with no method was silently skipped). No API or migration changes. Card-present / NFC / wallet stays with the Stripe Connect / gateway plan.
+Owner-directed exception to the Ops freeze. Steps: (1) trip + party, no hold; (2) lead guest, "Other guests in this party", stay/pickup/discount — **Hold & continue to payment** places the hold, creates the booking and saves names in one action; (3) booking page opens on the payment step: quick amounts (Deposit when below 100 %, Full balance, No payment now), **Confirm reservation** (a Keep on hold button was tried and removed 27 Sep — leaving the page keeps the booking held). Amount without a payment method → "Choose how the guest paid"; overpayment and below-minimum confirm are refused with a clear message (previously an amount with no method was silently skipped). No API or migration changes. Card-present / NFC / wallet stays with the Stripe Connect / gateway plan.
 
 ## Held — do not start unless owner reopens
 

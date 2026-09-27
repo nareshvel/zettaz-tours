@@ -1,6 +1,15 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
+import {
+  CalendarDays,
+  Clock,
+  CreditCard,
+  FileSignature,
+  Mail,
+  Phone,
+  Plus,
+} from "lucide-react";
 import type { Session } from "@/lib/types";
 import { dateTime, label, money, usePaged, useResource } from "@/lib/client";
 import {
@@ -197,6 +206,69 @@ export function Customers({ session }: { session: Session }) {
   );
 }
 
+function initials(name: string) {
+  return (
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") || "?"
+  );
+}
+
+function dayParts(iso: string, timezone: string) {
+  const date = new Date(iso);
+  const part = (options: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat("en", { timeZone: timezone, ...options }).format(
+      date,
+    );
+  return {
+    day: part({ day: "2-digit" }),
+    month: part({ month: "short" }),
+    year: part({ year: "numeric" }),
+    time: part({ hour: "numeric", minute: "2-digit" }),
+  };
+}
+
+const TIMELINE_ICON: Record<string, React.ReactNode> = {
+  booking: <CalendarDays size={15} />,
+  payment: <CreditCard size={15} />,
+  waiver: <FileSignature size={15} />,
+  message: <Mail size={15} />,
+};
+
+function BookingRow({
+  booking,
+  timezone,
+}: {
+  booking: CustomerBooking;
+  timezone: string;
+}) {
+  const d = dayParts(booking.starts_at, timezone);
+  return (
+    <Link className="customer-trip" href={`/reservations/${booking.id}`}>
+      <span className="customer-trip-date" aria-hidden="true">
+        <small>{d.month}</small>
+        <strong>{d.day}</strong>
+        <small>{d.year}</small>
+      </span>
+      <span className="customer-trip-main">
+        <strong>{booking.product_name}</strong>
+        <small>
+          {d.time} · {guestCount(booking.party)}{" "}
+          {guestCount(booking.party) === 1 ? "guest" : "guests"}
+          {booking.source ? ` · ${label(booking.source)}` : ""}
+        </small>
+      </span>
+      <span className="customer-trip-side">
+        <strong>{money(Number(booking.total_minor), booking.currency)}</strong>
+        <Status state={booking.state} />
+      </span>
+    </Link>
+  );
+}
+
 export function CustomerDetailPage({
   session,
   customerId,
@@ -222,95 +294,179 @@ export function CustomerDetailPage({
       </>
     );
   const { customer, bookings, timeline } = resource.data;
+  const timezone = session.tenant.timezone;
+  const now = Date.now();
+  const active = bookings.filter((b) => b.state !== "cancelled");
+  const upcoming = bookings
+    .filter((b) => new Date(b.starts_at).getTime() >= now)
+    .sort((x, y) => x.starts_at.localeCompare(y.starts_at));
+  const past = bookings.filter((b) => new Date(b.starts_at).getTime() < now);
+  const confirmed = bookings.filter((b) => b.state === "confirmed");
+  const currencies = [...new Set(confirmed.map((b) => b.currency))];
+  const lifetime =
+    currencies.length === 1
+      ? money(
+          confirmed.reduce((t, b) => t + Number(b.total_minor), 0),
+          currencies[0],
+        )
+      : currencies.length
+        ? "Mixed currencies"
+        : "—";
+  const guestsTravelled = confirmed.reduce(
+    (t, b) => t + guestCount(b.party),
+    0,
+  );
+  const nextTrip = upcoming.find((b) => b.state !== "cancelled");
+  const lastTrip = past.find((b) => b.state !== "cancelled");
+  const since = (customer as CustomerRow & { created_at?: string }).created_at;
   return (
     <>
       <Back href="/customers">Customers</Back>
-      <Heading
-        eyebrow="INSIGHTS"
-        title={customer.name}
-        description="Shared guest record matched by email. Booking-specific contacts stay on the reservation."
-      />
-      <div
-        className="catalog-metrics reservation-insights customer-contact-facts"
-        aria-label="Customer contact"
-      >
-        <div>
-          <strong>{customer.email}</strong>
-          <span>Email</span>
+      <section className="customer-hero">
+        <div className="customer-avatar" aria-hidden="true">
+          {initials(customer.name)}
         </div>
-        <div>
-          <strong>{customer.phone || "—"}</strong>
-          <span>Phone</span>
+        <div className="customer-hero-main">
+          <p className="eyebrow">GUEST</p>
+          <h1>{customer.name}</h1>
+          <div className="customer-hero-contacts">
+            <a href={`mailto:${customer.email}`}>
+              <Mail size={15} /> {customer.email}
+            </a>
+            {customer.phone ? (
+              <a href={`tel:${customer.phone}`}>
+                <Phone size={15} /> {customer.phone}
+              </a>
+            ) : (
+              <span className="muted">
+                <Phone size={15} /> No phone on file
+              </span>
+            )}
+            {since && (
+              <span className="muted">
+                <Clock size={15} /> Guest since{" "}
+                {new Intl.DateTimeFormat("en", {
+                  timeZone: timezone,
+                  month: "short",
+                  year: "numeric",
+                }).format(new Date(since))}
+              </span>
+            )}
+          </div>
         </div>
+        <div className="customer-hero-actions">
+          <Link className="button" href="/reservations/new">
+            <Plus size={16} /> New reservation
+          </Link>
+        </div>
+      </section>
+
+      <div className="catalog-metrics edge-left" aria-label="Guest summary">
         <div>
-          <strong>{bookings.length}</strong>
+          <strong>{active.length}</strong>
           <span>
-            {bookings.length === 1 ? "Linked booking" : "Linked bookings"}
+            {active.length === 1 ? "Trip booked" : "Trips booked"}
+            {bookings.length > active.length
+              ? ` · ${bookings.length - active.length} cancelled`
+              : ""}
           </span>
         </div>
+        <div className="good">
+          <strong>{lifetime}</strong>
+          <span>Confirmed booking value</span>
+        </div>
+        <div>
+          <strong>{guestsTravelled}</strong>
+          <span>Guests on confirmed trips</span>
+        </div>
+        <div className={nextTrip ? "attention" : ""}>
+          <strong>
+            {nextTrip
+              ? dateTime(nextTrip.starts_at, timezone)
+              : lastTrip
+                ? dateTime(lastTrip.starts_at, timezone)
+                : "—"}
+          </strong>
+          <span>{nextTrip ? "Next trip" : "Last trip"}</span>
+        </div>
+      </div>
+
+      <div className="customer-detail-grid">
+        <section className="panel customer-panel">
+          <div className="customer-panel-head">
+            <h2>Trips</h2>
+            <span className="muted">{bookings.length} total</span>
+          </div>
+          {!bookings.length ? (
+            <p className="muted customer-empty">No linked bookings.</p>
+          ) : (
+            <>
+              {upcoming.length > 0 && (
+                <>
+                  <p className="customer-group-label">Upcoming</p>
+                  <div className="customer-trip-list">
+                    {upcoming.map((booking) => (
+                      <BookingRow
+                        key={booking.id}
+                        booking={booking}
+                        timezone={timezone}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+              {past.length > 0 && (
+                <>
+                  <p className="customer-group-label">Past</p>
+                  <div className="customer-trip-list">
+                    {past.map((booking) => (
+                      <BookingRow
+                        key={booking.id}
+                        booking={booking}
+                        timezone={timezone}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </section>
+        <section className="panel customer-panel">
+          <div className="customer-panel-head">
+            <h2>Activity</h2>
+            <span className="muted">{timeline.length} events</span>
+          </div>
+          {!timeline.length ? (
+            <p className="muted customer-empty">No activity recorded.</p>
+          ) : (
+            <ol className="customer-activity">
+              {timeline.map((event, index) => (
+                <li
+                  key={`${event.booking_id}:${event.kind}:${event.occurred_at}:${index}`}
+                  className={`kind-${event.kind}`}
+                >
+                  <span className="customer-activity-icon">
+                    {TIMELINE_ICON[event.kind] ?? <Clock size={15} />}
+                  </span>
+                  <Link href={`/reservations/${event.booking_id}`}>
+                    <span className="customer-activity-top">
+                      <strong>{timelineTitle(event)}</strong>
+                      <small>{dateTime(event.occurred_at, timezone)}</small>
+                    </span>
+                    <p>{timelineDetail(event, bookings, timezone)}</p>
+                  </Link>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
       </div>
       <p className="customer-privacy-note">
-        Purchaser and emergency contacts are stored on each reservation, not on
-        this shared record. Open a booking to read those details.
+        This record is shared across bookings and matched by email. Purchaser
+        and emergency contacts stay on each reservation — open a trip to see
+        them.
       </p>
-      <div className="customer-detail-grid">
-        <section className="panel form-card">
-          <h2>Bookings</h2>
-          {!bookings.length ? (
-            <p className="muted">No linked bookings.</p>
-          ) : (
-            <div className="stack-list">
-              {bookings.map((booking) => (
-                <Link
-                  className="detail-row"
-                  href={`/reservations/${booking.id}`}
-                  key={booking.id}
-                >
-                  <span>
-                    <strong>{booking.product_name}</strong>
-                    <small>
-                      {dateTime(booking.starts_at, session.tenant.timezone)} ·{" "}
-                      {guestCount(booking.party)} guests
-                      {booking.source ? ` · ${label(booking.source)}` : ""}
-                    </small>
-                  </span>
-                  <span>
-                    <strong>
-                      {money(Number(booking.total_minor), booking.currency)}
-                    </strong>
-                    <Status state={booking.state} />
-                  </span>
-                </Link>
-              ))}
-            </div>
-          )}
-        </section>
-        <section className="panel form-card">
-          <h2>Activity</h2>
-          {!timeline.length ? (
-            <p className="muted">No activity recorded.</p>
-          ) : (
-            <div className="timeline-list">
-              {timeline.map((event, index) => (
-                <div
-                  key={`${event.booking_id}:${event.kind}:${event.occurred_at}:${index}`}
-                >
-                  <span className="timeline-dot" />
-                  <Link href={`/reservations/${event.booking_id}`}>
-                    <strong>{timelineTitle(event)}</strong>
-                    <small>
-                      {dateTime(event.occurred_at, session.tenant.timezone)}
-                    </small>
-                    <p>
-                      {timelineDetail(event, bookings, session.tenant.timezone)}
-                    </p>
-                  </Link>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      </div>
     </>
   );
 }

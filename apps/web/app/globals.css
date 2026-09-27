@@ -16938,3 +16938,11 @@ a.finance-net-tile.finance-net-tile.unpaid {
   border-right: 0;
   box-shadow: none;
 }
+/* Summary counters stretch across the full width in equal columns */
+.catalog-metrics:not(.reservation-insights) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+.catalog-metrics:not(.reservation-insights) > div {
+  min-width: 0;
+}

@@ -4346,7 +4346,6 @@ export function BookingDetail({
                   <Check size={17} />
                 </button>
               )}
-                )}
             </>
           )}
           {b.state === "confirmed" && (

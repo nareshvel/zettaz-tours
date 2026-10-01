@@ -102,10 +102,12 @@ export async function migrate(adminUrl: string, runtimeRole: string) {
       `GRANT SELECT,INSERT,UPDATE,DELETE ON tenants,staff_users,user_credentials,memberships,tenant_roles,role_permissions,tenant_invitations,products,product_options,passenger_units,rate_plans,schedules,availability_rules,availability_rule_times,availability_exceptions,departures,holds,bookings,customers,support_access_grants,support_sessions,outbox_events,pickup_locations,departure_pickup_plans,pickup_stops,departure_itinerary_points,waiver_templates,tenant_subscriptions,operational_resources,crew_profiles,compliance_documents,departure_assignments,booking_checkins,booking_passengers,passenger_checkins,passenger_checkin_tokens,trip_runs,trip_run_events,print_templates,printer_routes,print_jobs,partner_organizations,partner_booking_links,partner_settlements,booking_partner_attributions,booking_partner_snapshots,partner_collection_claims,partner_obligations,connector_accounts,webhook_inbox,external_mappings,assisted_imports,assisted_import_rows,notification_messages,vessels,accommodation_properties,expense_categories,expenses,expense_payments,vendors,crew_devices,crew_offline_commands,document_artifacts,platform_users,platform_sessions TO ${role}`,
     );
     await tx.query(`GRANT SELECT,INSERT ON partner_claim_decisions TO ${role}`);
-    // Zettaz Pay: rows move through statuses but are never deleted.
+    // Zettaz Pay: rows move through statuses; only a merchant account deleted
+    // in Stripe is removed so the tenant can onboard again.
     await tx.query(
       `GRANT SELECT,INSERT,UPDATE ON zettaz_pay_accounts,zettaz_pay_requests,zettaz_pay_checkouts,zettaz_pay_refunds,zettaz_pay_disputes TO ${role}`,
     );
+    await tx.query(`GRANT DELETE ON zettaz_pay_accounts TO ${role}`);
     await tx.query(
       `GRANT EXECUTE ON FUNCTION zettaz_pay_tenant_for_account(text),zettaz_pay_checkout_for_session(text),zettaz_pay_checkout_for_intent(text),zettaz_pay_resolve_request(text),zettaz_pay_owner(uuid) TO ${role}`,
     );

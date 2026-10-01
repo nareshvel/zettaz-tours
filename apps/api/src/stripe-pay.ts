@@ -56,14 +56,49 @@ export function setStripePayClientForTests(client: Stripe | null) {
 
 export function getStripePay(): Stripe {
   if (clientOverride) return clientOverride;
-  const key = process.env.STRIPE_PAY_SECRET_KEY;
+  const key = (process.env.STRIPE_PAY_SECRET_KEY ?? "").trim();
   if (!key) throw new Error("STRIPE_PAY_SECRET_KEY is not set");
+  if (!/^(sk|rk)_(live|test)_[A-Za-z0-9]{20,}$/.test(key))
+    throw new ZettazPayKeyError();
   if (process.env.STRIPE_SECRET_KEY && key === process.env.STRIPE_SECRET_KEY) {
     throw new Error(
       "STRIPE_PAY_SECRET_KEY must not equal STRIPE_SECRET_KEY (SaaS Billing).",
     );
   }
   return new Stripe(key, { apiVersion: STRIPE_API_VERSION });
+}
+
+/**
+ * The env value is not a secret key (for example the "mk_…" key ID shown in the
+ * Dashboard list was copied instead of the revealed "sk_live_…" secret).
+ */
+export class ZettazPayKeyError extends Error {
+  constructor() {
+    super(
+      "The Zettaz Pay secret key on this server is not valid. In the Zettaz Pay Stripe account open Developers → API keys, reveal the secret key (it starts with sk_live_ — not the mk_ key ID), set STRIPE_PAY_SECRET_KEY and restart the API.",
+    );
+  }
+}
+
+function isAuthError(error: unknown): boolean {
+  if (error instanceof ZettazPayKeyError) return true;
+  const e = error as { type?: string; message?: string };
+  return (
+    e?.type === "StripeAuthenticationError" ||
+    /malformed API Key|Invalid API Key|expired API Key/i.test(e?.message ?? "")
+  );
+}
+
+/** The connected account was deleted or closed in the Stripe Dashboard. */
+function isMissingAccount(error: unknown): boolean {
+  const e = error as { code?: string; statusCode?: number; message?: string };
+  return (
+    e?.code === "resource_missing" ||
+    e?.statusCode === 404 ||
+    /no such (v2 )?account|account (has been|was) (deleted|closed)/i.test(
+      e?.message ?? "",
+    )
+  );
 }
 
 /** Signature checks need no API key; keep them independent of the live client. */
@@ -255,6 +290,7 @@ function isPlatformActivationError(error: unknown): boolean {
 }
 
 function payStripeMessage(error: unknown, fallback: string): string {
+  if (isAuthError(error)) return new ZettazPayKeyError().message;
   if (isPlatformActivationError(error)) {
     return "Zettaz Pay’s Stripe platform account is not activated yet. Guest checkout stays off until that is finished in Stripe.";
   }
@@ -263,6 +299,7 @@ function payStripeMessage(error: unknown, fallback: string): string {
 }
 
 let platformReadyCache: { value: boolean; at: number } | null = null;
+let platformKeyInvalid = false;
 async function readPlatformReady(): Promise<boolean> {
   if (!zettazPayConfigured()) return false;
   if (platformReadyCache && Date.now() - platformReadyCache.at < 5 * 60_000)
@@ -272,9 +309,15 @@ async function readPlatformReady(): Promise<boolean> {
     const me = await getStripePay().accounts.retrieveCurrent();
     value = Boolean(me.charges_enabled);
   } catch (error) {
+    if (isAuthError(error)) {
+      platformKeyInvalid = true;
+      platformReadyCache = { value: false, at: Date.now() - 4.5 * 60_000 };
+      return false;
+    }
     // A transient outage should not flip the gateway off for every tenant.
     value = !isPlatformActivationError(error);
   }
+  platformKeyInvalid = false;
   platformReadyCache = { value, at: Date.now() };
   return value;
 }
@@ -310,6 +353,10 @@ async function retrieveMerchant(accountId: string): Promise<MerchantSnapshot> {
   const account = await getStripePay().v2.core.accounts.retrieve(accountId, {
     include: ["configuration.merchant", "requirements"],
   });
+  if ((account as { closed?: boolean }).closed)
+    throw Object.assign(new Error("Account was closed"), {
+      code: "resource_missing",
+    });
   return merchantSnapshot(account);
 }
 
@@ -403,6 +450,26 @@ export class ZettazPayService {
     });
   }
 
+  private async forgetAccount(actor: Actor, accountId: string) {
+    const tenantId = actor.tenantId!;
+    await this.db.transaction(actor, async (tx) => {
+      const { rowCount } = await tx.query(
+        "DELETE FROM zettaz_pay_accounts WHERE tenant_id=$1 AND account_id=$2",
+        [tenantId, accountId],
+      );
+      if (rowCount)
+        await record(
+          tx,
+          actor,
+          "zettaz_pay.account_removed",
+          tenantId,
+          { accountId },
+          null,
+          "Connected account was deleted or closed in Stripe",
+        );
+    });
+  }
+
   async status(actor: Actor): Promise<ZettazPayStatus> {
     const tenantId = actor.tenantId!;
     let row = await this.db.transaction(actor, (tx) =>
@@ -424,8 +491,12 @@ export class ZettazPayService {
           requirements_due: snap.requirementsDue,
           requirements_deadline: snap.requirementsDeadline,
         };
-      } catch {
-        // Keep stored flags if Stripe is unreachable.
+      } catch (error) {
+        if (isMissingAccount(error)) {
+          await this.forgetAccount(actor, row.account_id);
+          row = null;
+        }
+        // Otherwise keep stored flags if Stripe is unreachable.
       }
     }
     const platformReady = platformConfigured
@@ -464,7 +535,9 @@ export class ZettazPayService {
       );
     if (!(await readPlatformReady()))
       throw new BadRequestException(
-        "Zettaz Pay’s Stripe platform account is not activated yet. Guest checkout stays off until that is finished in Stripe.",
+        platformKeyInvalid
+          ? new ZettazPayKeyError().message
+          : "Zettaz Pay’s Stripe platform account is not activated yet. Guest checkout stays off until that is finished in Stripe.",
       );
     const tenantId = actor.tenantId!;
     const stripe = getStripePay();
@@ -482,6 +555,20 @@ export class ZettazPayService {
       },
     );
     let accountId = existing?.account_id;
+    if (accountId) {
+      // Deleted in the Dashboard (for example to restart with new branding):
+      // forget it and start a fresh account with the chosen country.
+      try {
+        await retrieveMerchant(accountId);
+      } catch (error) {
+        if (!isMissingAccount(error))
+          throw new BadRequestException(
+            payStripeMessage(error, "Stripe could not read the merchant account."),
+          );
+        await this.forgetAccount(actor, accountId);
+        accountId = undefined;
+      }
+    }
     if (!accountId) {
       const country = input.merchantCountry;
       if (!country || !merchantCountryCodes.has(country))
@@ -510,7 +597,11 @@ export class ZettazPayService {
             },
             metadata: { tenantId },
           } as never,
-          { idempotencyKey: `zettaz-pay-account-${tenantId}-${country}` },
+          {
+            // Guards double clicks; a new key every 10 minutes so a deleted
+            // account is never handed back by Stripe's idempotency cache.
+            idempotencyKey: `zettaz-pay-account-${tenantId}-${country}-${Math.floor(Date.now() / 600_000)}`,
+          },
         );
         accountId = String((created as { id: string }).id);
       } catch (error) {

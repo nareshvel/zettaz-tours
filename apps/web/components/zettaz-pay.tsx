@@ -420,7 +420,7 @@ export function ZettazPayBookingPanel({
                 <div className="form-grid">
                   <Field
                     label={`Refund amount (${p.currency})`}
-                    hint={`Up to ${money(p.refundableMinor, p.currency)}. The 1% platform fee is returned proportionally.`}
+                    hint={`Up to ${money(p.refundableMinor, p.currency)}.`}
                   >
                     <input
                       inputMode="decimal"

@@ -2899,11 +2899,6 @@ function ZettazPayPanel() {
     );
     if (result?.url) window.location.assign(result.url);
   }
-  const fee = pay.data
-    ? (pay.data.applicationFeeBps / 100).toFixed(
-        pay.data.applicationFeeBps % 100 === 0 ? 0 : 2,
-      )
-    : "1";
   const waitingOnPlatform =
     Boolean(pay.data?.platformConfigured) && !pay.data?.platformReady;
   const canOnboard =
@@ -2994,21 +2989,8 @@ function ZettazPayPanel() {
               </Field>
             </div>
           ) : null}
+          {pay.data.merchantCountry || pay.data.requirementsDeadline ? (
           <dl className="pay-integrations-metrics">
-            <div>
-              <dt>Platform fee</dt>
-              <dd>{fee}%</dd>
-            </div>
-            <div>
-              <dt>Software fees</dt>
-              <dd>
-                <Link href="/profile/subscription">Subscription</Link>
-              </dd>
-            </div>
-            <div>
-              <dt>Card checkout</dt>
-              <dd>{pay.data?.readyForCheckout ? "On" : "Off"}</dd>
-            </div>
             {pay.data.merchantCountry ? (
               <div>
                 <dt>Merchant country</dt>
@@ -3026,6 +3008,7 @@ function ZettazPayPanel() {
               </div>
             ) : null}
           </dl>
+          ) : null}
           {onboard.error ? <Notice error>{onboard.error}</Notice> : null}
         </>
       )}

@@ -225,6 +225,8 @@ export type ZettazPayStatus = {
   platformConfigured: boolean;
   /** False until the Zettaz Pay Stripe platform account itself is activated. */
   platformReady: boolean;
+  /** Why the platform is not ready, so Settings can say what to fix. */
+  platformIssue: "invalid_key" | "not_activated" | null;
   applicationFeeBps: number;
   accountId: string | null;
   merchantCountry: string | null;
@@ -507,6 +509,11 @@ export class ZettazPayService {
       brand: "Zettaz Pay",
       platformConfigured,
       platformReady,
+      platformIssue: !platformConfigured || platformReady
+        ? null
+        : platformKeyInvalid
+          ? "invalid_key"
+          : "not_activated",
       applicationFeeBps: zettazPayApplicationFeeBps(),
       accountId: row?.account_id ?? null,
       merchantCountry: row?.merchant_country ?? null,

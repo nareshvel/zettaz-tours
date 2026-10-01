@@ -2875,6 +2875,7 @@ function ZettazPayPanel() {
     brand: string;
     platformConfigured: boolean;
     platformReady: boolean;
+    platformIssue?: "invalid_key" | "not_activated" | null;
     applicationFeeBps: number;
     accountId: string | null;
     merchantCountry: string | null;
@@ -2904,12 +2905,15 @@ function ZettazPayPanel() {
   const canOnboard =
     Boolean(pay.data?.platformConfigured) && Boolean(pay.data?.platformReady);
   const needsCountry = canOnboard && !pay.data?.accountId;
+  const keyInvalid = pay.data?.platformIssue === "invalid_key";
   const statusLabel = pay.data?.readyForCheckout
     ? pay.data.requirementsDue
       ? "Action needed"
       : "Ready"
     : waitingOnPlatform
-      ? "Waiting on Stripe"
+      ? keyInvalid
+        ? "Server key invalid"
+        : "Waiting on Stripe"
       : pay.data?.accountId
         ? "Finish onboarding"
         : pay.data?.platformConfigured
@@ -2924,6 +2928,8 @@ function ZettazPayPanel() {
     ? pay.data.requirementsDue
       ? "Cards are on, but Stripe needs more information. Continue setup before the deadline or card payments will pause."
       : "Guests can pay by card at the desk, from an emailed pay link, or by scanning a QR code."
+    : waitingOnPlatform && keyInvalid
+      ? "This server cannot sign in to the Zettaz Pay Stripe account. Set STRIPE_PAY_SECRET_KEY to the full secret key (starts with sk_live_, not the mk_ key ID) from Zettaz Pay → Developers → API keys, then restart the API. Cash, manual and partner collection keep working."
     : waitingOnPlatform
       ? "The Zettaz Pay Stripe account is not activated yet. Cash, manual, and partner collection keep working. Guest card checkout stays off until that Stripe step is done."
       : pay.data?.accountId

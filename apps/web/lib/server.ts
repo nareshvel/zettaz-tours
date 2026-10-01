@@ -65,7 +65,9 @@ export async function upstream(
     pathOnly === "/auth/v1/register" ||
     pathOnly === "/auth/v1/verify-email" ||
     pathOnly === "/auth/v1/invitations/accept" ||
-    pathOnly.startsWith("/auth/v1/password-recovery/");
+    pathOnly.startsWith("/auth/v1/password-recovery/") ||
+    // Guest pay links: the unguessable token in the path is the credential.
+    /^\/pay\/v1\/[A-Za-z0-9_-]{32,64}(\/checkout)?$/.test(pathOnly);
   if (!credential && !publicAuth)
     return Response.json({ message: "Sign in to continue." }, { status: 401 });
   return fetch(apiBase() + path, {

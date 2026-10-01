@@ -1,81 +1,86 @@
-# Zettaz Pay (traveler collections)
+# Zettaz Pay (traveler card collections)
 
-**Status:** Onboarding + hosted Checkout + webhook slice 20 September 2026  
+**Status:** Production slice, 1 October 2026 (migration `099_zettaz_pay.sql`). Replaces the 20 September onboarding/checkout slice.
 **Brand:** Zettaz Pay (Stripe Connect underneath). Not Zettaz SaaS Billing.
 
-## What this slice does
+## What tenants and guests can do
 
-- Tenant Settings → Payment integrations: start Stripe merchant onboarding.
-- Reservation money panel: **Collect balance with Zettaz Pay** (USD remaining guest balance, 1% platform application fee).
-- `POST /webhooks/stripe-pay` records a settled `zettaz_pay` payment only after a signed `checkout.session.completed` with `payment_status=paid`. Browser return is not payment truth.
-
-SaaS subscriptions stay on `POST /webhooks/stripe` and `STRIPE_*`. Never reuse those keys or that destination for Pay.
-
-## Do not mix these four things
-
-| | Zettaz SaaS (subscriptions) | Zettaz Pay (guest cards) |
+| Who | Where | What |
 | --- | --- | --- |
-| Stripe Dashboard | **Zettaz SaaS** | **Zettaz Pay** |
-| Secret key env | `STRIPE_SECRET_KEY` | `STRIPE_PAY_SECRET_KEY` |
-| Webhook env | `STRIPE_WEBHOOK_SECRET` | `STRIPE_PAY_WEBHOOK_SECRET` |
-| Production URL | `https://tours.zettaz.com/webhooks/stripe` | `https://tours.zettaz.com/webhooks/stripe-pay` |
+| Owner / admin (`config.write`) | Settings → Payment integrations | Choose the **business country for Stripe**, then finish Stripe’s hosted onboarding. Status shows Ready, Action needed (Stripe wants more information, with deadline) or Finish onboarding. |
+| Desk staff (`payment.write`) | Reservation → Zettaz Pay panel | **Take card now** (hosted Checkout on the desk screen), **Pay link** (copy/send), **QR to scan**. Amount defaults to the full balance; enter less for a deposit. Withdraw open links. |
+| Desk staff | Customer communications → Payment request | The email now carries a **Pay securely** button when the tenant can take cards. Otherwise the old manual-instructions copy is sent. |
+| Owner / finance (`payment.refund`) | Reservation → Zettaz Pay panel | Full or partial **refund to card**. The 1% platform fee is refunded proportionally. |
+| Crew / desk tablet | Boarding payment sheet | **Card · show QR to guest** for the entered amount; the screen waits for the payment and closes itself. |
+| Crew / desk tablet | Walk-in → Collection → **Card — guest scans QR** | Holds the seats, shows a QR, and confirms the walk-in when the payment arrives. |
+| Guest | `https://tours.zettaz.com/pay/<token>` | Sees business, tour, date, total, already paid and the amount due; pays on Stripe Checkout (card, Apple Pay, Google Pay as enabled on the merchant account). |
 
-`stripe listen` is **not** a Dashboard destination. It prints its **own** `whsec_`. That value is only for the laptop while listen is running. It will never match the SaaS Dashboard secret, and it will never match the Pay Dashboard secret. If listen shows a secret you recognize from subscriptions, the CLI is still logged into **Zettaz SaaS** — run `stripe logout` then `stripe login` and pick **Zettaz Pay**.
+Card payments are never posted from a browser redirect. Only a signed webhook posts money.
 
-**Laptop `.env.development`:** Pay webhook secret = the `whsec_` printed by `stripe listen` (Pay account).  
-**VPS `.env.production`:** Pay webhook secret = the `whsec_` from the Pay Dashboard destination.  
-Do not paste one secret into both files.
+## Merchant country (non-supported islands)
 
-## Event destinations (create these on the **Zettaz Pay** Stripe account)
+The tenant is the merchant of record (direct charges). Stripe requires the tenant’s **legal entity and bank account** to be in a Stripe-supported country. Antigua & Barbuda, Sint Maarten and most Caribbean islands are not merchant countries. A tenant there can onboard with a **US company (for example an LLC with EIN and US bank account; non-US owners can form one through Stripe Atlas) or a UK Ltd with a UK bank account** by choosing United States / United Kingdom as the business country. Stripe decides final eligibility. The country cannot be changed after the account is created; a wrong choice needs a new connected account.
 
-Workbench → **Webhooks** → **Add destination**. Destination type = **Webhook endpoint**.
+The tenant’s accountant should confirm tax and licensing for selling through a foreign entity. Zettaz does not give that advice.
 
-Public URL (production VPS only): `https://tours.zettaz.com/webhooks/stripe-pay`  
-Never point a Dashboard destination at `localhost`. Never reuse `/webhooks/stripe`.
+## Money model
 
-On the VPS, nginx (or whatever fronts `tours-api`) must send `POST /webhooks/stripe-pay` to the **API** with the raw body, the same way `/webhooks/stripe` already does. Do not route those URLs through Next.js.
+- Direct charges on the connected account, `application_fee_amount` = `ZETTAZ_PAY_APPLICATION_FEE_BPS` (default 100 = 1%). Stripe collects processing fees and losses from the tenant (`fees_collector`/`losses_collector` = `stripe`).
+- Every Checkout Session we create is stored in `zettaz_pay_checkouts`. Creating a new one expires older open sessions for the booking, so a guest cannot pay twice from two tabs.
+- Settlement inserts one settled `payments` row (`method = zettaz_pay`). Idempotent on the session.
+- Refunds (app or tenant Dashboard) and **lost** disputes reverse the live Zettaz Pay row and re-post the remainder (append-only). Every existing paid/balance query works unchanged.
+- A failed refund puts the amount back.
+- Manual “Record reversal” and manual `zettaz_pay` entries are blocked; corrections go through refunds.
+- Overpayment and late payment (after cancellation or hold expiry) are recorded, never dropped, and flagged in the audit log (`payment.zettaz_pay_overpaid`, `payment.zettaz_pay_late`). The booking shows *Credit for review*.
+- Supported currencies: any Stripe two-decimal currency (USD, GBP, EUR, XCD, CAD …). Zero- and three-decimal currencies are blocked with a message.
 
-### Destination 1 — connected-account snapshot (guest Checkout)
+## Tables (migration 099)
 
-1. **Events from:** Connected accounts  
-2. **Payload:** Snapshot (not thin)  
-3. **Events:** `checkout.session.completed`, `account.updated`  
-4. Save. Copy the signing secret (`whsec_…`) into `STRIPE_PAY_WEBHOOK_SECRET`.
+`zettaz_pay_accounts` (one per tenant; moved out of `tenants.config` because Settings saves replaced config wholesale), `zettaz_pay_requests` (pay links; token stored hashed, 30-day validity, balance re-checked on every open), `zettaz_pay_checkouts`, `zettaz_pay_refunds`, `zettaz_pay_disputes`. All tenant-scoped with RLS. Webhooks and the public pay page resolve the tenant through `SECURITY DEFINER` lookups only. New permission `payment.refund` (owner, finance).
 
-Direct charges live on the connected merchant, so Checkout completion is a **connected-account** event.
+## API
 
-### Destination 2 — platform thin events (Accounts v2 onboarding)
+| Method | Route | Permission |
+| --- | --- | --- |
+| GET | `/admin/v1/zettaz-pay` | authenticated |
+| POST | `/admin/v1/zettaz-pay/onboard` `{merchantCountry}` | `config.write` |
+| POST | `/staff/v1/bookings/:id/zettaz-pay-checkout` `{amountMinor?}` | `payment.write` |
+| GET | `/staff/v1/bookings/:id/zettaz-pay` | `bookings.read` |
+| POST | `/staff/v1/bookings/:id/zettaz-pay/links` `{amountMinor?, channel}` | `payment.write` |
+| POST | `/staff/v1/bookings/:id/zettaz-pay/links/:requestId/cancel` | `payment.write` |
+| POST | `/staff/v1/bookings/:id/zettaz-pay/refunds` `{checkoutId, amountMinor, reason}` | `payment.refund` |
+| POST | `/crew/v1/bookings/:id/zettaz-pay-link`, GET `/crew/v1/bookings/:id/pay-status` | crew check-in / payment / booking |
+| GET / POST | `/pay/v1/:token`, `/pay/v1/:token/checkout` | public (token) |
+| POST | `/webhooks/stripe-pay` | Stripe signature |
 
-1. **Events from:** Your account  
-2. **Payload:** Thin  
-3. **Events:** search `v2.core.account` and select requirement / capability updates (at least `v2.core.account[requirements].updated` and merchant capability status updates)  
-4. Same endpoint URL. If Workbench issues a **second** signing secret, prefer one destination-secret per endpoint: Stripe often reuses the endpoint secret when the URL matches. If you get two secrets, keep Destination 1’s `whsec_` in `STRIPE_PAY_WEBHOOK_SECRET` (Checkout settlement) and ask engineering before adding a second verifier.
+## Environment
 
-### Local laptop (no public URL yet)
+| Variable | Value |
+| --- | --- |
+| `STRIPE_PAY_SECRET_KEY` | Zettaz Pay platform secret key. Never equal to `STRIPE_SECRET_KEY`. |
+| `STRIPE_PAY_WEBHOOK_SECRET` | Signing secret of destination **zettaz-pay-tours** (snapshot, connected accounts). |
+| `STRIPE_PAY_THIN_WEBHOOK_SECRET` | Signing secret of destination **zettaz-pay-tours-thin** (thin v2 account events). Each destination has its own secret. |
+| `ZETTAZ_PAY_APPLICATION_FEE_BPS` | `100` |
+| `WEB_ORIGIN` | `https://tours.zettaz.com` (pay links, onboarding return, Checkout return URLs) |
 
-Do **not** create a Cloud destination to `localhost`. In a terminal, logged into the **Zettaz Pay** account:
+Laptop: use a Stripe **sandbox** for the Pay platform; `stripe listen` prints its own `whsec_` for `.env.development`. Never paste production secrets into the laptop file.
 
-```sh
-stripe listen --forward-to localhost:3190/webhooks/stripe-pay \
-  --events checkout.session.completed,account.updated
-```
+## Stripe event destinations (Zettaz Pay account)
 
-Paste the CLI `whsec_` into `.env.development` as `STRIPE_PAY_WEBHOOK_SECRET` and restart `workspace:dev`.
+1. **zettaz-pay-tours** — Connected accounts, snapshot, URL `https://tours.zettaz.com/webhooks/stripe-pay`. Events: `checkout.session.completed`, `checkout.session.expired`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `account.updated`, `refund.created`, `refund.updated`, `refund.failed`, `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed`, `charge.dispute.funds_withdrawn`, `charge.dispute.funds_reinstated`.
+2. **zettaz-pay-tours-thin** — Your account, thin, same URL. `v2.core.account*` requirement and capability events.
 
-For connected-account events locally, add:
+nginx must forward `POST /webhooks/stripe-pay` to the API (raw body), not to Next.js. `/pay/*` goes to Next.js.
 
-```sh
-stripe listen --forward-to localhost:3190/webhooks/stripe-pay \
-  --forward-connect-to localhost:3190/webhooks/stripe-pay \
-  --events checkout.session.completed,account.updated
-```
+## Go-live check (per deploy)
 
-## After destinations exist
+1. `./deploy.sh` (applies migration 099). Set `STRIPE_PAY_THIN_WEBHOOK_SECRET`, restart `tours-api`.
+2. Stripe Workbench → each destination → **Send test event** → 200.
+3. Tenant: Settings → Payment integrations → choose country → finish onboarding → status Ready.
+4. Small live charge with a pay link → payment appears on the booking within seconds → refund it from the panel → booking balance and Stripe agree.
 
-1. Put `STRIPE_PAY_SECRET_KEY` and `STRIPE_PAY_WEBHOOK_SECRET` in `.env.development` and `.env.production` (Pay account only).  
-2. Restart API.  
-3. Activate the **Zettaz Pay** Stripe platform account in the Stripe Dashboard when you are ready (Settings → Payment integrations stays usable without that — it shows **Waiting on Stripe** and does not dump Dashboard URLs). Then **Set up Zettaz Pay** for the tenant and finish Stripe’s merchant form.  
-4. Open a USD booking with a remaining guest balance → **Collect balance with Zettaz Pay**.  
-5. Confirm a `zettaz_pay` row appears only after the webhook (not merely the success redirect).
+## Not in this slice
 
-Card-present / Terminal is still out of Track A.
+- **Tap to Pay / NFC** (Stripe Terminal) in the crew app: needs a native build, per-tenant Terminal locations and an eligibility check (Tap to Pay generally requires the device in the merchant’s country).
+- **Public online booking** (guest catalog, availability, hold and pay).
+- Payout reporting and reconciliation exports beyond the booking ledger.

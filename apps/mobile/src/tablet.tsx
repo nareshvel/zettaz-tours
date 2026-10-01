@@ -641,6 +641,7 @@ export function WalkUpSheet({
   vessels,
   allowUnresolvedPickup: _allowUnresolvedPickup,
   currency,
+  cardReady = false,
   onClose,
   onCreate,
   onPay,
@@ -655,6 +656,8 @@ export function WalkUpSheet({
   vessels: StayOption[];
   allowUnresolvedPickup?: boolean;
   currency?: string | null;
+  /** Zettaz Pay is set up, so the guest can pay by scanning a QR code. */
+  cardReady?: boolean;
   onClose: () => void;
   onCreate: (input: {
     party: Record<string, number>;
@@ -774,7 +777,7 @@ export function WalkUpSheet({
   const collectionOptions = [
     { value: "now", label: "Pay now" },
     { value: "tab", label: "Tab — pay later" },
-    { value: "link", label: "Payment link (Stripe)" },
+    ...(cardReady ? [{ value: "link", label: "Card — guest scans QR" }] : []),
   ];
   const stayNameOptions =
     stayKind === "hotel"
@@ -1213,9 +1216,9 @@ export function WalkUpSheet({
         </Text>
       ) : null}
       {collection === "link" ? (
-        <Text style={styles.warn}>
-          Stripe Connect Checkout is not live yet. Use Pay now or Tab until
-          online collection is enabled.
+        <Text style={styles.muted}>
+          Holds the seats and shows a QR code. The guest pays by card on their
+          phone and the booking confirms when the payment arrives.
         </Text>
       ) : null}
       <Action
@@ -1229,7 +1232,7 @@ export function WalkUpSheet({
           !stayReady ||
           !emergencyReady ||
           !discountReady ||
-          collection === "link"
+          (collection === "link" && !cardReady)
         }
         onPress={() =>
           onCreate({
@@ -1305,7 +1308,7 @@ export function WalkUpSheet({
             ? "Book on tab"
             : collection === "now"
               ? "Collect and confirm"
-              : "Hold and confirm"}
+              : "Hold and show QR"}
       </Action>
       <Action quiet onPress={onClose}>
         Cancel

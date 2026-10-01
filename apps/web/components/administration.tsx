@@ -2877,16 +2877,25 @@ function ZettazPayPanel() {
     platformReady: boolean;
     applicationFeeBps: number;
     accountId: string | null;
+    merchantCountry: string | null;
     chargesEnabled: boolean;
+    requirementsDue: boolean;
+    requirementsDeadline: string | null;
     readyForCheckout: boolean;
+    merchantCountries: { code: string; name: string }[];
   }>("admin/v1/zettaz-pay");
   const onboard = useMutation();
+  const [merchantCountry, setMerchantCountry] = useState("");
   async function startOnboard() {
     const origin = window.location.origin;
     const returnUrl = `${origin}/settings?tab=payments`;
     const result = await onboard.run<{ url: string }>(
       "admin/v1/zettaz-pay/onboard",
-      { returnUrl, refreshUrl: returnUrl },
+      {
+        returnUrl,
+        refreshUrl: returnUrl,
+        ...(pay.data?.accountId ? {} : { merchantCountry }),
+      },
     );
     if (result?.url) window.location.assign(result.url);
   }
@@ -2899,8 +2908,11 @@ function ZettazPayPanel() {
     Boolean(pay.data?.platformConfigured) && !pay.data?.platformReady;
   const canOnboard =
     Boolean(pay.data?.platformConfigured) && Boolean(pay.data?.platformReady);
+  const needsCountry = canOnboard && !pay.data?.accountId;
   const statusLabel = pay.data?.readyForCheckout
-    ? "Ready"
+    ? pay.data.requirementsDue
+      ? "Action needed"
+      : "Ready"
     : waitingOnPlatform
       ? "Waiting on Stripe"
       : pay.data?.accountId
@@ -2914,7 +2926,9 @@ function ZettazPayPanel() {
       ? "warn"
       : "muted";
   const summary = pay.data?.readyForCheckout
-    ? "Guests can pay the remaining booking balance by card at checkout."
+    ? pay.data.requirementsDue
+      ? "Cards are on, but Stripe needs more information. Continue setup before the deadline or card payments will pause."
+      : "Guests can pay by card at the desk, from an emailed pay link, or by scanning a QR code."
     : waitingOnPlatform
       ? "The Zettaz Pay Stripe account is not activated yet. Cash, manual, and partner collection keep working. Guest card checkout stays off until that Stripe step is done."
       : pay.data?.accountId
@@ -2942,7 +2956,7 @@ function ZettazPayPanel() {
           <button
             type="button"
             className="button"
-            disabled={onboard.busy}
+            disabled={onboard.busy || (needsCountry && !merchantCountry)}
             onClick={() => void startOnboard()}
           >
             {onboard.busy
@@ -2960,6 +2974,26 @@ function ZettazPayPanel() {
       ) : (
         <>
           <p className="pay-integrations-copy">{summary}</p>
+          {needsCountry ? (
+            <div className="pay-country-row">
+              <Field
+                label="Business country for Stripe"
+                tip="The country where this business is legally registered and holds its bank account — not where the tours run. A tour company in Antigua or St. Maarten with a US LLC or UK Ltd chooses United States or United Kingdom. Stripe checks eligibility during setup and this cannot be changed later."
+              >
+                <select
+                  value={merchantCountry}
+                  onChange={(event) => setMerchantCountry(event.target.value)}
+                >
+                  <option value="">Choose a country…</option>
+                  {pay.data.merchantCountries.map((country) => (
+                    <option key={country.code} value={country.code}>
+                      {country.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+          ) : null}
           <dl className="pay-integrations-metrics">
             <div>
               <dt>Platform fee</dt>
@@ -2975,6 +3009,22 @@ function ZettazPayPanel() {
               <dt>Card checkout</dt>
               <dd>{pay.data?.readyForCheckout ? "On" : "Off"}</dd>
             </div>
+            {pay.data.merchantCountry ? (
+              <div>
+                <dt>Merchant country</dt>
+                <dd>
+                  {pay.data.merchantCountries.find(
+                    (c) => c.code === pay.data!.merchantCountry,
+                  )?.name ?? pay.data.merchantCountry}
+                </dd>
+              </div>
+            ) : null}
+            {pay.data.requirementsDeadline ? (
+              <div>
+                <dt>Stripe deadline</dt>
+                <dd>{pay.data.requirementsDeadline.slice(0, 10)}</dd>
+              </div>
+            ) : null}
           </dl>
           {onboard.error ? <Notice error>{onboard.error}</Notice> : null}
         </>

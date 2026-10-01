@@ -13,6 +13,7 @@ import {
   RefreshControl,
   SafeAreaView,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -219,6 +220,18 @@ export default function App() {
   const [payMethod, setPayMethod] = useState("");
   const [payReference, setPayReference] = useState("");
   const [payNote, setPayNote] = useState("");
+  const [zettazPayReady, setZettazPayReady] = useState(false);
+  const [payQr, setPayQr] = useState<{
+    bookingId: string;
+    title: string;
+    url: string;
+    qrDataUrl: string;
+    amountMinor: number;
+    currency: string;
+    walkUp: boolean;
+    baselineCardPaid: number;
+    status: "waiting" | "paid" | "confirming";
+  } | null>(null);
   const [board, setBoard] = useState<BoardPayload | null>(null);
   const [bookDate, setBookDate] = useState("");
   const [bookingBoard, setBookingBoard] = useState<BoardPayload | null>(null);
@@ -378,9 +391,11 @@ export default function App() {
           waiverTemplate: WaiverTemplate | null;
           paymentMethods?: string[];
           collectionCurrency?: string | null;
+          zettazPayReady?: boolean;
           vessels?: StayOption[];
           accommodations?: StayOption[];
         }>("/crew/v1/today", session);
+        setZettazPayReady(Boolean(result.zettazPayReady));
         setTrips(result.trips);
         setWaiverTemplate(result.waiverTemplate);
         if (result.vessels) setVessels(result.vessels);
@@ -412,6 +427,8 @@ export default function App() {
           setPaymentMethods(result.paymentMethods);
         if (result.collectionCurrency !== undefined)
           setCollectionCurrency(result.collectionCurrency ?? null);
+        if (result.zettazPayReady !== undefined)
+          setZettazPayReady(Boolean(result.zettazPayReady));
         if (result.waiverTemplate) setWaiverTemplate(result.waiverTemplate);
         if (fromBoard && active) {
           const trip = await call<Trip>(`/crew/v1/board/${active.id}`, session);
@@ -625,6 +642,12 @@ export default function App() {
         state: string;
         needsPayment?: boolean;
         quote?: WalkUpQuote;
+        payLink?: {
+          url: string;
+          qrDataUrl: string;
+          amountMinor: number;
+          currency: string;
+        };
       }>("/crew/v1/walk-ups", token, {
         method: "POST",
         headers: { "Idempotency-Key": requestKey() },
@@ -647,7 +670,21 @@ export default function App() {
             : {}),
         }),
       });
-      if (result.needsPayment && result.quote) {
+      if (result.payLink) {
+        setWalkUpItem(null);
+        setWalkUpHeld(null);
+        setPayQr({
+          bookingId: result.bookingId,
+          title: input.leadName,
+          url: result.payLink.url,
+          qrDataUrl: result.payLink.qrDataUrl,
+          amountMinor: result.payLink.amountMinor,
+          currency: result.payLink.currency,
+          walkUp: true,
+          baselineCardPaid: 0,
+          status: "waiting",
+        });
+      } else if (result.needsPayment && result.quote) {
         setWalkUpHeld({ bookingId: result.bookingId, quote: result.quote });
       } else {
         setWalkUpItem(null);
@@ -1009,6 +1046,113 @@ export default function App() {
     setPayNote("");
     setError("");
   }
+  type PayStatus = {
+    state: string;
+    balanceMinor: number;
+    cardPaidMinor: number;
+  };
+  async function showCardQr() {
+    if (!token || !paying) return;
+    const amountMinor = Math.round(Number(payAmount) * 100);
+    if (!Number.isFinite(amountMinor) || amountMinor <= 0) {
+      setError("Enter a payment amount greater than zero.");
+      return;
+    }
+    const guest = paying.guest;
+    setBusy(true);
+    setError("");
+    try {
+      const before = await call<PayStatus>(
+        `/crew/v1/bookings/${guest.booking_id}/pay-status`,
+        token,
+      );
+      const link = await call<{
+        url: string;
+        qrDataUrl: string;
+        amountMinor: number;
+        currency: string;
+      }>(`/crew/v1/bookings/${guest.booking_id}/zettaz-pay-link`, token, {
+        method: "POST",
+        headers: { "Idempotency-Key": requestKey() },
+        body: JSON.stringify({ amountMinor }),
+      });
+      setPaying(null);
+      setPayQr({
+        bookingId: guest.booking_id,
+        title: paying.passenger?.name ?? guest.lead_name,
+        url: link.url,
+        qrDataUrl: link.qrDataUrl,
+        amountMinor: link.amountMinor,
+        currency: link.currency,
+        walkUp: false,
+        baselineCardPaid: before.cardPaidMinor,
+        status: "waiting",
+      });
+    } catch (reason) {
+      if (isUnauthorized(reason)) await clearSession();
+      else setError((reason as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function finishCardPayment(current: NonNullable<typeof payQr>) {
+    if (!token) return;
+    setPayQr({ ...current, status: "confirming" });
+    try {
+      if (current.walkUp)
+        await call("/crew/v1/walk-ups", token, {
+          method: "POST",
+          headers: { "Idempotency-Key": requestKey() },
+          body: JSON.stringify({
+            bookingId: current.bookingId,
+            confirmPaid: true,
+          }),
+        });
+    } catch (reason) {
+      setError(
+        `Card payment received, but the booking could not be confirmed: ${(reason as Error).message}`,
+      );
+    }
+    setPayQr({ ...current, status: "paid" });
+  }
+  async function closeCardQr() {
+    const done = payQr;
+    setPayQr(null);
+    if (!token) return;
+    await load(token);
+    if (dock === "book" && bookDate) {
+      setBookingBoard(
+        await call<BoardPayload>(`/crew/v1/board?date=${bookDate}`, token),
+      );
+    }
+    if (done?.status === "paid") await shareReceiptIfAllowed(done.bookingId);
+  }
+  // While a QR is on screen, watch for the Zettaz Pay webhook to post the money.
+  useEffect(() => {
+    if (!payQr || !token || payQr.status !== "waiting") return;
+    let stopped = false;
+    const current = payQr;
+    const timer = setInterval(() => {
+      void call<PayStatus>(
+        `/crew/v1/bookings/${current.bookingId}/pay-status`,
+        token,
+      )
+        .then((status) => {
+          if (stopped) return;
+          if (status.cardPaidMinor > current.baselineCardPaid) {
+            stopped = true;
+            clearInterval(timer);
+            void finishCardPayment(current);
+          }
+        })
+        .catch(() => undefined);
+    }, 3000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payQr?.bookingId, payQr?.status, token]);
   async function submitPay() {
     if (!token || !paying) return;
     const amountMinor = Math.round(Number(payAmount) * 100);
@@ -1773,6 +1917,73 @@ export default function App() {
       </SafeAreaView>
     );
   }
+  if (payQr) {
+    return (
+      <SafeAreaView style={styles.screen}>
+        <StatusBar style="dark" />
+        <View style={styles.header}>
+          <View style={styles.grow}>
+            <Text style={styles.eyebrow}>ZETTAZ PAY · CARD</Text>
+            <Text style={styles.cardTitle}>{payQr.title}</Text>
+          </View>
+          <Button quiet onPress={() => void closeCardQr()}>
+            {payQr.status === "paid" ? "Done" : "Close"}
+          </Button>
+        </View>
+        {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
+        <ScrollView contentContainerStyle={styles.content}>
+          <View style={[styles.card, { alignItems: "center" }]}>
+            <Text style={styles.cardTitle}>
+              {formatMoney(payQr.amountMinor, payQr.currency)}
+            </Text>
+            {payQr.status === "paid" ? (
+              <>
+                <Text style={[styles.cardTitle, { color: "#176c63" }]}>
+                  Payment received
+                </Text>
+                <Text style={styles.muted}>
+                  {payQr.walkUp
+                    ? "The walk-in booking is confirmed."
+                    : "The card payment is on the booking."}
+                </Text>
+                <Button onPress={() => void closeCardQr()}>Done</Button>
+              </>
+            ) : (
+              <>
+                <Image
+                  source={{ uri: payQr.qrDataUrl }}
+                  style={{ width: 260, height: 260, marginVertical: 12 }}
+                  accessibilityLabel="QR code for the guest to pay by card"
+                />
+                <Text style={styles.muted}>
+                  Ask the guest to scan with their phone camera and pay by
+                  card, Apple Pay or Google Pay.
+                </Text>
+                <View
+                  style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+                >
+                  <ActivityIndicator color="#176c63" />
+                  <Text style={styles.muted}>
+                    {payQr.status === "confirming"
+                      ? "Payment received — confirming…"
+                      : "Waiting for payment…"}
+                  </Text>
+                </View>
+                <Button
+                  quiet
+                  onPress={() => {
+                    void Share.share({ message: payQr.url });
+                  }}
+                >
+                  Share link instead
+                </Button>
+              </>
+            )}
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
   if (paying) {
     const guest = paying.guest;
     const currency = guest.currency ?? "USD";
@@ -1859,6 +2070,15 @@ export default function App() {
             >
               {busy ? "Recording…" : "Record payment"}
             </Button>
+            {zettazPayReady && !offlineMode ? (
+              <Button
+                quiet
+                disabled={busy || balance <= 0}
+                onPress={() => void showCardQr()}
+              >
+                Card · show QR to guest
+              </Button>
+            ) : null}
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -2617,6 +2837,7 @@ export default function App() {
               (dock === "book" ? bookingBoard : board)?.allowUnresolvedPickup
             }
             currency={collectionCurrency}
+            cardReady={zettazPayReady && !offlineMode}
             onClose={() => {
               setWalkUpItem(null);
               setWalkUpHeld(null);

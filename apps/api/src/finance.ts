@@ -48,6 +48,10 @@ export class FinanceService {
     );
     if (!payment)
       throw new BadRequestException("Payment is unavailable for this booking");
+    if (payment.method === "zettaz_pay")
+      throw new BadRequestException(
+        "Zettaz Pay card payments are corrected by refunding them, so the guest's card and the ledger stay in step.",
+      );
     if (
       (payment.status === "pending" && data.kind !== "void") ||
       (payment.status === "settled" && data.kind !== "reversal")
@@ -140,6 +144,10 @@ export class FinanceService {
   ) {
     const data = parse(paymentSchema, input);
     const settings = await tenant(tx, actor);
+    if (data.method === "zettaz_pay")
+      throw new BadRequestException(
+        "Zettaz Pay payments are recorded automatically when the guest pays by card.",
+      );
     if (!settings.config.manualPaymentMethods.includes(data.method))
       throw new BadRequestException("Payment method is not enabled");
     if (data.currency !== quote.currency)

@@ -196,6 +196,8 @@ export type BoardPayload = {
   allowUnresolvedPickup?: boolean;
   paymentMethods?: string[];
   collectionCurrency?: string | null;
+  /** Tenant can take cards through Zettaz Pay (QR / pay link). */
+  zettazPayReady?: boolean;
   waiverTemplate?: {
     id: string;
     version: number;

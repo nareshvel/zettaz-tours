@@ -20,6 +20,7 @@ import {
 import { Database, record, Tx } from "./database";
 import { sendCustomerMessage, smtpConfigured } from "./email";
 import { Access, CurrentActor, keySchema, parse } from "./http";
+import { ZettazPayModule, ZettazPayService } from "./stripe-pay";
 
 const requestSchema = z
   .object({
@@ -64,7 +65,10 @@ export type QueuedNotification = {
 
 @Injectable()
 export class NotificationService {
-  constructor(private readonly db: Database) {}
+  constructor(
+    private readonly db: Database,
+    private readonly zettazPay: ZettazPayService,
+  ) {}
 
   list(actor: Actor, bookingId: string) {
     return this.db.transaction(actor, async (tx) => {
@@ -123,6 +127,27 @@ export class NotificationService {
     if (kind === "payment_request" && totalMinor - paidMinor <= 0) {
       throw new BadRequestException("Balance is already paid in full.");
     }
+    // Payment requests carry a Zettaz Pay link when the tenant can take cards.
+    // Any reason it cannot (not onboarded, unsupported currency, expired hold)
+    // falls back to the manual-instructions copy instead of failing the send.
+    let payUrl: string | undefined;
+    if (kind === "payment_request") {
+      await tx.query("SAVEPOINT zettaz_pay_link");
+      try {
+        if (await this.zettazPay.readyFromStore(tx, actor.tenantId!)) {
+          const link = await this.zettazPay.createLinkInTx(
+            tx,
+            actor,
+            bookingId,
+            { channel: "email" },
+          );
+          payUrl = link.url;
+        }
+        await tx.query("RELEASE SAVEPOINT zettaz_pay_link");
+      } catch {
+        await tx.query("ROLLBACK TO SAVEPOINT zettaz_pay_link");
+      }
+    }
     const locale = booking.config.locale ?? "en";
     const timezone = booking.config.timezone ?? "UTC";
     const email = await renderCustomerBookingEmail({
@@ -155,6 +180,7 @@ export class NotificationService {
         address?: string;
       },
       emailTemplates: (booking.config?.emailTemplates ?? {}) as import("./customer-booking-email.js").EmailTemplatesConfig,
+      ...(payUrl ? { payUrl } : {}),
     });
     const configured = smtpConfigured();
     const status = configured ? "queued" : "held_provider";
@@ -424,6 +450,7 @@ export class NotificationController {
 }
 
 @Module({
+  imports: [ZettazPayModule],
   providers: [NotificationService],
   controllers: [NotificationController],
   exports: [NotificationService],

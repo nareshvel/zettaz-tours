@@ -8,7 +8,7 @@ Rendered bodies are rich HTML + plain-text snapshots (`{ "v": 1, "text", "html" 
 
 **Confirmation on confirm:** when a booking transitions `held` → `confirmed` and `lead_email` is present, the API automatically queues a `booking_confirmation` row (visible under Customer communications) and attempts SMTP delivery. Confirm succeeds even if delivery fails; staff can retry from the communications panel. Re-confirm of an already-confirmed booking does not send another email.
 
-**Payment request:** blocked when guest balance is already paid in full. Copy is offline/manual instructions only — there is **no** traveler payment link yet. When tenant Stripe Connect (or another online gateway) is established later, payment-request emails should include a hosted checkout/payment link and still only send when balance &gt; 0 and the gateway is ready. See [tenant payments](../ARCHITECTURE/tenant-payments.md).
+**Payment request:** blocked when guest balance is already paid in full. When the tenant can take cards through Zettaz Pay, the email includes a **Pay securely** button and plain-text link to a 30-day pay link that always charges the current balance (see [Zettaz Pay](finance/zettaz-pay.md)). Otherwise the copy is offline/manual instructions only.
 
 Delivery uses the platform **SMTP_*** settings from `.env.development` / `.env.production` (same adapter as verification and recovery mail):
 

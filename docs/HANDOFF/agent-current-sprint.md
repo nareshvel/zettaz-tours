@@ -1,6 +1,6 @@
 # Agent current sprint board
 
-**Updated:** 27 September 2026 · **Audience:** any IDE agent (Cursor, Claude, Codex, Devin, ChatGPT)
+**Updated:** 1 October 2026 · **Audience:** any IDE agent (Cursor, Claude, Codex, Devin, ChatGPT)
 
 This is the **single “what next” page**. Read it before inventing a deploy or backlog plan from chat history.
 
@@ -15,7 +15,7 @@ Full resume packet: [cross-ide-agent-resume.md](cross-ide-agent-resume.md). Stan
 1. **Crew App Store.** Apple rejected **1.0 (2)** on 21 Sep for guideline **5.1.2(i)** (privacy labels say the app tracks; there is no ATT prompt). The app **does not track**. Owner: fix App Store Connect **App Privacy** (Tracking = No; no location; no tracking flags) and reply in Resolution Center. Do **not** add App Tracking Transparency. Runbook: [crew-app-store-5.1.2-tracking.md](../ISSUES_FIXES/crew-app-store-5.1.2-tracking.md). GPS, card-present, push, white-label stay gated.
 2. **Operations menu group** remains functionally complete pending testing. Do not open new Ops web feature work unless testing finds a bug.
 3. **Platform console** Track A engineering is **paused** (22 Sep) until the owner reopens it. Working tree already has Overview / Tenants / Support / Health / Activity / Account, health = connector inbox only, local trial extend/suspend. When resumed: owner visual, then prod migrate **095**–**097**, `PLATFORM_ADMIN_PASSWORD`, `npm run platform:admin:prod`. Do not expand platform billing admin, extra platform users, or mix Stripe clients in the meantime.
-4. **Zettaz Pay** activation remains owner-later. Still never share Stripe Billing and Connect keys. Do not start money-in-out Phases 2–4, Terminal, or QBO OAuth until named here.
+4. **Zettaz Pay** production slice built 1 Oct 2026 (owner request): merchant country, pay links/QR, email pay button, refunds, disputes, crew QR, migration **099**. Deploy + set `STRIPE_PAY_THIN_WEBHOOK_SECRET`, then run the go-live check in [zettaz-pay.md](../FEATURES/finance/zettaz-pay.md). Still never share Stripe Billing and Connect keys. Terminal / Tap to Pay and public online booking are the next named items; QBO OAuth and money-in-out Phases 2–4 stay unstarted.
 
 ---
 

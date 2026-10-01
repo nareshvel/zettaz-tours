@@ -50,6 +50,8 @@ export type BookingEmailContext = {
     address?: string;
   };
   emailTemplates?: EmailTemplatesConfig;
+  /** Zettaz Pay link for payment requests when the tenant can take cards. */
+  payUrl?: string;
 };
 
 export type RenderedCustomerEmail = {
@@ -92,6 +94,8 @@ const KIND_META: Record<
     intro: (ctx) => {
       const due = Math.max(0, ctx.totalMinor - ctx.paidMinor);
       const dueNote = due > 0 ? ` A balance remains on this booking.` : "";
+      if (ctx.payUrl)
+        return `Hello ${ctx.leadName}, ${ctx.tenantName} is requesting payment for the booking below.${dueNote} You can pay securely by card using the button below.`;
       return `Hello ${ctx.leadName}, ${ctx.tenantName} is requesting payment for the booking below.${dueNote} This message does not include an online payment link — please contact ${ctx.tenantName} for their approved payment instructions.`;
     },
   },
@@ -279,6 +283,7 @@ function buildPlainText(
     "",
     ...detailRows(ctx).map((row) => `${row.label}: ${row.value}`),
     "",
+    ...(ctx.payUrl ? [`Pay securely online: ${ctx.payUrl}`, ""] : []),
     `Booking reference: ${ref}`,
     `Full reference: ${ctx.bookingId}`,
     "",
@@ -319,6 +324,14 @@ function buildHtml(
       <h2 style="margin:0 0 12px;font-size:22px;letter-spacing:-0.3px;">${escapeHtml(meta.headline)}</h2>
       <p style="margin:0 0 24px;">${escapeHtml(meta.intro(ctx))}</p>
       <table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 28px;">${rows}</table>
+      ${
+        ctx.payUrl
+          ? `<div style="text-align:center;margin:0 0 28px;">
+        <a href="${escapeHtml(ctx.payUrl)}" style="display:inline-block;background:#176c63;color:#fff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 28px;border-radius:8px;">Pay ${escapeHtml(formatMoney(Math.max(0, ctx.totalMinor - ctx.paidMinor), ctx.currency, ctx.locale))} securely</a>
+        <p style="margin:10px 0 0;font-size:12px;color:#65777b;">Card payment powered by Zettaz Pay. The amount is always your current balance.</p>
+      </div>`
+          : ""
+      }
       <div style="text-align:center;padding:20px 16px;background:#f5f7f7;border-radius:10px;">
         <p style="margin:0 0 12px;font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#65777b;font-weight:700;">Booking reference</p>
         <img src="${qrDataUrl}" width="160" height="160" alt="QR code for booking ${escapeHtml(ref)}" style="display:block;margin:0 auto 12px;border:0;" />

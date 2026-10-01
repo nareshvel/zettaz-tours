@@ -17176,3 +17176,56 @@ a.finance-net-tile.finance-net-tile.unpaid {
     width: 100%;
   }
 }
+
+/* Zettaz Pay booking panel */
+.zettaz-pay-panel h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.zettaz-pay-collect {
+  display: grid;
+  gap: 10px;
+}
+.zettaz-pay-collect .button-row .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.zettaz-pay-link {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 14px;
+  margin: 12px 0;
+  border: 1px solid var(--line, #e8eef0);
+  border-radius: 10px;
+  background: #fff;
+}
+.zettaz-pay-link img {
+  border-radius: 8px;
+  flex: 0 0 auto;
+}
+.zettaz-pay-link > div {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 220px;
+}
+.zettaz-pay-link code {
+  word-break: break-all;
+  font-size: 12px;
+  background: #f5f7f7;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+.pay-country-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+}
+.pay-country-row .field {
+  min-width: 240px;
+}

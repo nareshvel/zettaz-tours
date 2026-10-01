@@ -28,6 +28,7 @@ import {
 } from "../../../packages/shared/src/contracts";
 import { Database, record, Tx } from "./database";
 import { Access, CurrentActor, keySchema, parse } from "./http";
+import { ZettazPayService } from "./stripe-pay";
 import { DispatchService } from "./dispatch";
 import { FinanceService } from "./finance";
 import { InventoryService } from "./inventory";
@@ -75,6 +76,18 @@ const walkUpComplete = z
   .object({
     bookingId: z.string().uuid(),
     payment: paymentSchema,
+  })
+  .strict();
+/** Guest paid by Zettaz Pay QR; confirm once the webhook has posted the money. */
+const walkUpConfirmPaid = z
+  .object({
+    bookingId: z.string().uuid(),
+    confirmPaid: z.literal(true),
+  })
+  .strict();
+const crewPayLinkSchema = z
+  .object({
+    amountMinor: z.number().int().positive().max(1_000_000_000_000).optional(),
   })
   .strict();
 const crewPrintSchema = z
@@ -138,6 +151,7 @@ export class CrewService {
     private readonly reservations: ReservationService,
     private readonly passengers: PassengerService,
     private readonly printing: PrintService,
+    private readonly zettazPay: ZettazPayService,
   ) {}
   today(actor: Actor, raw: unknown) {
     const input = parse(todayQuery, raw);
@@ -279,6 +293,10 @@ export class CrewService {
         ).filter((method) => method !== "reseller_payment"),
         bookingCurrency: tenant.config?.bookingCurrency ?? null,
         collectionCurrency: tenant.config?.collectionCurrency ?? null,
+        zettazPayReady: await this.zettazPay.readyFromStore(
+          tx,
+          actor.tenantId!,
+        ),
         waiverTemplate:
           (
             await tx.query(
@@ -474,6 +492,10 @@ export class CrewService {
           (tenant.config?.manualPaymentMethods as string[] | undefined) ?? []
         ).filter((method) => method !== "reseller_payment"),
         collectionCurrency: tenant.config?.collectionCurrency ?? null,
+        zettazPayReady: await this.zettazPay.readyFromStore(
+          tx,
+          actor.tenantId!,
+        ),
         waiverTemplate:
           (
             await tx.query(
@@ -520,6 +542,7 @@ export class CrewService {
       date: board.date,
       paymentMethods: meta.paymentMethods,
       collectionCurrency: meta.collectionCurrency,
+      zettazPayReady: meta.zettazPayReady,
       waiverTemplate: meta.waiverTemplate,
       pickupLocations: meta.pickupLocations,
       vessels: meta.vessels,
@@ -574,6 +597,33 @@ export class CrewService {
     });
   }
   async walkUp(actor: Actor, key: string, raw: unknown) {
+    const confirmPaid = walkUpConfirmPaid.safeParse(raw);
+    if (confirmPaid.success) {
+      const bookingId = confirmPaid.data.bookingId;
+      const booking = await this.db.transaction(actor, (tx) =>
+        this.reservations.booking(tx, actor, bookingId, true),
+      );
+      if (booking.source !== "walk_in")
+        throw new BadRequestException(
+          "Only walk-in reservations can be completed here",
+        );
+      if (booking.state === "confirmed")
+        return {
+          bookingId,
+          state: "confirmed",
+          version: booking.version,
+          needsPayment: false,
+        };
+      return {
+        ...(await this.reservations.confirm(
+          actor,
+          bookingId,
+          `${key}:confirm`,
+          { version: booking.version },
+        )),
+        needsPayment: false,
+      };
+    }
     const complete = walkUpComplete.safeParse(raw);
     if (complete.success) {
       const input = complete.data;
@@ -608,6 +658,15 @@ export class CrewService {
       };
     }
     const input = parse(walkUpCreate, raw);
+    if (
+      input.collection === "link" &&
+      !(await this.db.transaction(actor, (tx) =>
+        this.zettazPay.readyFromStore(tx, actor.tenantId!),
+      ))
+    )
+      throw new BadRequestException(
+        "Zettaz Pay is not set up for card payments yet. Collect now or put this booking on a tab.",
+      );
     const hold = await this.inventory.create(
       actor,
       `${key}:hold`,
@@ -637,13 +696,29 @@ export class CrewService {
         input.guestNames ?? [],
       ),
     });
-    if (input.collection === "link")
-      throw new BadRequestException(
-        "Stripe payment links are not enabled yet. Collect cash now or put this booking on a tab.",
-      );
     const quote = (await this.db.transaction(actor, (tx) =>
       this.inventory.hold(tx, actor, hold.holdId),
     )).quote as { totalMinor: number; currency: string };
+    if (input.collection === "link") {
+      if (quote.totalMinor <= 0)
+        throw new BadRequestException("Nothing to collect on this booking.");
+      // Seats stay held while the guest scans and pays; the app confirms
+      // after the Zettaz Pay webhook posts the payment.
+      const payLink = await this.zettazPay.createLink(
+        actor,
+        booking.bookingId,
+        `${key}:paylink`,
+        { channel: "qr" },
+      );
+      return {
+        bookingId: booking.bookingId,
+        state: "held",
+        version: booking.version,
+        quote,
+        needsPayment: true,
+        payLink,
+      };
+    }
     if ((input.collection === "now" || input.payment) && quote.totalMinor > 0) {
       await this.reservations.payment(
         actor,
@@ -688,6 +763,45 @@ export class CrewService {
         };
       throw reason;
     }
+  }
+  async payLink(actor: Actor, bookingId: string, key: string, raw: unknown) {
+    const input = parse(crewPayLinkSchema, raw ?? {});
+    return this.zettazPay.createLink(actor, bookingId, key, {
+      channel: "qr",
+      ...(input.amountMinor ? { amountMinor: input.amountMinor } : {}),
+    });
+  }
+  payStatus(actor: Actor, bookingId: string) {
+    return this.db.transaction(actor, async (tx) => {
+      const {
+        rows: [row],
+      } = await tx.query(
+        `SELECT b.state,b.version,h.expires_at>clock_timestamp() AS hold_live,
+           (h.quote->>'totalMinor')::bigint::float8 AS total_minor,
+           h.quote->>'currency' AS currency,
+           COALESCE((SELECT SUM(p.amount_minor) FROM payments p
+             WHERE p.tenant_id=b.tenant_id AND p.booking_id=b.id AND p.status='settled'
+             AND NOT EXISTS(SELECT 1 FROM payment_adjustments a WHERE a.tenant_id=p.tenant_id AND a.payment_id=p.id)),0)::float8 AS paid_minor,
+           COALESCE((SELECT SUM(p.amount_minor) FROM payments p
+             WHERE p.tenant_id=b.tenant_id AND p.booking_id=b.id AND p.method='zettaz_pay' AND p.status='settled'
+             AND NOT EXISTS(SELECT 1 FROM payment_adjustments a WHERE a.tenant_id=p.tenant_id AND a.payment_id=p.id)),0)::float8 AS card_paid_minor
+         FROM bookings b JOIN holds h ON h.tenant_id=b.tenant_id AND h.id=b.hold_id
+         WHERE b.tenant_id=$1 AND b.id=$2`,
+        [actor.tenantId, bookingId],
+      );
+      if (!row) throw new NotFoundException("Booking not found");
+      return {
+        bookingId,
+        state:
+          row.state === "held" && !row.hold_live ? "expired" : row.state,
+        version: row.version,
+        currency: row.currency,
+        totalMinor: row.total_minor,
+        paidMinor: row.paid_minor,
+        cardPaidMinor: row.card_paid_minor,
+        balanceMinor: row.total_minor - row.paid_minor,
+      };
+    });
   }
   operationalStatus(
     actor: Actor,
@@ -965,5 +1079,37 @@ export class CrewController {
       parse(keySchema, key),
       body,
     );
+  }
+  /** Zettaz Pay QR for the guest to scan (boarding balance or walk-up). */
+  @Post("bookings/:id/zettaz-pay-link") @Access("authenticated") payLink(
+    @CurrentActor() actor: Actor,
+    @Param("id") value: string,
+    @Headers("idempotency-key") key: string,
+    @Body() body: unknown,
+  ) {
+    if (
+      !actor.permissions.includes("checkin.write") &&
+      !actor.permissions.includes("payment.write") &&
+      !actor.permissions.includes("bookings.write")
+    )
+      throw new ForbiddenException();
+    return this.service.payLink(
+      actor,
+      parse(departureId, value),
+      parse(keySchema, key),
+      body,
+    );
+  }
+  @Get("bookings/:id/pay-status") @Access("authenticated") payStatus(
+    @CurrentActor() actor: Actor,
+    @Param("id") value: string,
+  ) {
+    if (
+      !actor.permissions.includes("checkin.write") &&
+      !actor.permissions.includes("payment.write") &&
+      !actor.permissions.includes("bookings.write")
+    )
+      throw new ForbiddenException();
+    return this.service.payStatus(actor, parse(departureId, value));
   }
 }
